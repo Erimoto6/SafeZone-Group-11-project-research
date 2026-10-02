@@ -445,7 +445,7 @@ function splashView() {
     ${logo(120)}
     <div class="wordmark">SafeZone</div>
     <p class="tag-line">Safer and healthier indoor environments for everyone.</p>
-    <button class="role-btn primary" data-act="role" data-v="student">${I.cap}<span>Student</span>${I.chev}</button>
+    <button class="role-btn primary" data-act="role" data-v="student">${I.cap}<span>Student/Faculty</span>${I.chev}</button>
     <button class="role-btn secondary" data-act="role" data-v="admin">${I.sliders}<span>Admin</span>${I.chev}</button>
   </div>`;
 }
@@ -513,7 +513,7 @@ const ACTS = {
   role(v) { if (v === 'student') { S.role = 'student'; S.screen = 'home'; } else { S.screen = 'login'; S.loginError = ''; } render(); },
   menu() {
     const admin = S.role === 'admin';
-    openSheet(admin ? 'Signed in as Admin' : 'Viewing as Student', `<div class="stack"><p class="sub" style="margin:0 0 6px">${admin ? 'You can change settings and control ventilation.' : 'You can view conditions and alerts. Only admins can change settings.'}</p>
+    openSheet(admin ? 'Signed in as Admin' : 'Viewing as Student/Faculty', `<div class="stack"><p class="sub" style="margin:0 0 6px">${admin ? 'You can change settings and control ventilation.' : 'You can view conditions and alerts. Only admins can change settings.'}</p>
       <button class="btn soft" data-act="logout">${admin ? 'Log out' : 'Back to start'}</button></div>`);
   },
   logout() { S.role = null; S.screen = 'splash'; S.unread = 0; closeSheet(); render(); },
