@@ -1,24 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SafeZone</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-<div class="stage">
-  <div class="app" id="shell">
-    <div id="view"></div>
-    <div id="sheet-root"></div>
-    <div id="toast" role="status" aria-live="polite"></div>
-  </div>
-</div>
-
-<script>
 (() => {
 'use strict';
 
@@ -29,13 +8,18 @@
 // In a published page it must be a data: URI. Leave '' to show an empty slot.
 const LOGO_SRC = 'images/logo.png';
 
-// Prototype-only login. Replace with a real call to your backend.
-const ADMIN = { username: 'admin', password: 'safezone' };
+// Button names on the start screen. Change the wording here.
+const LABELS = { viewer: 'Student / Faculty', control: 'Admin' };
+
+// Prototype accounts. They are saved on this phone/browser only.
+// With the backend, registration and login become API calls and the server hashes passwords.
+const ADMIN_CODE = 'SAFEZONE-ADMIN';   // needed to register an admin account from the login page. Change it.
+const DEFAULT_ADMIN = { username: 'admin', password: 'safezone', name: 'Administrator', phone: '09170000001' };
 
 // Shown on the About screen.
 const CONTACT = { email: 'safezone@yourschool.edu' };
 
-// Starting limits. The admin can change them in Settings.
+// Starting limits. Admins can change them in Settings.
 // These are placeholders: use the values from your paper / sensor calibration.
 const DEFAULT_LIMITS = {
   temp: { warn: 30,   limit: 32 },    // °C
@@ -66,8 +50,8 @@ const RANK = { normal: 0, warning: 1, exceeded: 2 };
    STATE
    ===================================================================== */
 const S = {
-  role: null,                 // null | 'student' | 'admin'
-  screen: 'splash',           // splash | login | home | alerts | monitor | status | settings | about
+  role: null,                 // null | 'student' (Student / Faculty) | 'admin'
+  screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | fReg | home | alerts | monitor | status | settings | about
   mon: { view: 'live', metric: 'temp', range: '6h' },
   alertFilter: 'all',
   reading: { ...BASE },
@@ -80,11 +64,16 @@ const S = {
   alerts: [],
   unread: 0,
   draftAuto: true,
-  loginError: '',
+  authError: '',
+  notice: '',
+  reg: { phone: '' },
+  accounts: [],
+  me: null,
+  session: null,
   lastUpdate: Date.now(),
   users: [
-    { name: 'Administrator',  role: 'Admin',   phone: '0917 000 0001', sms: true },
-    { name: 'Faculty In-Charge', role: 'Faculty', phone: '0917 000 0002', sms: true }
+    { name: 'Administrator',     role: 'Admin',   phone: '0917 000 0001', sms: true },
+    { name: 'Class Adviser',     role: 'Faculty', phone: '0917 000 0002', sms: true }
   ]
 };
 
@@ -92,7 +81,7 @@ const S = {
 const store = {
   load() { try { return JSON.parse(localStorage.getItem('safezone.v1') || 'null'); } catch (e) { return null; } },
   save() {
-    try { localStorage.setItem('safezone.v1', JSON.stringify({ limits: S.limits, users: S.users, mode: S.vent.mode })); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem('safezone.v1', JSON.stringify({ limits: S.limits, users: S.users, mode: S.vent.mode, accounts: S.accounts, session: S.session })); } catch (e) { /* storage unavailable */ }
   }
 };
 
@@ -116,6 +105,26 @@ const withUnit = (k, v) => `${fmt(k, v)} ${METRICS[k].unit}`;
 const levelOf = (k, v) => { const t = S.limits[k]; return v >= t.limit ? 'exceeded' : v >= t.warn ? 'warning' : 'normal'; };
 const worst = () => Math.max(...KEYS.map(k => RANK[S.levels[k]]));
 const worstName = () => ['normal', 'warning', 'exceeded'][worst()];
+
+/* ---------- accounts: phone numbers, passwords ---------- */
+const normPhone = x => { let d = String(x).replace(/\D/g, ''); if (d.startsWith('63')) d = '0' + d.slice(2); return d; };
+const validPhone = x => /^09\d{9}$/.test(normPhone(x));
+const showPhone = x => x.length === 11 ? `${x.slice(0, 4)} ${x.slice(4, 7)} ${x.slice(7)}` : x;
+const pwRules = x => [
+  ['At least 6 characters', x.length >= 6],
+  ['Include a letter and a number', /[A-Za-z]/.test(x) && /\d/.test(x)],
+  ['No spaces', x.length > 0 && !/\s/.test(x)]
+];
+// Prototype only. The backend will hash passwords on the server (bcrypt).
+async function hashPw(id, pw) {
+  const data = new TextEncoder().encode('safezone:' + id + ':' + pw);
+  if (window.crypto && crypto.subtle) {
+    const b = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(b)).map(n => n.toString(16).padStart(2, '0')).join('');
+  }
+  let h = 5381; data.forEach(c => { h = ((h << 5) + h + c) >>> 0; });
+  return 'x' + h.toString(16);
+}
 
 /* ---------- icons ---------- */
 const P = {
@@ -147,6 +156,8 @@ const P = {
   out: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
   cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>'
 };
 const I = new Proxy({}, { get: (_, k) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[k] || ''}</svg>` });
@@ -310,18 +321,19 @@ function sensorCard(k) {
     <div class="s-val">${fmt(k, S.reading[k])}<small>${m.unit}</small></div><span class="chip ${lv}">${LV[lv]}</span></article>`;
 }
 
-function ventCard() {
+// control = true only on the Monitoring screen. Everywhere else the card just shows the status.
+function ventCard(control) {
   const on = S.vent.on; const auto = S.vent.mode === 'auto'; const admin = S.role === 'admin';
+  const foot = control && admin
+    ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Ventilation fan" data-act="toggleVent"><span></span></button>
+       ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
+    : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>
+       ${admin ? '<button class="linkbtn" data-act="toMonitor">Control in Monitoring</button>' : ''}`;
   return `<article class="card sensor"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Ventilation</div>
-    <div class="s-val">${on ? 'ON' : 'OFF'}</div>
-    ${admin
-      ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Ventilation fan" data-act="toggleVent"><span></span></button>
-         ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
-      : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>`}
-  </article>`;
+    <div class="s-val">${on ? 'ON' : 'OFF'}</div>${foot}</article>`;
 }
 
-function cards() { return `<div class="grid2">${sensorCard('temp')}${sensorCard('hum')}${sensorCard('co2')}${ventCard()}</div>`; }
+function cards(control = false) { return `<div class="grid2">${sensorCard('temp')}${sensorCard('hum')}${sensorCard('co2')}${ventCard(control)}</div>`; }
 
 function banner() {
   const w = worstName();
@@ -360,7 +372,7 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `${seg}${cards()}${metricChips()}
+    return `${seg}${cards(true)}${metricChips()}
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label} (${m.unit})</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
   }
@@ -418,8 +430,7 @@ function settingsView() {
       <button class="btn soft small" data-act="sim" data-v="temp">Simulate high temperature</button>
       <button class="btn soft small" data-act="sim" data-v="hum">Simulate high humidity</button>
       <button class="btn soft small" data-act="sim" data-v="reset">Reset readings</button>
-    </div>
-    <p class="note">For presentations only. Remove this section before deployment.</p>`;
+    </div>`;
 }
 
 function aboutView() {
@@ -445,33 +456,143 @@ function splashView() {
     ${logo(120)}
     <div class="wordmark">SafeZone</div>
     <p class="tag-line">Safer and healthier indoor environments for everyone.</p>
-    <button class="role-btn primary" data-act="role" data-v="student">${I.cap}<span>Student</span>${I.chev}</button>
-    <button class="role-btn secondary" data-act="role" data-v="admin">${I.sliders}<span>Admin</span>${I.chev}</button>
+    <button class="role-btn primary" data-act="role" data-v="student">${I.cap}<span>${esc(LABELS.viewer)}</span>${I.chev}</button>
+    <button class="role-btn secondary" data-act="role" data-v="admin">${I.sliders}<span>${esc(LABELS.control)}</span>${I.chev}</button>
   </div>`;
 }
 
+/* ---------- shared pieces for the sign-up / login screens ---------- */
+const authBack = to => `<button class="back" data-act="to" data-v="${to}">${I.back}Back</button>`;
+const circle = ic => `<div class="circle">${I[ic]}</div>`;
+const errLine = () => `<p class="err" id="err" role="alert">${esc(S.authError)}</p>`;
+const noteLine = () => S.notice ? `<p class="okmsg" role="status">${esc(S.notice)}</p>` : '';
+const pwField = (id, ph, auto) => `<div class="field">${I.lock}<input type="password" id="${id}" placeholder="${ph}" aria-label="${ph}" autocomplete="${auto}"><button type="button" class="eye" data-act="pw" data-v="${id}" aria-label="Show password">${I.eye}</button></div>`;
+const textField = (ic, id, ph, type, extra) => `<div class="field">${I[ic]}<input type="${type}" id="${id}" placeholder="${ph}" aria-label="${ph}" ${extra || ''}></div>`;
+const rulesList = () => `<ul class="rules" id="rules" aria-label="Password rules">${pwRules('').map(([t, ok]) => `<li class="${ok ? 'ok' : ''}">${I.check}${t}</li>`).join('')}</ul>`;
+const phoneInput = () => `<div class="field">${I.phone}<input type="tel" id="phone" inputmode="numeric" placeholder="09XXXXXXXXX" aria-label="Mobile number" autocomplete="tel" value="${esc(S.reg.phone)}"></div>`;
+
+/* ---------- Student side: access, register (phone), password, done, login ---------- */
+function vWelcomeView() {
+  return `<div class="splash auth">${authBack('splash')}<div class="auth-in">
+    ${circle('cap')}
+    <h2>${esc(LABELS.viewer)} Access</h2>
+    <p class="tag-line" style="margin-bottom:18px">Create an account to view classroom environmental information.</p>
+    <div class="feat">
+      <div>${I.chart}<span>View real-time readings</span></div>
+      <div>${I.info}<span>Check room status</span></div>
+      <div>${I.bell}<span>Receive alerts and announcements</span></div>
+    </div>
+    <button class="btn" style="margin-top:20px" data-act="to" data-v="vReg1">Create Account</button>
+    <button class="btn soft" style="margin-top:10px" data-act="to" data-v="vLogin">I already have an account</button>
+    <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="to" data-v="splash">Back to Home</button>
+  </div></div>`;
+}
+
+function vReg1View() {
+  return `<div class="splash auth">${authBack('vWelcome')}<div class="auth-in">
+    ${circle('phone')}
+    <h2>Create Account</h2>
+    <p class="tag-line" style="margin-bottom:20px">Register using your mobile number.</p>
+    <form id="v-reg1-form" style="width:100%" novalidate>
+      <label class="flabel" for="phone">Mobile Number</label>
+      ${phoneInput()}
+      <p class="hint">Enter a valid Philippine mobile number (e.g. 09XXXXXXXXX)</p>
+      ${errLine()}
+      <button class="btn" type="submit">Next</button>
+    </form>
+  </div></div>`;
+}
+
+function vReg2View() {
+  return `<div class="splash auth">${authBack('vReg1')}<div class="auth-in">
+    ${circle('lock')}
+    <h2>Create Password</h2>
+    <p class="tag-line" style="margin-bottom:18px">Set a password for your account.</p>
+    <form id="v-reg2-form" style="width:100%" novalidate>
+      <label class="flabel" for="rp">Password</label>
+      ${pwField('rp', 'Password', 'new-password')}
+      ${rulesList()}
+      <label class="flabel" for="rc">Confirm Password</label>
+      ${pwField('rc', 'Confirm password', 'new-password')}
+      ${errLine()}
+      <button class="btn" type="submit">Create Account</button>
+    </form>
+  </div></div>`;
+}
+
+function vDoneView() {
+  return `<div class="splash auth"><div class="auth-in">
+    <div class="circle ok">${I.check}</div>
+    <h2>Account Created!</h2>
+    <p class="tag-line" style="margin-bottom:24px">Welcome to SafeZone. You can now log in and view classroom information.</p>
+    <button class="btn" data-act="to" data-v="vLogin">Go to Login</button>
+  </div></div>`;
+}
+
+function vLoginView() {
+  return `<div class="splash auth">${authBack('vWelcome')}<div class="auth-in">
+    ${circle('cap')}
+    <h2>Log in</h2>
+    <p class="tag-line" style="margin-bottom:20px">Use your mobile number and password.</p>
+    ${noteLine()}
+    <form id="v-login-form" style="width:100%" novalidate>
+      <label class="flabel" for="phone">Mobile Number</label>
+      ${phoneInput()}
+      <label class="flabel" for="pw">Password</label>
+      ${pwField('pw', 'Password', 'current-password')}
+      ${errLine()}
+      <button class="btn" type="submit">Log in</button>
+    </form>
+    <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot">Forgot password?</button>
+    <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="vReg1">Create an account</button>
+  </div></div>`;
+}
+
+/* ---------- Admin side: login and register ---------- */
 function loginView() {
-  return `<div class="splash" style="justify-content:center">
-    <button class="back" data-act="logout">${I.back}Back</button>
+  return `<div class="splash auth">${authBack('splash')}<div class="auth-in">
     ${logo(96)}
     <div class="wordmark" style="font-size:28px">SafeZone</div>
     <h2 style="margin-top:6px">Admin Login</h2>
     <p class="tag-line" style="margin-bottom:20px">Access the system to manage and control.</p>
+    ${noteLine()}
     <form id="login-form" style="width:100%" autocomplete="off" novalidate>
-      <div class="field">${I.user}<input type="text" id="u" placeholder="Username" aria-label="Username" autocapitalize="none" autocomplete="username"></div>
-      <div class="field">${I.lock}<input type="password" id="pw" placeholder="Password" aria-label="Password" autocomplete="current-password"><button type="button" class="eye" data-act="pw" aria-label="Show password">${I.eye}</button></div>
-      <p class="err" id="login-err" role="alert">${esc(S.loginError)}</p>
+      ${textField('user', 'u', 'Username', 'text', 'autocapitalize="none" autocomplete="username"')}
+      ${pwField('pw', 'Password', 'current-password')}
+      ${errLine()}
       <button class="btn" type="submit">Log in</button>
     </form>
     <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot">Forgot password?</button>
-    <p class="note" style="margin-top:18px">Prototype login: admin / safezone</p>
-  </div>`;
+    <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="fReg">Create an admin account</button>
+    <p class="note" style="margin-top:14px">Prototype login: admin / safezone</p>
+  </div></div>`;
+}
+
+function fRegView() {
+  return `<div class="splash auth">${authBack('login')}<div class="auth-in">
+    ${circle('sliders')}
+    <h2>Admin Account</h2>
+    <p class="tag-line" style="margin-bottom:18px">Create an account to manage and control SafeZone.</p>
+    <form id="f-reg-form" style="width:100%" autocomplete="off" novalidate>
+      ${textField('user', 'fname', 'Full name', 'text', 'autocomplete="name"')}
+      ${textField('user', 'fuser', 'Username', 'text', 'autocapitalize="none" autocomplete="username"')}
+      ${textField('phone', 'fphone', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="tel"')}
+      ${pwField('rp', 'Password', 'new-password')}
+      ${rulesList()}
+      ${pwField('rc', 'Confirm password', 'new-password')}
+      ${textField('key', 'fcode', 'Admin access code', 'text', 'autocapitalize="characters" autocomplete="off"')}
+      <p class="hint">Ask your system administrator for the admin access code.</p>
+      ${errLine()}
+      <button class="btn" type="submit">Create Account</button>
+    </form>
+  </div></div>`;
 }
 
 function render() {
   const view = $('#view'); const prev = $('#screen');
   const top = prev && prev.dataset.s === S.screen ? prev.scrollTop : 0;
-  view.innerHTML = S.screen === 'splash' ? splashView() : S.screen === 'login' ? loginView() : shell();
+  const AUTH = { splash: splashView, login: loginView, fReg: fRegView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView };
+  view.innerHTML = AUTH[S.screen] ? AUTH[S.screen]() : shell();
   const sc = $('#screen'); if (sc) sc.scrollTop = top;
 }
 
@@ -494,13 +615,23 @@ function usersSheet() {
   openSheet('Manage Users', `<div class="list">${S.users.map((u, i) => `<div class="user-row"><div><b>${esc(u.name)}</b><span>${esc(u.role)}, ${esc(u.phone)}</span></div>
       <button class="switch" role="switch" aria-checked="${u.sms}" aria-label="SMS alerts for ${esc(u.name)}" data-act="userSms" data-v="${i}"><span></span></button></div>`).join('')}</div>
     <p class="note">Switch on to send SMS alerts to that person.</p>
-    <p class="section-label">Add a user</p>
-    <form id="user-form" class="stack" novalidate><input type="text" id="un" placeholder="Full name" aria-label="Full name"><input type="tel" id="up" placeholder="Mobile number (09XX XXX XXXX)" aria-label="Mobile number"><button class="btn small" type="submit">Add user</button></form>`);
+    <p class="section-label">Add another admin</p>
+    <p class="note" style="margin:0 4px 10px">Give someone else admin access. They log in with the username and password you set here, and can change the password later in Account Settings.</p>
+    <form id="admin-form" class="stack" autocomplete="off" novalidate>
+      ${textField('user', 'an', 'Full name', 'text', 'autocomplete="off"')}
+      ${textField('user', 'au', 'Username', 'text', 'autocapitalize="none" autocomplete="off"')}
+      ${textField('phone', 'ap', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="off"')}
+      ${pwField('rp', 'Password for the new admin', 'new-password')}
+      ${rulesList()}
+      <button class="btn small" type="submit">Add admin</button>
+    </form>`);
 }
 function accountSheet() {
-  openSheet('Account Settings', `<div class="stack"><label class="f">Username<input type="text" value="${esc(ADMIN.username)}" disabled></label></div>
+  const me = S.me; if (!me) return;
+  openSheet('Account Settings', `<div class="stack"><label class="f">Name<input type="text" value="${esc(me.name)}" disabled></label>
+    <label class="f">Username<input type="text" value="${esc(me.username)}" disabled></label></div>
     <p class="section-label">Change password</p>
-    <form id="pw-form" class="stack" novalidate><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><button class="btn small" type="submit">Update password</button></form>`);
+    <form id="pw-form" class="stack" novalidate><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><p class="note" style="margin:0">At least 6 characters, with a letter and a number, and no spaces.</p><button class="btn small" type="submit">Update password</button></form>`);
 }
 
 /* =====================================================================
@@ -510,16 +641,22 @@ const ACTS = {
   go(v) {
     S.screen = v; if (v === 'alerts') S.unread = 0; if (v === 'settings') S.draftAuto = S.vent.mode === 'auto'; render();
   },
-  role(v) { if (v === 'student') { S.role = 'student'; S.screen = 'home'; } else { S.screen = 'login'; S.loginError = ''; } render(); },
-  menu() {
-    const admin = S.role === 'admin';
-    openSheet(admin ? 'Signed in as Admin' : 'Viewing as Student', `<div class="stack"><p class="sub" style="margin:0 0 6px">${admin ? 'You can change settings and control ventilation.' : 'You can view conditions and alerts. Only admins can change settings.'}</p>
-      <button class="btn soft" data-act="logout">${admin ? 'Log out' : 'Back to start'}</button></div>`);
+  role(v) {
+    S.authError = ''; S.notice = ''; S.reg = { phone: '' };
+    S.screen = v === 'student' ? 'vWelcome' : 'login'; render();
   },
-  logout() { S.role = null; S.screen = 'splash'; S.unread = 0; closeSheet(); render(); },
+  to(v) { S.authError = ''; S.notice = ''; S.screen = v; render(); },
+  toMonitor() { S.mon.view = 'live'; S.screen = 'monitor'; render(); },
+  menu() {
+    const admin = S.role === 'admin'; const me = S.me;
+    const who = me ? esc(admin ? me.name : showPhone(me.phone)) : '';
+    openSheet(admin ? 'Signed in as Admin' : 'Signed in', `<div class="stack"><p class="sub" style="margin:0 0 6px">${who ? `<b>${who}</b><br>` : ''}${admin ? 'You can change settings and control ventilation.' : 'You can view conditions and alerts. Only admins can change settings.'}</p>
+      <button class="btn soft" data-act="logout">Log out</button></div>`);
+  },
+  logout() { S.role = null; S.me = null; S.session = null; S.reg = { phone: '' }; S.screen = 'splash'; S.unread = 0; store.save(); closeSheet(); render(); },
   toggleVent() {
     S.vent.mode = 'manual'; S.vent.on = !S.vent.on; S.draftAuto = false; store.save();
-    pushAlert({ type: 'ventilation', cats: ['system'], title: `Ventilation turned ${S.vent.on ? 'ON' : 'OFF'}`, body: 'Switched manually by the admin.' }, true);
+    pushAlert({ type: 'ventilation', cats: ['system'], title: `Ventilation turned ${S.vent.on ? 'ON' : 'OFF'}`, body: 'Switched manually by an admin.' }, true);
     render(); toast(`Ventilation ${S.vent.on ? 'on' : 'off'}. Manual mode.`);
   },
   auto() { S.vent.mode = 'auto'; S.draftAuto = true; store.save(); evaluate(); render(); toast('Automatic ventilation is on'); },
@@ -528,7 +665,8 @@ const ACTS = {
   range(v) { S.mon.range = v; render(); },
   filter(v) { S.alertFilter = v; render(); },
   pw(v, el) {
-    const inp = $('#pw'); const show = inp.type === 'password'; inp.type = show ? 'text' : 'password';
+    const inp = $('#' + v); if (!inp) return;
+    const show = inp.type === 'password'; inp.type = show ? 'text' : 'password';
     el.innerHTML = show ? I.eyeoff : I.eye; el.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
   },
   forgot() { toast('Ask your system administrator to reset your password.'); },
@@ -563,23 +701,82 @@ document.addEventListener('click', e => {
   const fn = ACTS[el.dataset.act]; if (fn) fn(el.dataset.v, el, e);
 });
 
-document.addEventListener('submit', e => {
+document.addEventListener('submit', async e => {
   e.preventDefault();
   const id = e.target.id;
-  if (id === 'login-form') {
-    const u = $('#u').value.trim(), p = $('#pw').value;
-    if (u === ADMIN.username && p === ADMIN.password) { S.role = 'admin'; S.screen = 'home'; S.loginError = ''; render(); }
-    else { S.loginError = 'Wrong username or password. Check both and try again.'; $('#login-err').textContent = S.loginError; }
-  } else if (id === 'user-form') {
-    const name = $('#un').value.trim(), phone = $('#up').value.trim();
-    if (!name || phone.replace(/\D/g, '').length < 10) { toast('Enter a name and a valid mobile number.'); return; }
-    S.users.push({ name, role: 'Recipient', phone, sms: true }); store.save(); usersSheet(); toast('User added');
+  const fail = msg => { S.authError = msg; const el = $('#err'); if (el) el.textContent = msg; };
+  const ready = () => { S.authError = ''; S.notice = ''; S.reg = { phone: '' }; S.screen = 'home'; render(); };
+
+  if (id === 'login-form') {                                   // Admin login
+    const u = $('#u').value.trim().toLowerCase(), p = $('#pw').value;
+    const acc = S.accounts.find(a => a.role === 'admin' && a.username === u);
+    if (acc && acc.hash === await hashPw(acc.username, p)) { S.me = acc; S.role = 'admin'; ready(); }
+    else fail('Wrong username or password. Check both and try again.');
+
+  } else if (id === 'f-reg-form') {                            // Admin registration
+    const name = $('#fname').value.trim(), user = $('#fuser').value.trim().toLowerCase(), raw = $('#fphone').value;
+    const p = $('#rp').value, c = $('#rc').value, code = $('#fcode').value.trim();
+    if (!name || !user) return fail('Enter your full name and a username.');
+    if (!/^[a-z0-9._-]{3,20}$/.test(user)) return fail('Username: 3 to 20 letters, numbers, dots, dashes or underscores.');
+    if (S.accounts.some(a => a.role === 'admin' && a.username === user)) return fail('That username is taken. Try another.');
+    if (!validPhone(raw)) return fail('Enter a valid Philippine mobile number, like 09XXXXXXXXX.');
+    if (!pwRules(p).every(r => r[1])) return fail('Your password does not meet all the rules above.');
+    if (p !== c) return fail('The two passwords do not match.');
+    if (code.toUpperCase() !== ADMIN_CODE.toUpperCase()) return fail('Wrong admin access code.');
+    const phone = normPhone(raw);
+    S.accounts.push({ role: 'admin', username: user, name, phone, hash: await hashPw(user, p) });
+    if (!S.users.some(u => normPhone(u.phone) === phone)) S.users.push({ name, role: 'Admin', phone: showPhone(phone), sms: true });
+    store.save(); S.authError = ''; S.notice = 'Account created. You can log in now.'; S.screen = 'login'; render();
+
+  } else if (id === 'v-reg1-form') {                           // Student: step 1, mobile number
+    const raw = $('#phone').value, phone = normPhone(raw);
+    if (!validPhone(raw)) return fail('Enter a valid Philippine mobile number, like 09XXXXXXXXX.');
+    if (S.accounts.some(a => a.role === 'viewer' && a.phone === phone)) return fail('This number is already registered. Go back and log in.');
+    S.reg.phone = phone; S.authError = ''; S.screen = 'vReg2'; render();
+
+  } else if (id === 'v-reg2-form') {                           // Student: step 2, password
+    const p = $('#rp').value, c = $('#rc').value, phone = S.reg.phone;
+    if (!phone) { S.screen = 'vReg1'; render(); return; }
+    if (!pwRules(p).every(r => r[1])) return fail('Your password does not meet all the rules above.');
+    if (p !== c) return fail('The two passwords do not match.');
+    S.accounts.push({ role: 'viewer', phone, hash: await hashPw(phone, p) });
+    if (!S.users.some(u => normPhone(u.phone) === phone)) S.users.push({ name: 'Student / Faculty user', role: 'Registered', phone: showPhone(phone), sms: true });
+    store.save(); S.authError = ''; S.screen = 'vDone'; render();
+
+  } else if (id === 'v-login-form') {                          // Student login
+    const phone = normPhone($('#phone').value), p = $('#pw').value;
+    const acc = S.accounts.find(a => a.role === 'viewer' && a.phone === phone);
+    if (acc && acc.hash === await hashPw(acc.phone, p)) { S.me = acc; S.role = 'student'; S.session = acc.phone; store.save(); ready(); }
+    else fail('Wrong mobile number or password. Check both and try again.');
+
+  } else if (id === 'admin-form') {                            // an admin gives another person admin access
+    const name = $('#an').value.trim(), user = $('#au').value.trim().toLowerCase(), raw = $('#ap').value, p = $('#rp').value;
+    if (!name || !user) { toast('Enter the new admin\'s full name and a username.'); return; }
+    if (!/^[a-z0-9._-]{3,20}$/.test(user)) { toast('Username: 3 to 20 letters, numbers, dots, dashes or underscores.'); return; }
+    if (S.accounts.some(a => a.role === 'admin' && a.username === user)) { toast('That username is taken. Try another.'); return; }
+    if (!validPhone(raw)) { toast('Enter a valid Philippine mobile number, like 09XXXXXXXXX.'); return; }
+    if (!pwRules(p).every(r => r[1])) { toast('Password needs 6+ characters with a letter and a number, no spaces.'); return; }
+    const phone = normPhone(raw);
+    S.accounts.push({ role: 'admin', username: user, name, phone, hash: await hashPw(user, p) });
+    const known = S.users.find(u => normPhone(u.phone) === phone);
+    if (known) { known.role = 'Admin'; known.name = name; known.sms = true; }
+    else S.users.push({ name, role: 'Admin', phone: showPhone(phone), sms: true });
+    store.save(); usersSheet(); toast(name + ' is now an admin');
+
   } else if (id === 'pw-form') {
     const a = $('#np').value, b = $('#cp').value;
-    if (a.length < 6) { toast('Use at least 6 characters.'); return; }
+    if (!pwRules(a).every(r => r[1])) { toast('Use 6+ characters with a letter and a number, no spaces.'); return; }
     if (a !== b) { toast('The two passwords do not match.'); return; }
-    ADMIN.password = a; closeSheet(); toast('Password updated');
+    S.me.hash = await hashPw(S.me.username, a); store.save(); closeSheet(); toast('Password updated');
   }
+});
+
+// Live tick marks on the password rules while typing.
+document.addEventListener('input', e => {
+  if (e.target.id !== 'rp') return;
+  const ul = $('#rules'); if (!ul) return;
+  const res = pwRules(e.target.value);
+  ul.querySelectorAll('li').forEach((li, i) => li.classList.toggle('ok', res[i][1]));
 });
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
@@ -587,13 +784,28 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 /* =====================================================================
    INIT
    ===================================================================== */
-(function init() {
+(async function init() {
   const saved = store.load();
   if (saved) {
     if (saved.limits) S.limits = saved.limits;
     if (saved.users) S.users = saved.users;
     if (saved.mode) S.vent.mode = saved.mode;
+    if (saved.accounts) S.accounts = saved.accounts;
+    if (saved.session) S.session = saved.session;
   }
+  // Older saved data used 'faculty' for admin accounts. Convert it.
+  S.accounts.forEach(a => { if (a.role === 'faculty') a.role = 'admin'; });
+  const adminNames = new Set(S.accounts.filter(a => a.role === 'admin').map(a => a.name));
+  S.users.forEach(u => { if (u.role === 'Faculty' && adminNames.has(u.name)) u.role = 'Admin'; });
+  // The demo admin account always exists, so you can log in on a fresh install.
+  if (!S.accounts.some(a => a.role === 'admin' && a.username === DEFAULT_ADMIN.username)) {
+    S.accounts.push({ role: 'admin', username: DEFAULT_ADMIN.username, name: DEFAULT_ADMIN.name, phone: DEFAULT_ADMIN.phone,
+      hash: await hashPw(DEFAULT_ADMIN.username, DEFAULT_ADMIN.password) });
+    store.save();
+  }
+  // Keep students logged in on this phone until they log out.
+  const me = S.session && S.accounts.find(a => a.role === 'viewer' && a.phone === S.session);
+  if (me) { S.me = me; S.role = 'student'; S.screen = 'home'; }
   S.draftAuto = S.vent.mode === 'auto';
   seedAlerts(); seedBuffer();
   KEYS.forEach(k => { S.levels[k] = levelOf(k, S.reading[k]); });
@@ -601,6 +813,3 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
   setInterval(tick, 2000);
 })();
 })();
-</script>
-</body>
-</html>
