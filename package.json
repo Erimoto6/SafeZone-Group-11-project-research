@@ -1,0 +1,26 @@
+{
+  "name": "safezone-group-11-project-research",
+  "version": "1.0.0",
+  "description": "SafeZone app uwu heart heart",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shekinah0904/SafeZone-Group-11-project-research.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Shekinah0904/SafeZone-Group-11-project-research/issues"
+  },
+  "homepage": "https://github.com/Shekinah0904/SafeZone-Group-11-project-research#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2"
+  }
+}
