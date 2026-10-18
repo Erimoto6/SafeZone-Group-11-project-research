@@ -11,12 +11,26 @@ const LOGO_SRC = 'images/logo.png';
 // Button names on the start screen. Change the wording here.
 const LABELS = { viewer: 'Student / Faculty', control: 'Admin' };
 
+// Prototype accounts. They are saved on this phone/browser only.
+// With the backend, registration and login become API calls and the server hashes passwords.
+const ADMIN_CODE = 'SAFEZONE-ADMIN';   // needed to register an admin account from the login page. Change it.
+const DEFAULT_ADMIN = { username: 'admin', password: 'safezone', name: 'Administrator', phone: '09170000001' };
+
 // PUP web mail (Outlook). Students use @iskolarngbayan.pup.edu.ph, faculty use @pup.edu.ph.
 // It is used to verify a person when they forget their password.
 const WEBMAIL = { student: 'iskolarngbayan.pup.edu.ph', faculty: 'pup.edu.ph' };
 const RESET_MINUTES = 10;        // how long a reset code works
 const RESET_TRIES = 5;           // wrong guesses allowed per code
 const RESEND_SECONDS = 30;       // wait before asking for another code
+// The prototype cannot send email, so it shows the code on screen. Set to false when the backend sends real email.
+const SHOW_DEMO_CODE = true;
+
+// REAL EMAIL (optional). The app cannot send mail by itself, so it hands the message to an email service (EmailJS).
+// Create a free EmailJS account, connect a mailbox, make a template, then fill in these three values.
+// Leave them empty to stay in demo mode (the code is shown on screen instead of emailed).
+const EMAIL_SEND = { serviceId: '', templateId: '', publicKey: '' };
+const EMAIL_ON = !!(EMAIL_SEND.serviceId && EMAIL_SEND.templateId && EMAIL_SEND.publicKey);
+
 // Shown on the About screen.
 const CONTACT = { email: 'safezone@yourschool.edu' };
 
@@ -104,60 +118,21 @@ function eachRoom(fn) { const keep = S.roomId; S.rooms.forEach(r => { S.roomId =
 
 /* ---------- storage (safe) ---------- */
 const store = {
-  load() { try { return JSON.parse(localStorage.getItem('safezone.preferences') || 'null'); } catch { return null; } },
-  save() { try { localStorage.setItem('safezone.preferences', JSON.stringify({ theme: S.theme, roomId: S.roomId })); } catch { /* preferences are optional */ } }
-};
-let token = sessionStorage.getItem('safezone.token') || '';
-const API_BASE = (window.SAFEZONE_API_BASE || '/api').replace(/\/$/, '');
-async function api(path, method = 'GET', body) {
-  let response;
-  try {
-    response = await fetch(API_BASE + path, {
-      method, headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)
-    });
-  } catch { throw new Error('Cannot reach the server. Check your connection and try again.'); }
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401 && token && path !== '/auth/change-password') {
-      signOut(); render();
-    }
-    throw new Error(data.error || 'The request failed. Please try again.');
+  load() { try { return JSON.parse(localStorage.getItem('safezone.v1') || 'null'); } catch (e) { return null; } },
+  save() {
+    try {
+      localStorage.setItem('safezone.v1', JSON.stringify({
+        limits: S.limits, users: S.users, accounts: S.accounts, session: S.session,
+        fanTrigger: S.fanTrigger, roomId: S.roomId, theme: S.theme, roomsV: ROOMS_V,
+        rooms: S.rooms.map(r => ({ id: r.id, name: r.name, floor: r.floor, lights: r.lights, lightWatts: r.lightWatts, fanWatts: r.fanWatts, mode: r.vent.mode }))
+      }));
+    } catch (e) { /* storage unavailable */ }
   }
-  return data;
-}
-function signOut() {
-  token = ''; sessionStorage.removeItem('safezone.token');
-  S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = [];
-  S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; closeSheet();
-}
-const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
-async function refreshData() {
-  const [rooms, settings, alerts] = await Promise.all([api('/rooms'), api('/settings'), api('/alerts')]);
-  const previous = new Map(S.rooms.map(r => [r.id, r]));
-  S.rooms = rooms.rooms.map(r => {
-    const room = previous.get(String(r.id)) || makeRoom({ ...r, id: String(r.id), lightWatts: r.wattsPerLight, mode: r.ventMode });
-    Object.assign(room, { name: r.name, floor: r.floor, lights: r.lights, lightWatts: r.wattsPerLight, fanWatts: r.fanWatts });
-    room.vent.mode = r.ventMode; return room;
-  });
-  if (!S.rooms.length) throw new Error('No rooms are configured. Ask an administrator to add one.');
-  if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
-  S.limits = settings.thresholds; S.fanTrigger = settings.fanTrigger; S.draftTrigger = S.fanTrigger;
-  S.draftAuto = settings.ventMode === 'auto';
-  S.alerts = alerts.alerts;
-  if (S.role === 'admin') {
-    const [people, sms] = await Promise.all([api('/admin/users'), api('/sms-recipients')]);
-    S.accounts = [...people.admins, ...people.viewers].map(mapUser);
-    S.users = sms.recipients.map(u => ({ ...u, sms: u.smsEnabled, phone: showPhone(u.phone) }));
-  } else { S.accounts = []; S.users = []; }
-}
-async function signedIn(data) {
-  token = data.token; sessionStorage.setItem('safezone.token', token);
-  S.me = mapUser(data.user); S.role = data.user.role === 'admin' ? 'admin' : 'student';
-  try { await refreshData(); } catch (e) { signOut(); render(); throw e; }
-  S.authError = ''; S.notice = ''; S.reg = { phone: '' }; S.screen = 'home'; render();
-}
+};
 
+/* =====================================================================
+   HELPERS
+   ===================================================================== */
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = n => String(n).padStart(2, '0');
@@ -207,7 +182,24 @@ const emailKind = x => {
 };
 const emailHint = `Students: @${WEBMAIL.student}. Faculty: @${WEBMAIL.faculty}.`;                 // plain text, for messages
 const emailHintHtml = `Students: @${WEBMAIL.student}<br>Faculty: @${WEBMAIL.faculty}`;           // two lines, for hints under a field
+const emailTaken = (e, except) => S.accounts.some(a => a !== except && a.email && a.email === normEmail(e));
 const maskEmail = e => { const [u, d] = normEmail(e).split('@'); return (u.length > 2 ? u.slice(0, 2) + '*'.repeat(Math.min(u.length - 2, 6)) : u[0] + '*') + '@' + d; };
+// Real system: the server makes the code with a secure random generator and stores only a hash of it.
+const newCode = () => {
+  const a = (window.crypto && crypto.getRandomValues) ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296);
+  return String(100000 + a % 900000);
+};
+// Prototype only. The backend will hash passwords on the server (bcrypt).
+async function hashPw(id, pw) {
+  const data = new TextEncoder().encode('safezone:' + id + ':' + pw);
+  if (window.crypto && crypto.subtle) {
+    const b = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(b)).map(n => n.toString(16).padStart(2, '0')).join('');
+  }
+  let h = 5381; data.forEach(c => { h = ((h << 5) + h + c) >>> 0; });
+  return 'x' + h.toString(16);
+}
+
 /* ---------- icons ---------- */
 const P = {
   thermo: '<path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>',
@@ -260,7 +252,6 @@ const logo = px => LOGO_SRC
    ALERTS & VENTILATION LOGIC
    ===================================================================== */
 function pushAlert(a, quiet) {
-  a = { ...a, sms: false, title: 'Demo: ' + a.title };
   const room = cur() ? cur().name : '';
   S.alerts.unshift({ id: Date.now() + Math.random(), ts: Date.now(), cats: ['system'], sms: false, room, ...a });
   if (S.alerts.length > 80) S.alerts.pop();
@@ -270,9 +261,20 @@ function pushAlert(a, quiet) {
   }
 }
 
+function seedAlerts() {
+  const now = Date.now(); const y = new Date(); y.setDate(y.getDate() - 1); y.setHours(16, 20, 0, 0);
+  const room = S.rooms[0].name;
+  S.alerts = [
+    { id: 1, ts: now - 12 * 60e3, type: 'normal', cats: ['system'], title: 'System Normal', body: 'All readings are within the set limits.' },
+    { id: 2, ts: now - 83 * 60e3, type: 'ventilation', cats: ['system'], title: 'Ventilation Activated', body: 'Automated ventilation is now ON.' },
+    { id: 3, ts: now - 84 * 60e3, type: 'exceeded', cats: ['exceeded', 'message'], sms: true, title: 'High CO₂ Level', body: 'CO₂ level reached 1,200 ppm.' },
+    { id: 4, ts: y.getTime(), type: 'normal', cats: ['system'], title: 'System Normal', body: 'All readings are within the set limits.' }
+  ].map(a => ({ room, ...a }));
+}
+
 const smsLine = () => {
   const n = S.users.filter(u => u.sms).length;
-  return { n, text: 'Demo only; no SMS was sent.' };
+  return { n, text: n ? `SMS sent to ${n} recipient${n === 1 ? '' : 's'}.` : 'No SMS recipients are switched on.' };
 };
 
 // Runs after every new reading or settings change, for the room being processed.
@@ -499,8 +501,8 @@ function legendCard() {
   const warnFan = S.fanTrigger === 'warning';
   return `<section class="card legend-card"><h3>Status colors</h3>
     <div class="lg"><i class="dot normal"></i><div><b>Green: Normal</b><span>Readings are within the set limits.</span></div></div>
-    <div class="lg"><i class="dot warning"></i><div><b>Yellow: Warning</b><span>Near the limit. SMS delivery is not connected.${warnFan ? ' Ventilation turns ON.' : ''}</span></div></div>
-    <div class="lg"><i class="dot exceeded"></i><div><b>Red: Danger</b><span>Limit exceeded. SMS delivery is not connected.${warnFan ? ' Ventilation stays ON.' : ' Ventilation turns ON.'}</span></div></div>
+    <div class="lg"><i class="dot warning"></i><div><b>Yellow: Warning</b><span>Near the limit. SMS alert sent.${warnFan ? ' Ventilation turns ON.' : ''}</span></div></div>
+    <div class="lg"><i class="dot exceeded"></i><div><b>Red: Danger</b><span>Limit exceeded. SMS alert sent.${warnFan ? ' Ventilation stays ON.' : ' Ventilation turns ON.'}</span></div></div>
     <p class="legend-foot">In automatic mode, ventilation turns OFF again when every reading is green.</p></section>`;
 }
 
@@ -509,7 +511,7 @@ function homeView() {
   const head = S.role === 'admin'
     ? `<h2>Welcome, Admin!</h2><p class="sub">Here's the current environment in ${room} and the system status.</p>`
     : `<h2>Classroom Environment</h2><p class="sub">Real-time indoor conditions in ${room}.</p>`;
-  return `<p class="note" role="status">Demo sensor readings and fan behavior. Firebase, hardware and SMS delivery are not connected.</p>${head}${roomBar()}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
+  return `${head}${roomBar()}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
 }
 
 function alertsView() {
@@ -674,7 +676,7 @@ function aboutView() {
 
 function shell() {
   const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView };
-  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}"><p class="note">Sensor readings, charts, fan behavior and device status are simulated. Hardware and SMS delivery are not connected.</p>${bodies[S.screen]()}</main>${nav()}`;
+  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${bodies[S.screen]()}</main>${nav()}`;
 }
 
 function splashView() {
@@ -798,7 +800,7 @@ function loginView() {
     </form>
     <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="admin">Forgot password?</button>
     <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="fReg">Create an admin account</button>
-    <p class="note" style="margin-top:14px">Use an account created on your SafeZone server.</p>
+    <p class="note" style="margin-top:14px">Prototype login: admin / safezone</p>
   </div></div>`;
 }
 
@@ -825,6 +827,29 @@ function fRegView() {
 }
 
 /* ---------- Forgot password: web mail, code, new password ---------- */
+function resetAccount(r) { return S.accounts.find(a => a.role === (r.side === 'admin' ? 'admin' : 'viewer') && a.email && a.email === r.email); }
+function sendResetCode() {
+  const r = S.reset; const acc = resetAccount(r);
+  r.code = acc ? newCode() : null;      // the real system answers the same either way and only emails when the account exists
+  r.exp = Date.now() + RESET_MINUTES * 60e3; r.tries = 0; r.sentAt = Date.now(); r.ok = false; r.demo = SHOW_DEMO_CODE && !EMAIL_ON;
+}
+
+// Emails the code when EMAIL_SEND is filled in. Returns true (sent), false (failed) or null (demo mode, or no account to email).
+async function deliverCode() {
+  const r = S.reset;
+  if (!EMAIL_ON || !r || !r.code) return null;
+  try {
+    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: EMAIL_SEND.serviceId, template_id: EMAIL_SEND.templateId, user_id: EMAIL_SEND.publicKey,
+        template_params: { to_email: r.email, code: r.code, minutes: RESET_MINUTES, app_name: 'SafeZone' }
+      })
+    });
+    return !!res.ok;
+  } catch (e) { return false; }
+}
+
 function fpEmailView() {
   const admin = S.reset && S.reset.side === 'admin';
   return `<div class="splash auth">${authBack(admin ? 'login' : 'vLogin')}<div class="auth-in">
@@ -843,11 +868,11 @@ function fpEmailView() {
 
 function fpCodeView() {
   const r = S.reset;
-  const demo = '';
+  const demo = r.demo ? `<div class="demo-note" role="note"><b>Demo only</b><span>${r.code ? 'The prototype cannot send real email, so your code is shown here. The real system sends it to your web mail inbox.' : 'No account uses this web mail, so no code was sent. The real system shows the same message either way.'}</span>${r.code ? `<strong class="demo-code" id="demo-code">${r.code}</strong>` : ''}</div>` : '';
   return `<div class="splash auth">${authBack('fpEmail')}<div class="auth-in">
     ${circle('key')}
     <h2>Enter Code</h2>
-    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> is registered, we sent a 6-digit code to it. The code works for ${RESET_MINUTES} minutes.<br>Check your Junk folder. During local testing, the code appears only in the backend terminal.</p>
+    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> is registered, we sent a 6-digit code to it. The code works for ${RESET_MINUTES} minutes.${EMAIL_ON ? '<br>Check your Junk folder if you do not see it.' : ''}</p>
     ${demo}
     <form id="fp-code-form" style="width:100%" novalidate>
       <label class="flabel" for="fpc">6-digit code</label>
@@ -1004,13 +1029,18 @@ function accountSheet() {
       <button class="btn small" type="submit">Save web mail</button>
     </form>
     <p class="section-label">Change password</p>
-    <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><p class="note" style="margin:0">At least 6 characters, with a letter and a number, and no spaces.</p><button class="btn small" type="submit">Update password</button></form>`);
+    <form id="pw-form" class="stack" novalidate><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><p class="note" style="margin:0">At least 6 characters, with a letter and a number, and no spaces.</p><button class="btn small" type="submit">Update password</button></form>`);
 }
 
 /* =====================================================================
    ACTIONS
    ===================================================================== */
 const ACTS = {
+  go(v) {
+    S.screen = v; if (v === 'alerts') S.unread = 0;
+    if (v === 'settings') { S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto'); S.draftTrigger = S.fanTrigger; }
+    render();
+  },
   role(v) {
     S.authError = ''; S.notice = ''; S.reg = { phone: '' };
     S.screen = v === 'student' ? 'vWelcome' : 'login'; render();
@@ -1025,6 +1055,13 @@ const ACTS = {
         <button class="switch" role="switch" aria-checked="${dark}" aria-label="Dark mode" data-act="theme"><span></span></button></div></div>
       <button class="btn soft" data-act="logout">Log out</button></div>`);
   },
+  logout() { S.role = null; S.me = null; S.session = null; S.reg = { phone: '' }; S.screen = 'splash'; S.unread = 0; store.save(); closeSheet(); render(); },
+  toggleVent() {
+    S.vent.mode = 'manual'; S.vent.on = !S.vent.on; S.draftAuto = false; store.save();
+    pushAlert({ type: 'ventilation', cats: ['system'], title: `Ventilation turned ${S.vent.on ? 'ON' : 'OFF'}`, body: 'Switched manually by an admin.' }, true);
+    render(); toast(`Ventilation ${S.vent.on ? 'on' : 'off'}. Manual mode.`);
+  },
+  auto() { S.vent.mode = 'auto'; S.draftAuto = true; store.save(); evaluate(); render(); toast('Automatic ventilation is on'); },
   metric(v) { S.mon.metric = v; render(); },
   view(v) { S.mon.view = v; render(); },
   range(v) { S.mon.range = v; render(); },
@@ -1038,10 +1075,26 @@ const ACTS = {
     S.reset = { side: v === 'admin' ? 'admin' : 'viewer', email: '', code: null, exp: 0, tries: 0, sentAt: 0, ok: false, okExp: 0, demo: false };
     S.authError = ''; S.notice = ''; S.screen = 'fpEmail'; render();
   },
+  async fpResend() {
+    const r = S.reset; if (!r) return;
+    const wait = Math.ceil((r.sentAt + RESEND_SECONDS * 1000 - Date.now()) / 1000);
+    if (wait > 0) { toast(`Please wait ${wait} seconds before asking for a new code.`); return; }
+    sendResetCode();
+    const sent = await deliverCode();
+    if (sent === false) { r.code = null; r.sentAt = 0; toast('We could not send the email. Try again.'); return; }
+    S.authError = ''; render(); toast(sent ? 'A new code was sent to your web mail.' : 'A new code was sent.');
+  },
   closeSheet(v, el, e) { if (el.dataset.overlay && e.target !== el) return; closeSheet(); },
-  account: accountSheet,
+  users: usersSheet, account: accountSheet,
+  sms() { S.pendingDel = ''; smsSheet(); },
   smsEdit(v) { S.pendingDel = ''; smsSheet(+v); },
   smsCancel() { S.pendingDel = ''; smsSheet(); },
+  smsDel(v) {
+    const key = 'sms:' + v;
+    if (S.pendingDel !== key) { S.pendingDel = key; smsSheet(); return; }       // first tap asks "Remove?"
+    S.users.splice(+v, 1); S.pendingDel = ''; store.save(); smsSheet(); toast('Recipient removed');
+  },
+  userSms(v) { const u = S.users[+v]; u.sms = !u.sms; store.save(); smsSheet(); },
   pickRoom() { pickSheet(); },
   room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId = v; store.save(); closeSheet(); render(); } },
   addRoom(v) { if (S.role !== 'admin') return; S.addFloor = v ? +v : cur().floor; S.pendingDel = ''; roomsSheet(); },
@@ -1051,12 +1104,34 @@ const ACTS = {
     const rn = $('#rn'); if (rn) { rn.value = nextRoomNumber(S.addFloor) || ''; rn.min = S.addFloor * 100 + 1; rn.max = S.addFloor * 100 + 99; }
     const hint = $('#rnhint'); if (hint) hint.textContent = floorHint(S.addFloor);
   },
+  roomDel(v) {
+    if (S.role !== 'admin') return;
+    if (S.rooms.length <= 1) { toast('Keep at least one room.'); return; }
+    const key = 'room:' + v;
+    if (S.pendingDel !== key) { S.pendingDel = key; roomsSheet(); return; }
+    S.rooms = S.rooms.filter(r => r.id !== v); if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
+    S.pendingDel = ''; store.save(); roomsSheet(); render(); toast('Room removed');
+  },
   theme() {
     S.theme = effectiveDark() ? 'light' : 'dark'; applyTheme(); store.save();
     if ($('#sheet-root .sheet')) ACTS.menu(); else render();
   },
   trigger(v) { S.draftTrigger = v; document.querySelectorAll('[data-act="trigger"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); },
   draftAuto(v, el) { S.draftAuto = !S.draftAuto; el.setAttribute('aria-checked', S.draftAuto); },
+  save() {
+    const next = {};
+    for (const k of KEYS) {
+      const w = parseFloat($(`#${k}-warn`).value), l = parseFloat($(`#${k}-limit`).value);
+      if (!isFinite(w) || !isFinite(l)) { toast(`Enter numbers for ${METRICS[k].label}.`); return; }
+      if (w >= l) { toast(`${METRICS[k].label}: the warning must be lower than the limit.`); return; }
+      next[k] = { warn: w, limit: l };
+    }
+    S.limits = next; S.fanTrigger = S.draftTrigger;
+    S.rooms.forEach(r => { r.vent.mode = S.draftAuto ? 'auto' : 'manual'; });
+    store.save();
+    eachRoom(r => { KEYS.forEach(k => { r.levels[k] = levelOf(k, r.reading[k]); }); r.prevWorst = worst(); evaluate(); });
+    render(); toast('Changes saved');
+  },
   sim(v) {
     const name = cur().name;
     if (v === 'reset') {
@@ -1068,124 +1143,152 @@ const ACTS = {
   }
 };
 
-Object.assign(ACTS, {
-  async go(v) {
-    if (['settings', 'alerts', 'home'].includes(v)) await refreshData();
-    S.screen = v; if (v === 'alerts') S.unread = 0;
-    if (v === 'settings') { S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto'); S.draftTrigger = S.fanTrigger; }
-    render();
-  },
-  logout() { signOut(); render(); },
-  async users() { await refreshData(); usersSheet(); },
-  async sms() { await refreshData(); S.pendingDel = ''; smsSheet(); },
-  async smsDel(v) {
-    const key = 'sms:' + v;
-    if (S.pendingDel !== key) { S.pendingDel = key; smsSheet(); return; }
-    await api('/sms-recipients/' + S.users[+v].id, 'DELETE');
-    await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient removed');
-  },
-  async userSms(v) {
-    const u = S.users[+v]; await api('/sms-recipients/' + u.id, 'PATCH', { smsEnabled: !u.sms });
-    await refreshData(); smsSheet();
-  },
-  async roomDel(v) {
-    const key = 'room:' + v;
-    if (S.pendingDel !== key) { S.pendingDel = key; roomsSheet(); return; }
-    await api('/rooms/' + encodeURIComponent(v), 'DELETE'); await refreshData();
-    S.pendingDel = ''; roomsSheet(); render(); toast('Room removed');
-  },
-  async save() {
-    const thresholds = {};
-    for (const k of KEYS) {
-      const warn = Number($(`#${k}-warn`).value), limit = Number($(`#${k}-limit`).value);
-      if (!Number.isFinite(warn) || !Number.isFinite(limit) || warn >= limit) throw new Error('Enter valid limits: warning must be lower than limit.');
-      thresholds[k] = { warn, limit };
-    }
-    await api('/settings', 'PUT', { thresholds, fanTrigger: S.draftTrigger, ventMode: S.draftAuto ? 'auto' : 'manual' });
-    await refreshData(); render(); toast('Changes saved to the server');
-  },
-  async toggleVent() {
-    await api('/rooms/' + cur().id, 'PATCH', { ventMode: 'manual' });
-    S.vent.mode = 'manual'; S.vent.on = !S.vent.on; render(); toast('Demo fan toggled; hardware is not connected');
-  },
-  async auto() {
-    await api('/rooms/' + cur().id, 'PATCH', { ventMode: 'auto' });
-    S.vent.mode = 'auto'; evaluate(); render(); toast('Automatic mode saved; hardware is not connected');
-  },
-  async fpResend() {
-    if (!S.reset) return;
-    await api('/auth/forgot', 'POST', { email: S.reset.email });
-    S.reset.sentAt = Date.now(); S.authError = ''; render(); toast('If registered, a new code was requested');
-  }
-});
-
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
-  const fn = ACTS[el.dataset.act]; if (fn) Promise.resolve().then(() => fn(el.dataset.v, el, e)).catch(err => toast(err.message));
+  const fn = ACTS[el.dataset.act]; if (fn) fn(el.dataset.v, el, e);
 });
 
 document.addEventListener('submit', async e => {
   e.preventDefault();
-  const form = e.target, id = form.id;
-  const button = form.querySelector('button[type="submit"]');
-  if (button && button.disabled) return;
-  if (button) button.disabled = true;
-  const value = id => $('#' + id).value;
-  const passwords = () => {
-    const password = value('rp');
-    if (!pwRules(password).every(r => r[1])) throw new Error('Password must meet all the listed rules.');
-    if ($('#rc') && password !== value('rc')) throw new Error('The two passwords do not match.');
-    return password;
-  };
-  try {
-    if (id === 'login-form' || id === 'v-login-form') {
-      await signedIn(await api('/auth/login', 'POST', {
-        identifier: value(id === 'login-form' ? 'u' : 'phone').trim(), password: value('pw'), as: id === 'login-form' ? 'admin' : 'viewer'
-      }));
-    } else if (id === 'f-reg-form') {
-      await api('/auth/register-admin', 'POST', { fullName: value('fname'), username: value('fuser'), email: value('femail'), phone: value('fphone'), password: passwords(), accessCode: value('fcode') });
-      S.authError = ''; S.notice = 'Account created. You can log in now.'; S.screen = 'login'; render();
-    } else if (id === 'v-reg1-form') {
-      const email = normEmail(value('email')), phone = normPhone(value('phone'));
-      if (!emailKind(email)) throw new Error('Use your PUP web mail. ' + emailHint);
-      if (!validPhone(phone)) throw new Error('Enter a valid Philippine mobile number.');
-      S.reg = { email, phone }; S.authError = ''; S.screen = 'vReg2'; render();
-    } else if (id === 'v-reg2-form') {
-      await api('/auth/register', 'POST', { ...S.reg, password: passwords() });
-      S.authError = ''; S.screen = 'vDone'; render();
-    } else if (id === 'fp-email-form') {
-      const email = normEmail(value('fpe'));
-      await api('/auth/forgot', 'POST', { email });
-      S.reset = { ...S.reset, email, sentAt: Date.now(), demo: false };
-      S.authError = ''; S.screen = 'fpCode'; render();
-    } else if (id === 'fp-code-form') {
-      const result = await api('/auth/verify-code', 'POST', { email: S.reset.email, code: value('fpc').trim() });
-      S.reset.resetToken = result.resetToken; S.authError = ''; S.screen = 'fpNew'; render();
-    } else if (id === 'fp-new-form') {
-      await api('/auth/reset', 'POST', { resetToken: S.reset.resetToken, newPassword: passwords() });
-      S.resetSide = S.reset.side; S.reset = null; S.authError = ''; S.screen = 'fpDone'; render();
-    } else if (id === 'admin-form') {
-      await api('/admin/users', 'POST', { fullName: value('an'), username: value('au'), email: value('aem'), phone: value('ap'), password: passwords() });
-      await refreshData(); usersSheet(); toast('Admin account created');
-    } else if (id === 'sms-form') {
-      const edit = Number(form.dataset.edit), person = S.users[edit];
-      await api('/sms-recipients' + (person ? '/' + person.id : ''), person ? 'PATCH' : 'POST', { name: value('sn'), role: value('sr'), phone: value('sp') });
-      await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient saved');
-    } else if (id === 'room-form') {
-      const result = await api('/rooms', 'POST', { floor: S.addFloor, roomNo: Number(value('rn')), lights: Number(value('rl')), wattsPerLight: Number(value('rw')), fanWatts: Number(value('rf')) });
-      await refreshData(); S.roomId = String(result.room.id); closeSheet(); render(); toast('Room added');
-    } else if (id === 'email-form') {
-      const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
-      S.me = mapUser(data.user); toast('Web mail saved');
-    } else if (id === 'pw-form') {
-      if (value('np') !== value('cp')) throw new Error('The two passwords do not match.');
-      const data = await api('/auth/change-password', 'POST', { currentPassword: value('current-pw'), newPassword: value('np') });
-      token = data.token; sessionStorage.setItem('safezone.token', token); closeSheet(); toast('Password updated');
+  const id = e.target.id;
+  const fail = msg => { S.authError = msg; const el = $('#err'); if (el) el.textContent = msg; };
+  const ready = () => { S.authError = ''; S.notice = ''; S.reg = { phone: '' }; S.screen = 'home'; render(); };
+
+  if (id === 'login-form') {                                   // Admin login
+    const u = $('#u').value.trim().toLowerCase(), p = $('#pw').value;
+    const acc = S.accounts.find(a => a.role === 'admin' && a.username === u);
+    if (acc && acc.hash === await hashPw(acc.username, p)) { S.me = acc; S.role = 'admin'; ready(); }
+    else fail('Wrong username or password. Check both and try again.');
+
+  } else if (id === 'f-reg-form') {                            // Admin registration
+    const name = $('#fname').value.trim(), user = $('#fuser').value.trim().toLowerCase(), raw = $('#fphone').value, mail = normEmail($('#femail').value);
+    const p = $('#rp').value, c = $('#rc').value, code = $('#fcode').value.trim();
+    if (!name || !user) return fail('Enter your full name and a username.');
+    if (!/^[a-z0-9._-]{3,20}$/.test(user)) return fail('Username: 3 to 20 letters, numbers, dots, dashes or underscores.');
+    if (S.accounts.some(a => a.role === 'admin' && a.username === user)) return fail('That username is taken. Try another.');
+    if (!emailKind(mail)) return fail('Use your PUP web mail. ' + emailHint);
+    if (emailTaken(mail)) return fail('That web mail is already used by another account.');
+    if (!validPhone(raw)) return fail('Enter a valid Philippine mobile number, like 09XXXXXXXXX.');
+    if (!pwRules(p).every(r => r[1])) return fail('Your password does not meet all the rules above.');
+    if (p !== c) return fail('The two passwords do not match.');
+    if (code.toUpperCase() !== ADMIN_CODE.toUpperCase()) return fail('Wrong admin access code.');
+    const phone = normPhone(raw);
+    S.accounts.push({ role: 'admin', username: user, name, phone, email: mail, hash: await hashPw(user, p) });
+    if (!S.users.some(u => normPhone(u.phone) === phone)) S.users.push({ name, role: 'Admin', phone: showPhone(phone), sms: true });
+    store.save(); S.authError = ''; S.notice = 'Account created. You can log in now.'; S.screen = 'login'; render();
+
+  } else if (id === 'v-reg1-form') {                           // Student / Faculty: step 1, web mail + mobile number
+    const email = normEmail($('#email').value), raw = $('#phone').value, phone = normPhone(raw);
+    if (!emailKind(email)) return fail('Use your PUP web mail. ' + emailHint);
+    if (!validPhone(raw)) return fail('Enter a valid Philippine mobile number, like 09XXXXXXXXX.');
+    if (emailTaken(email)) return fail('This web mail is already registered. Go back and log in.');
+    if (S.accounts.some(a => a.role === 'viewer' && a.phone === phone)) return fail('This number is already registered. Go back and log in.');
+    S.reg.email = email; S.reg.phone = phone; S.authError = ''; S.screen = 'vReg2'; render();
+
+  } else if (id === 'v-reg2-form') {                           // Student / Faculty: step 2, password
+    const p = $('#rp').value, c = $('#rc').value, phone = S.reg.phone, email = S.reg.email;
+    if (!phone || !email) { S.screen = 'vReg1'; render(); return; }
+    if (!pwRules(p).every(r => r[1])) return fail('Your password does not meet all the rules above.');
+    if (p !== c) return fail('The two passwords do not match.');
+    const kind = emailKind(email) || 'student';
+    S.accounts.push({ role: 'viewer', phone, email, kind, hash: await hashPw(phone, p) });
+    if (!S.users.some(u => normPhone(u.phone) === phone)) S.users.push({ name: 'Unnamed user', role: kind === 'faculty' ? 'Faculty' : 'Student', phone: showPhone(phone), sms: true });
+    store.save(); S.authError = ''; S.screen = 'vDone'; render();
+
+  } else if (id === 'fp-email-form') {                         // forgot password: step 1, web mail
+    const email = normEmail($('#fpe').value);
+    if (!emailKind(email)) return fail('Enter your PUP web mail. ' + emailHint);
+    const btn = e.target.querySelector('button[type="submit"]'); if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+    S.reset.email = email; sendResetCode();
+    const sent = await deliverCode();
+    if (sent === false) {
+      S.reset.code = null; S.reset.sentAt = 0;
+      if (btn) { btn.disabled = false; btn.textContent = 'Send code'; }
+      return fail('We could not send the email. Check your internet connection and try again.');
     }
-  } catch (err) {
-    S.authError = err.message; const error = $('#err');
-    if (error) error.textContent = err.message; else toast(err.message);
-  } finally { if (button && button.isConnected) button.disabled = false; }
+    S.authError = ''; S.screen = 'fpCode'; render();
+
+  } else if (id === 'fp-code-form') {                          // forgot password: step 2, 6-digit code
+    const r = S.reset; if (!r) { S.screen = 'fpEmail'; render(); return; }
+    const code = $('#fpc').value.trim();
+    if (!/^\d{6}$/.test(code)) return fail('Enter the 6-digit code.');
+    if (r.tries >= RESET_TRIES) return fail('Too many wrong tries. Send a new code.');
+    if (Date.now() > r.exp) return fail('This code has expired. Send a new code.');
+    if (!r.code || code !== r.code) {
+      r.tries++; const left = RESET_TRIES - r.tries;
+      return fail(left <= 0 ? 'Too many wrong tries. Send a new code.' : `That code is not correct. ${left} ${left === 1 ? 'try' : 'tries'} left.`);
+    }
+    r.ok = true; r.okExp = Date.now() + RESET_MINUTES * 60e3; r.code = null; S.authError = ''; S.screen = 'fpNew'; render();
+
+  } else if (id === 'fp-new-form') {                           // forgot password: step 3, new password
+    const r = S.reset; const p = $('#rp').value, c = $('#rc').value;
+    if (!r || !r.ok || Date.now() > r.okExp) { S.authError = ''; S.screen = 'fpEmail'; render(); toast('Please verify your web mail again.'); return; }
+    if (!pwRules(p).every(x => x[1])) return fail('Your password does not meet all the rules above.');
+    if (p !== c) return fail('The two passwords do not match.');
+    const acc = resetAccount(r); if (!acc) { S.screen = 'fpEmail'; render(); return; }
+    acc.hash = await hashPw(acc.role === 'admin' ? acc.username : acc.phone, p);
+    if (S.session === acc.phone) S.session = null;
+    S.resetSide = r.side; S.reg = { phone: acc.role === 'viewer' ? acc.phone : '' }; S.reset = null; store.save(); S.authError = ''; S.screen = 'fpDone'; render();
+
+  } else if (id === 'v-login-form') {                          // Student login
+    const phone = normPhone($('#phone').value), p = $('#pw').value;
+    const acc = S.accounts.find(a => a.role === 'viewer' && a.phone === phone);
+    if (acc && acc.hash === await hashPw(acc.phone, p)) { S.me = acc; S.role = 'student'; S.session = acc.phone; store.save(); ready(); }
+    else fail('Wrong mobile number or password. Check both and try again.');
+
+  } else if (id === 'admin-form') {                            // an admin gives another person admin access
+    const name = $('#an').value.trim(), user = $('#au').value.trim().toLowerCase(), raw = $('#ap').value, p = $('#rp').value, mail = normEmail($('#aem').value);
+    if (!name || !user) { toast('Enter the new admin\'s full name and a username.'); return; }
+    if (!/^[a-z0-9._-]{3,20}$/.test(user)) { toast('Username: 3 to 20 letters, numbers, dots, dashes or underscores.'); return; }
+    if (S.accounts.some(a => a.role === 'admin' && a.username === user)) { toast('That username is taken. Try another.'); return; }
+    if (!emailKind(mail)) { toast('Use a PUP web mail. ' + emailHint); return; }
+    if (emailTaken(mail)) { toast('That web mail is already used by another account.'); return; }
+    if (!validPhone(raw)) { toast('Enter a valid Philippine mobile number, like 09XXXXXXXXX.'); return; }
+    if (!pwRules(p).every(r => r[1])) { toast('Password needs 6+ characters with a letter and a number, no spaces.'); return; }
+    const phone = normPhone(raw);
+    S.accounts.push({ role: 'admin', username: user, name, phone, email: mail, hash: await hashPw(user, p) });
+    const known = S.users.find(u => normPhone(u.phone) === phone);
+    if (known) { known.role = 'Admin'; known.name = name; known.sms = true; }
+    else S.users.push({ name, role: 'Admin', phone: showPhone(phone), sms: true });
+    store.save(); usersSheet(); toast(name + ' is now an admin');
+
+  } else if (id === 'sms-form') {                              // SMS recipient: name, role, mobile number
+    const edit = parseInt(e.target.dataset.edit, 10);
+    const name = $('#sn').value.trim(), role = $('#sr').value, raw = $('#sp').value;
+    if (!name) { toast('Enter the person\'s name.'); return; }
+    if (!role) { toast('Choose their role.'); return; }
+    if (!validPhone(raw)) { toast('Enter a valid Philippine mobile number, like 09XXXXXXXXX.'); return; }
+    const phone = normPhone(raw);
+    if (S.users.some((u, i) => i !== edit && normPhone(u.phone) === phone)) { toast('That number is already in the list.'); return; }
+    if (edit >= 0 && S.users[edit]) Object.assign(S.users[edit], { name, role, phone: showPhone(phone) });
+    else S.users.push({ name, role, phone: showPhone(phone), sms: true });
+    S.pendingDel = ''; store.save(); smsSheet(); toast(edit >= 0 ? 'Recipient updated' : 'Recipient added');
+
+  } else if (id === 'room-form') {                             // add a room to a floor
+    const floor = S.addFloor || 1; const lo = floor * 100 + 1, hi = floor * 100 + 99;
+    const no = parseInt($('#rn').value, 10); const name = 'Room ' + no;
+    const lights = parseInt($('#rl').value, 10), lw = parseFloat($('#rw').value), fw = parseFloat($('#rf').value);
+    if (!(no >= lo && no <= hi)) { toast(`${ord(floor)} floor rooms are numbered ${lo}, ${lo + 1}, ${lo + 2} and so on, up to ${hi}.`); return; }
+    if (S.rooms.some(r => r.name.toLowerCase() === name.toLowerCase())) { toast(`${name} already exists.`); return; }
+    if (!(lights >= 0 && lights <= 100)) { toast('Lights: enter a number from 0 to 100.'); return; }
+    if (!(lw > 0 && lw <= 500)) { toast('Watts per light: enter a number from 1 to 500.'); return; }
+    if (!(fw >= 0 && fw <= 2000)) { toast('Fan watts: enter a number from 0 to 2000.'); return; }
+    const room = makeRoom({ name, floor, lights, lightWatts: lw, fanWatts: fw });
+    KEYS.forEach(k => { room.levels[k] = levelOf(k, room.reading[k]); });
+    S.rooms.push(room); S.roomId = room.id; S.pendingDel = ''; store.save(); closeSheet(); render(); toast(`${name} added to the ${floorName(floor)}`);
+
+  } else if (id === 'email-form') {                            // admin saves their own web mail
+    const mail = normEmail($('#ae').value);
+    if (!emailKind(mail)) { toast('Use your PUP web mail. ' + emailHint); return; }
+    if (emailTaken(mail, S.me)) { toast('That web mail is already used by another account.'); return; }
+    S.me.email = mail; store.save(); toast('Web mail saved');
+
+  } else if (id === 'pw-form') {
+    const a = $('#np').value, b = $('#cp').value;
+    if (!pwRules(a).every(r => r[1])) { toast('Use 6+ characters with a letter and a number, no spaces.'); return; }
+    if (a !== b) { toast('The two passwords do not match.'); return; }
+    S.me.hash = await hashPw(S.me.username, a); store.save(); closeSheet(); toast('Password updated');
+  }
 });
 
 // Live tick marks on the password rules while typing.
@@ -1203,19 +1306,47 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
    ===================================================================== */
 (async function init() {
   const saved = store.load();
-  if (saved && ['light', 'dark'].includes(saved.theme)) S.theme = saved.theme;
-  S.rooms = DEFAULT_ROOMS.map(makeRoom); S.roomId = saved && saved.roomId || S.rooms[0].id;
-  S.accounts = []; S.users = []; S.alerts = [];
-  applyTheme(); render();
-  if (token) {
-    try {
-      const data = await api('/auth/me');
-      await signedIn({ token, user: data.user });
-    } catch (err) {
-      // A network outage keeps the token for retry; an invalid token is cleared by api().
-      S.screen = 'splash'; render(); toast(err.message);
-    }
+  if (saved) {
+    if (saved.limits) S.limits = saved.limits;
+    if (saved.users) S.users = saved.users;
+    if (saved.accounts) S.accounts = saved.accounts;
+    if (saved.session) S.session = saved.session;
+    if (saved.fanTrigger) S.fanTrigger = saved.fanTrigger;
+    if (saved.theme === 'light' || saved.theme === 'dark') S.theme = saved.theme;
   }
-  setInterval(() => { if (S.role) tick(); }, 2000);
+  S.draftTrigger = S.fanTrigger;
+  let roomCfg = saved && saved.rooms && saved.rooms.length ? saved.rooms : DEFAULT_ROOMS.map(r => ({ ...r, mode: saved && saved.mode }));
+  const updateRooms = !!(saved && saved.rooms && saved.roomsV !== ROOMS_V);
+  if (updateRooms) {
+    // One-time update: remove the old demo room (Room 201, never edited) and add rooms 101 to 110. Rooms an admin added stay.
+    roomCfg = roomCfg.filter(r => !(r.name === 'Room 201' && num(r.lights, 8) === 8 && num(r.lightWatts, 18) === 18 && num(r.fanWatts, 40) === 40));
+    DEFAULT_ROOMS.forEach(d => { if (!roomCfg.some(r => r.name.toLowerCase() === d.name.toLowerCase())) roomCfg.push({ ...d }); });
+  }
+  S.rooms = roomCfg.map(makeRoom).sort((a, b) => a.floor - b.floor || roomNo(a) - roomNo(b));
+  S.roomId = saved && S.rooms.some(r => r.id === saved.roomId) ? saved.roomId : S.rooms[0].id;
+  S.rooms.forEach(r => KEYS.forEach(k => { r.levels[k] = levelOf(k, r.reading[k]); }));
+  if (updateRooms) store.save();
+  // Older saved data used 'faculty' for admin accounts. Convert it.
+  S.accounts.forEach(a => { if (a.role === 'faculty') a.role = 'admin'; });
+  const adminNames = new Set(S.accounts.filter(a => a.role === 'admin').map(a => a.name));
+  S.users.forEach(u => { if (u.role === 'Faculty' && adminNames.has(u.name)) u.role = 'Admin'; });
+  // The demo admin account always exists, so you can log in on a fresh install.
+  if (!S.accounts.some(a => a.role === 'admin' && a.username === DEFAULT_ADMIN.username)) {
+    S.accounts.push({ role: 'admin', username: DEFAULT_ADMIN.username, name: DEFAULT_ADMIN.name, phone: DEFAULT_ADMIN.phone,
+      hash: await hashPw(DEFAULT_ADMIN.username, DEFAULT_ADMIN.password) });
+    store.save();
+  }
+  // Keep students logged in on this phone until they log out.
+  const me = S.session && S.accounts.find(a => a.role === 'viewer' && a.phone === S.session);
+  if (me) { S.me = me; S.role = 'student'; S.screen = 'home'; }
+  S.users.forEach(u => {
+    if (u.role === 'Registered') { u.role = 'Student / Faculty'; if (u.name === 'Student / Faculty user') u.name = 'Unnamed user'; }
+    if (u.role === 'Recipient') u.role = 'Other';
+  });
+  S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto');
+  seedAlerts();
+  applyTheme();
+  render();
+  setInterval(tick, 2000);
 })();
 })();
