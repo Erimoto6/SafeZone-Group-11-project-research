@@ -13,7 +13,8 @@
     "check-db": "node scripts/check-db.js",
     "create-admin": "node scripts/create-admin.js",
     "test": "node scripts/smoke-test.js",
-    "test:browser": "node scripts/browser-test.js"
+    "test:browser": "node scripts/browser-test.js",
+    "test:shared": "node scripts/shared-test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

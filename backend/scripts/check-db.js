@@ -4,7 +4,7 @@ require('dotenv').config({ quiet: true });
 const { pool } = require('../src/db');
 
 const EXPECTED = ['users', 'password_resets', 'rooms', 'thresholds', 'settings', 'sms_recipients',
-  'alerts', 'notification_log', 'system_logs', 'device_status', 'reading_hourly'];
+  'alerts', 'notification_log', 'system_logs', 'device_status', 'reading_hourly', 'simulation_state'];
 
 (async () => {
   try {
@@ -23,7 +23,7 @@ const EXPECTED = ['users', 'password_resets', 'rooms', 'thresholds', 'settings',
       }
     }
     if (EXPECTED.some(n => !have.includes(n))) {
-      console.log('\nSome tables are missing. Run database/02-schema.sql (as root) and check again.');
+      console.log('\nSome tables are missing. Run database/02-schema.sql and database/04-shared-simulations.sql (as root) and check again.');
       process.exitCode = 1;
       return;
     }

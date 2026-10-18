@@ -15,7 +15,7 @@ const alertJson = r => ({
   metric: r.metric, value: r.reading_value, sms: r.sms_sent > 0, smsSent: r.sms_sent, cats: cats(r.type), ts: Number(r.ts)
 });
 
-router.get('/', requireAuth, wrap(async (req, res) => {
+router.get('/', requireAuth, require('../poll-limit'), wrap(async (req, res) => {
   const roomId = req.query.roomId ? Number(req.query.roomId) : null;
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
   const [rows] = await pool.query(

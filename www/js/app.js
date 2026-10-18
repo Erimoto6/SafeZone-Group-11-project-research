@@ -44,12 +44,10 @@ const ROLES = ['Admin', 'Faculty', 'Student', 'Student / Faculty', 'Maintenance'
 
 /* =====================================================================
    DATA LAYER
-   Everything below "simulator" is fake data. To connect real hardware,
-   replace tick() with a fetch() to your backend (Blynk / MySQL API) that
-   returns { temp, hum, co2, fanOn } for a room, then call ingest(reading, roomId).
+   Readings come from the shared backend simulator. Real hardware integration
+   can later replace that source without running a simulator on each phone.
    ===================================================================== */
 const BASE = { temp: 27.4, hum: 58, co2: 827 };
-const COOLED = { temp: 26, hum: 54, co2: 600 };      // where readings settle while the fan runs
 const KEYS = ['temp', 'hum', 'co2'];
 
 const METRICS = {
@@ -74,7 +72,7 @@ const S = {
   draftTrigger: 'exceeded',
   limits: JSON.parse(JSON.stringify(DEFAULT_LIMITS)),
   alerts: [],
-  demoAlerts: [],             // Browser-session simulations, separate from database alerts.
+  simScope: 'current', simSelected: [], syncError: '',
   pendingDel: '',             // two-tap delete: remembers which Remove? button was tapped once
   addFloor: 2,                // floor chosen in the Add Room form
   reset: null,                // forgot-password progress: { side, email, code, exp, tries, ... }
@@ -110,16 +108,17 @@ const store = {
 let token = sessionStorage.getItem('safezone.token') || '';
 const API_BASE = (window.SAFEZONE_API_BASE || '/api').replace(/\/$/, '');
 async function api(path, method = 'GET', body) {
+  const requestToken = token;
   let response;
   try {
     response = await fetch(API_BASE + path, {
-      method, headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      method, headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(requestToken ? { Authorization: 'Bearer ' + requestToken } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)
     });
   } catch { throw new Error('Cannot reach the server. Check your connection and try again.'); }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401 && token && path !== '/auth/change-password') {
+    if (response.status === 401 && token === requestToken && token && path !== '/auth/change-password') {
       signOut(); render();
     }
     throw new Error(data.error || 'The request failed. Please try again.');
@@ -128,12 +127,13 @@ async function api(path, method = 'GET', body) {
 }
 function signOut() {
   token = ''; sessionStorage.removeItem('safezone.token');
-  S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.demoAlerts = []; S.unread = 0;
+  S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
+  newestAlertId = null; S.syncError = ''; S.simSelected = []; S.simScope = 'current';
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
 async function refreshData() {
-  const [rooms, settings, alerts] = await Promise.all([api('/rooms'), api('/settings'), api('/alerts')]);
+  const [rooms, settings, alerts, shared] = await Promise.all([api('/rooms'), api('/settings'), api('/alerts'), api('/simulation')]);
   const previous = new Map(S.rooms.map(r => [r.id, r]));
   S.rooms = rooms.rooms.map(r => {
     const room = previous.get(String(r.id)) || makeRoom({ ...r, id: String(r.id), lightWatts: r.wattsPerLight, mode: r.ventMode });
@@ -144,7 +144,7 @@ async function refreshData() {
   if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
   S.limits = settings.thresholds; S.fanTrigger = settings.fanTrigger; S.draftTrigger = S.fanTrigger;
   S.draftAuto = settings.ventMode === 'auto';
-  S.alerts = [...S.demoAlerts, ...alerts.alerts].sort((a, b) => b.ts - a.ts);
+  applyShared(shared, alerts.alerts);
   if (S.role === 'admin') {
     const [people, sms] = await Promise.all([api('/admin/users'), api('/sms-recipients')]);
     S.accounts = [...people.admins, ...people.viewers].map(mapUser);
@@ -259,60 +259,57 @@ const logo = px => LOGO_SRC
 /* =====================================================================
    ALERTS & VENTILATION LOGIC
    ===================================================================== */
-function pushAlert(a, quiet) {
-  a = { ...a, sms: false, title: 'Demo: ' + a.title };
-  const room = cur() ? cur().name : '';
-  const alert = { id: Date.now() + Math.random(), ts: Date.now(), cats: ['system'], sms: false, room, ...a };
-  S.demoAlerts.unshift(alert);
-  if (S.demoAlerts.length > 80) {
-    const expired = S.demoAlerts.pop();
-    S.alerts = S.alerts.filter(a => a !== expired);
-  }
-  S.alerts.unshift(alert);
-  if (!quiet && S.role) {
-    if (S.screen !== 'alerts') {
-      S.unread++;
-      const bar = $('nav.nav');
-      if (bar) bar.outerHTML = nav();
+let newestAlertId = null;
+function applyShared(shared, alerts) {
+  S.limits = shared.thresholds; S.fanTrigger = shared.fanTrigger;
+  const available = new Set(shared.rooms.map(r => String(r.id)));
+  S.rooms = S.rooms.filter(r => available.has(r.id));
+  for (const state of shared.rooms) {
+    let room = S.rooms.find(r => r.id === String(state.id));
+    if (!room) {
+      room = makeRoom({ ...state, id: String(state.id), lightWatts: state.wattsPerLight });
+      S.rooms.push(room);
     }
-    if (a.type === 'exceeded' || a.type === 'warning') toast(room ? `${room}: ${a.title}` : a.title);
+    Object.assign(room, { name: state.name, floor: state.floor, lights: state.lights, lightWatts: state.wattsPerLight, fanWatts: state.fanWatts });
+    room.reading = state.reading; room.levels = state.levels;
+    room.vent = { mode: state.ventMode, on: state.fanOn }; room.scenario = state.scenario;
+    if (room.buf.t[room.buf.t.length - 1] !== state.updatedAt) {
+      room.buf.t.push(state.updatedAt);
+      KEYS.forEach(k => room.buf[k].push(state.reading[k]));
+      if (room.buf.t.length > 40) { room.buf.t.shift(); KEYS.forEach(k => room.buf[k].shift()); }
+    }
   }
+  if (S.rooms.length && !available.has(S.roomId)) S.roomId = S.rooms[0].id;
+  if (shared.rooms.length) S.lastUpdate = Math.max(...shared.rooms.map(r => r.updatedAt));
+  const latest = Math.max(0, ...alerts.map(a => a.id));
+  if (newestAlertId !== null) {
+    const fresh = alerts.filter(a => a.id > newestAlertId);
+    if (fresh.length && S.screen !== 'alerts') {
+      S.unread += fresh.length;
+      toast(`${fresh[0].room || 'SafeZone'}: ${fresh[0].title}`);
+    }
+  }
+  newestAlertId = latest;
+  S.alerts = alerts;
 }
-
-const smsLine = () => {
-  const n = S.users.filter(u => u.sms).length;
-  return { n, text: 'Demo only; no SMS was sent.' };
-};
-
-// Runs after every new reading or settings change, for the room being processed.
-// Green = normal, yellow = warning, red = danger. Ventilation starts at the level set in Settings (red by default).
-function evaluate() {
-  KEYS.forEach(k => {
-    const next = levelOf(k, S.reading[k]); const prev = S.levels[k]; const m = METRICS[k];
-    if (RANK[next] > RANK[prev]) {
-      const sms = smsLine();
-      if (next === 'warning') {
-        pushAlert({ type: 'warning', cats: ['message'], sms: sms.n > 0, title: `${m.label} Near Limit`, body: `${m.label} is at ${withUnit(k, S.reading[k])}. ${sms.text}` });
-      } else {
-        pushAlert({ type: 'exceeded', cats: ['exceeded', 'message'], sms: sms.n > 0, title: `High ${m.label} Level`, body: `${m.label} reached ${withUnit(k, S.reading[k])}. Limit is ${withUnit(k, S.limits[k].limit)}. ${sms.text}` });
-      }
+let polling = false;
+async function pollShared() {
+  if (!token || !S.role || polling) return;
+  polling = true;
+  const session = token;
+  try {
+    const [shared, alerts] = await Promise.all([api('/simulation'), api('/alerts')]);
+    if (token !== session || !S.role) return;
+    applyShared(shared, alerts.alerts); S.syncError = '';
+    if (LIVE.has(S.screen)) render();
+    else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
+  } catch (err) {
+    if (token === session && S.role) {
+      if (!S.syncError) toast('Shared readings could not refresh. Reconnecting…');
+      S.syncError = err.message;
+      if (LIVE.has(S.screen)) render();
     }
-    S.levels[k] = next;
-  });
-  const w = worst(); const need = S.fanTrigger === 'warning' ? 1 : 2;
-  if (S.vent.mode === 'auto') {
-    if (w >= need && !S.vent.on) {
-      S.vent.on = true;
-      pushAlert({ type: 'ventilation', cats: ['system'], title: 'Ventilation Activated', body: 'Automated ventilation is now ON.' });
-    } else if (w === 0 && S.vent.on) {
-      S.vent.on = false; S.scenario = null;
-      pushAlert({ type: 'ventilation', cats: ['system'], title: 'Ventilation Stopped', body: 'Readings are back to normal. Automated ventilation is now OFF.' });
-    }
-  }
-  if (w === 0 && S.prevWorst > 0) {
-    pushAlert({ type: 'normal', cats: ['system'], title: 'System Normal', body: 'All readings are within the set limits.' });
-  }
-  S.prevWorst = w;
+  } finally { polling = false; }
 }
 
 /* =====================================================================
@@ -349,43 +346,6 @@ function makeRoom(cfg) {
 function power(r) {
   const lights = r.lightsOn * r.lightWatts, fan = r.vent.on ? r.fanWatts : 0, other = r.other;
   return { lights, fan, other, total: lights + fan + other };
-}
-
-function tick() {
-  eachRoom(r => {
-    const target = r.vent.on ? { ...COOLED } : roomBase(r);
-    const noise = { temp: 0.12, hum: 0.5, co2: 10 };
-    KEYS.forEach(k => {
-      if (k === r.scenario && !r.vent.on) {
-        const { warn, limit } = S.limits[k];
-        // About 12 seconds to Warning, then another 12 seconds to Danger.
-        // Stop at Warning first so even closely spaced limits produce both events.
-        const normal = r.reading[k] < warn;
-        const step = (normal ? Math.max(warn - r.simStart, limit - warn) : limit - warn) / 6;
-        const ceiling = normal ? warn : limit + (limit - warn) / 6;
-        r.reading[k] = Math.min(ceiling, r.reading[k] + step);
-      } else {
-        r.reading[k] += (target[k] - r.reading[k]) * 0.18 + (Math.random() - 0.5) * noise[k];
-      }
-    });
-    if (Math.random() < 0.02) r.lightsOn = Math.max(0, Math.min(r.lights, r.lightsOn + (Math.random() < 0.5 ? -1 : 1)));
-    r.other = Math.max(30, Math.min(160, r.other + (Math.random() - 0.5) * 3));
-    ingest(r.reading, null, true);
-  });
-  if (LIVE.has(S.screen) && S.role) render();
-}
-
-// Call this with real data: ingest({ temp, hum, co2 }, roomId)
-function ingest(r, roomId, quiet) {
-  const keep = S.roomId; if (roomId) S.roomId = roomId;
-  S.reading = { temp: r.temp, hum: r.hum, co2: r.co2 };
-  S.lastUpdate = Date.now();
-  S.buf.t.push(S.lastUpdate);
-  KEYS.forEach(k => S.buf[k].push(S.reading[k]));
-  if (S.buf.t.length > 40) { S.buf.t.shift(); KEYS.forEach(k => S.buf[k].shift()); }
-  evaluate();
-  S.roomId = keep;
-  if (!quiet && LIVE.has(S.screen) && S.role) render();
 }
 
 /* ---------- history (synthetic; replace with an API call) ---------- */
@@ -618,7 +578,16 @@ function settingsView() {
           <button data-act="trigger" data-v="exceeded" aria-pressed="${trig === 'exceeded'}">Red (Danger)</button></div></div>
     </div>
     <div style="margin-top:16px"><button class="btn" data-act="save">Save changes</button></div>
-    <p class="section-label">Demo tools</p>
+    <p class="section-label">Shared demo tools</p>
+    <p class="note">Everyone connected to this server can see the selected rooms change. Hardware and SMS are not connected.</p>
+    <label class="f">Rooms to affect<select id="sim-scope" aria-label="Rooms to affect">
+      <option value="current" ${S.simScope === 'current' ? 'selected' : ''}>Current room: ${esc(cur().name)}</option>
+      <option value="selected" ${S.simScope === 'selected' ? 'selected' : ''}>Choose rooms</option>
+      <option value="all" ${S.simScope === 'all' ? 'selected' : ''}>All rooms</option>
+    </select></label>
+    <div id="sim-room-options" ${S.simScope !== 'selected' ? 'hidden' : ''} class="stack">
+      ${S.rooms.map(r => `<label><input type="checkbox" class="sim-room" value="${esc(r.id)}" ${S.simSelected.includes(String(r.id)) ? 'checked' : ''}> ${esc(r.name)}</label>`).join('')}
+    </div>
     <div class="stack">
       <button class="btn soft small" data-act="sim" data-v="co2">Simulate high CO₂</button>
       <button class="btn soft small" data-act="sim" data-v="temp">Simulate high temperature</button>
@@ -695,7 +664,7 @@ function aboutView() {
 
 function shell() {
   const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView };
-  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}"><p class="note">Sensor readings, charts, fan behavior and device status are simulated. Hardware and SMS delivery are not connected.</p>${bodies[S.screen]()}</main>${nav()}`;
+  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}"><p class="note">Readings and fan behavior are shared server simulations. Charts/history and device status are simulated. Hardware and SMS delivery are not connected.</p>${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
 }
 
 function splashView() {
@@ -1078,15 +1047,14 @@ const ACTS = {
   },
   trigger(v) { S.draftTrigger = v; document.querySelectorAll('[data-act="trigger"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); },
   draftAuto(v, el) { S.draftAuto = !S.draftAuto; el.setAttribute('aria-checked', S.draftAuto); },
-  sim(v) {
-    const name = cur().name;
-    if (v === 'reset') {
-      S.scenario = null; S.reading = roomBase(cur()); S.vent = { mode: 'auto', on: false }; S.draftAuto = true;
-      KEYS.forEach(k => { S.levels[k] = 'normal'; }); S.prevWorst = 0; render(); toast(`${name} reset`); return;
-    }
-    if (!KEYS.includes(v)) return;
-    S.scenario = v; cur().simStart = S.reading[v]; S.vent.mode = 'auto'; S.draftAuto = true;
-    toast(`Simulating rising ${v === 'co2' ? 'CO₂' : v === 'temp' ? 'temperature' : 'humidity'} in ${name}. Watch Monitoring; alerts appear at your saved thresholds.`);
+  async sim(v) {
+    const selected = S.simScope === 'all' ? { allRooms: true } : {
+      roomIds: S.simScope === 'selected' ? S.simSelected.map(Number) : [Number(S.roomId)]
+    };
+    const result = await api('/simulation', 'POST', { metric: v, ...selected });
+    await refreshData(); render();
+    toast(v === 'reset' ? `Shared readings reset for ${result.affectedRoomIds.length} room(s).` :
+      `Shared simulation started for ${result.affectedRoomIds.length} room(s). Readings will rise gradually.`);
   }
 };
 
@@ -1127,12 +1095,12 @@ Object.assign(ACTS, {
     await refreshData(); render(); toast('Changes saved to the server');
   },
   async toggleVent() {
-    await api('/rooms/' + cur().id, 'PATCH', { ventMode: 'manual' });
-    S.vent.mode = 'manual'; S.vent.on = !S.vent.on; render(); toast('Demo fan toggled; hardware is not connected');
+    await api('/simulation', 'POST', { metric: 'fan', roomIds: [Number(S.roomId)], fanOn: !S.vent.on });
+    await refreshData(); render(); toast('Shared demo fan updated; hardware is not connected');
   },
   async auto() {
     await api('/rooms/' + cur().id, 'PATCH', { ventMode: 'auto' });
-    S.vent.mode = 'auto'; evaluate(); render(); toast('Automatic mode saved; hardware is not connected');
+    await refreshData(); render(); toast('Automatic mode saved; hardware is not connected');
   },
   async fpResend() {
     if (!S.reset) return;
@@ -1218,6 +1186,14 @@ document.addEventListener('input', e => {
   ul.querySelectorAll('li').forEach((li, i) => li.classList.toggle('ok', res[i][1]));
 });
 
+document.addEventListener('change', e => {
+  if (e.target.id === 'sim-scope') {
+    S.simScope = e.target.value;
+    $('#sim-room-options').hidden = S.simScope !== 'selected';
+  }
+  if (e.target.matches('.sim-room')) S.simSelected = Array.from(document.querySelectorAll('.sim-room:checked'), el => el.value);
+});
+
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 
 /* =====================================================================
@@ -1238,6 +1214,6 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
       S.screen = 'splash'; render(); toast(err.message);
     }
   }
-  setInterval(() => { if (S.role) tick(); }, 2000);
+  setInterval(pollShared, 2000);
 })();
 })();

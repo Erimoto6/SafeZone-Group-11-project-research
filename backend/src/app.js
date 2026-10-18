@@ -23,7 +23,11 @@ app.use((req, res, next) => cors({
 })(req, res, next));
 
 app.use(express.json({ limit: '50kb' }));
-if (process.env.RATE_LIMIT !== 'off') app.use(rateLimit({ windowMs: 60e3, limit: 300, standardHeaders: true, legacyHeaders: false }));
+if (process.env.RATE_LIMIT !== 'off') app.use(rateLimit({
+  windowMs: 60e3, limit: 300, standardHeaders: true, legacyHeaders: false,
+  // These routes authenticate first and share a per-account polling limit instead.
+  skip: req => req.method === 'GET' && /^\/api\/(simulation|alerts)\/?$/.test(req.path)
+}));
 
 // Open this in the browser to check the API and the database are connected.
 app.get('/api/health', wrap(async (req, res) => {
@@ -43,6 +47,7 @@ app.use('/api/rooms', require('./routes/rooms'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/sms-recipients', require('./routes/sms'));
 app.use('/api/alerts', require('./routes/alerts'));
+app.use('/api/simulation', require('./routes/simulation'));
 
 // Serve the web app and API from one address during development and hosting.
 app.use(express.static(require('path').join(__dirname, '../../www')));

@@ -2,7 +2,7 @@
 
 The API behind the app. It handles accounts, login, forgot password (by email), rooms, limits,
 the SMS list and alerts, and stores everything in MySQL.
-It needs the database from `../database` to be set up first.
+It needs the database from `../database` to be set up first, including `04-shared-simulations.sql`. Existing users should run only that new SQL file in phpMyAdmin as the database administrator.
 
 ## Set it up (Windows)
 
@@ -63,10 +63,16 @@ Keep `.env` private. It is already in `.gitignore`, so it will not go to GitHub.
 - Codes work for 10 minutes, allow 5 wrong tries, and need a 30 second wait before a new one. Only a hash of the code is saved.
 - Asking for a code gives the same reply whether or not the web mail is registered, so nobody can find out who has an account.
 
+## Shared room simulations
+
+Settings → Shared demo tools lets admins choose the current room, selected rooms or all rooms. The backend worker advances readings every two seconds using the saved thresholds. Apps poll the same server for readings and alerts; phones do not run their own simulator. State and alerts persist in MySQL. See [SHARED-SIMULATIONS.md](../SHARED-SIMULATIONS.md). Run `SAFEZONE_TEST_DB=1 npm run test:shared` against a disposable database to test independent admin/student clients.
+
 ## What the API offers
 
 | Address | Who | What |
 |---|---|---|
+| `GET /api/simulation` | logged in | shared demo readings and fan state for all rooms |
+| `POST /api/simulation` | admin | start/reset a scenario for selected room IDs or all rooms |
 | `GET /api/health` | anyone | is the API up and is MySQL connected |
 | `POST /api/auth/register` | anyone | student/faculty sign-up (PUP web mail + mobile number + password) |
 | `POST /api/auth/register-admin` | needs the access code | admin sign-up |
