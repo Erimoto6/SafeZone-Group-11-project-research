@@ -25,6 +25,8 @@ The browser now asks the server to create and verify the code. It never creates 
 
 Temperature, humidity, CO2, charts/history, device status, power and fan operation are still simulated and labelled in the app. Database ventilation mode is saved, but no command reaches a physical fan. Saving SMS recipients does not send SMS. Firebase, ESP32 integration and SMS delivery are the next development phase.
 
+Each high-temperature, high-humidity or high-CO2 simulation immediately creates a danger alert, using your saved thresholds. Open Alerts to see messages labelled `Demo:` alongside database alerts. Demo messages stay available while navigating in the current page session; refreshing the browser or logging out clears them. They are not written to MySQL and do not send SMS.
+
 ## Validation
 
 - `cd backend` then `SAFEZONE_TEST_DB=1 npm test`: supplied API suite, 96 checks. In PowerShell set `$env:SAFEZONE_TEST_DB="1"` first, then run `npm test`.

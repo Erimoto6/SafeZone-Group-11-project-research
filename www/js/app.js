@@ -75,6 +75,7 @@ const S = {
   draftTrigger: 'exceeded',
   limits: JSON.parse(JSON.stringify(DEFAULT_LIMITS)),
   alerts: [],
+  demoAlerts: [],             // Browser-session simulations, separate from database alerts.
   pendingDel: '',             // two-tap delete: remembers which Remove? button was tapped once
   addFloor: 2,                // floor chosen in the Add Room form
   reset: null,                // forgot-password progress: { side, email, code, exp, tries, ... }
@@ -128,7 +129,7 @@ async function api(path, method = 'GET', body) {
 }
 function signOut() {
   token = ''; sessionStorage.removeItem('safezone.token');
-  S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = [];
+  S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.demoAlerts = []; S.unread = 0;
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
@@ -144,7 +145,7 @@ async function refreshData() {
   if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
   S.limits = settings.thresholds; S.fanTrigger = settings.fanTrigger; S.draftTrigger = S.fanTrigger;
   S.draftAuto = settings.ventMode === 'auto';
-  S.alerts = alerts.alerts;
+  S.alerts = [...S.demoAlerts, ...alerts.alerts].sort((a, b) => b.ts - a.ts);
   if (S.role === 'admin') {
     const [people, sms] = await Promise.all([api('/admin/users'), api('/sms-recipients')]);
     S.accounts = [...people.admins, ...people.viewers].map(mapUser);
@@ -262,8 +263,13 @@ const logo = px => LOGO_SRC
 function pushAlert(a, quiet) {
   a = { ...a, sms: false, title: 'Demo: ' + a.title };
   const room = cur() ? cur().name : '';
-  S.alerts.unshift({ id: Date.now() + Math.random(), ts: Date.now(), cats: ['system'], sms: false, room, ...a });
-  if (S.alerts.length > 80) S.alerts.pop();
+  const alert = { id: Date.now() + Math.random(), ts: Date.now(), cats: ['system'], sms: false, room, ...a };
+  S.demoAlerts.unshift(alert);
+  if (S.demoAlerts.length > 80) {
+    const expired = S.demoAlerts.pop();
+    S.alerts = S.alerts.filter(a => a !== expired);
+  }
+  S.alerts.unshift(alert);
   if (!quiet && S.role) {
     if (S.screen !== 'alerts') S.unread++;
     if (a.type === 'exceeded' || a.type === 'warning') toast(room ? `${room}: ${a.title}` : a.title);
@@ -1063,8 +1069,15 @@ const ACTS = {
       S.scenario = null; S.reading = roomBase(cur()); S.vent = { mode: 'auto', on: false }; S.draftAuto = true;
       KEYS.forEach(k => { S.levels[k] = 'normal'; }); S.prevWorst = 0; render(); toast(`${name} reset`); return;
     }
+    if (!KEYS.includes(v)) return;
     S.scenario = v; S.vent.mode = 'auto'; S.draftAuto = true;
-    toast(`Simulating high ${v === 'co2' ? 'CO₂' : v === 'temp' ? 'temperature' : 'humidity'} in ${name}. Watch the Alerts tab.`);
+    // Cross the configured danger limit now, even on repeated clicks or custom limits.
+    // ingest() generates the same hazard and ventilation events as a sensor reading.
+    S.levels[v] = 'normal';
+    const high = Math.max(SCENARIOS[v][v], S.limits[v].limit + Math.max(1, Math.abs(S.limits[v].limit) * 0.05));
+    ingest({ ...S.reading, [v]: high }, null, true);
+    render();
+    toast(`Demo alert created for high ${v === 'co2' ? 'CO₂' : v === 'temp' ? 'temperature' : 'humidity'} in ${name}. Open Alerts to view it.`);
   }
 };
 

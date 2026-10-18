@@ -40,6 +40,32 @@ let server,browser;
   await act('go','settings');await page.locator('details').filter({has:page.locator('#temp-warn')}).locator('summary').click();await fill('temp-warn',28);await fill('temp-limit',33);await act('trigger','warning');await act('save');
   await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Changes saved to the server');
   const [[threshold]]=await pool.query("SELECT warn_value FROM thresholds WHERE metric='temp'");assert.equal(threshold.warn_value,28);console.log('PASS: settings persist in MySQL');
+  // Database refreshes must retain immediate demo events alongside real database alerts.
+  await pool.query("INSERT INTO alerts (type,title,body) VALUES ('normal',?,'Browser integration fixture')",[tag]);
+  const demoCounts = {};
+  for (const [metric,label] of [['temp','Temperature'],['co2','CO₂'],['hum','Humidity'],['temp','Temperature']]) {
+    await act('go','settings');
+    if (metric === 'temp') {
+      // The button must still trigger danger above a limit higher than the old 34.5C preset.
+      await page.locator('details').filter({has:page.locator('#temp-warn')}).locator('summary').click();
+      await fill('temp-warn',38);await fill('temp-limit',40);await act('save');
+      await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Changes saved to the server');
+    }
+    await act('sim',metric);
+    await page.waitForFunction(()=>document.querySelector('#toast').textContent.startsWith('Demo alert created'));
+    assert(Number(await page.locator('.badge').innerText())>0);
+    await act('go','alerts');
+    const title='Demo: High '+label+' Level';
+    demoCounts[title]=(demoCounts[title]||0)+1;
+    await page.getByText(title,{exact:true}).first().waitFor();
+    assert.equal(await page.getByText(title,{exact:true}).count(),demoCounts[title]);
+    await page.getByText(tag,{exact:true}).waitFor();
+    await act('filter','exceeded');await page.getByText(title,{exact:true}).first().waitFor();
+    await act('filter','message');await page.getByText(title,{exact:true}).first().waitFor();
+    await act('filter','all');
+  }
+  console.log('PASS: all three simulation buttons create immediate alerts, survive navigation and retain database alerts; repeated clicks and custom limits work');
+  await act('go','settings');
   await act('addRoom');await act('floor','4');await fill('rn',roomNo);await submit('room-form');await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Room added');await act('go','home');
   await page.getByRole('button',{name:new RegExp('Select room. Now showing Room '+roomNo)}).waitFor();
   const [[room]]=await pool.query('SELECT id FROM rooms WHERE room_no=?',[roomNo]);assert(room);
@@ -59,6 +85,9 @@ let server,browser;
   assert(await page.locator('#current-pw').isVisible());
   await fill('current-pw',password);await submit('pw-form');
   await page.getByRole('dialog').waitFor({state:'hidden'});await page.reload();await dashboard();console.log('PASS: admin password change and refreshed token');
+  await act('go','alerts');
+  assert.equal(await page.getByText(/^Demo: High /).count(),0);
+  await page.getByText(tag,{exact:true}).waitFor();
   await logout();await act('role','student');await act('to','vLogin');await act('forgot','viewer');await fill('fpe',mail);await submit('fp-email-form');await page.locator('#fpc').waitFor();
   for(let i=0;i<50&&!lastCodes.has(mail);i++)await new Promise(r=>setTimeout(r,20));assert(lastCodes.has(mail));
   await fill('fpc',lastCodes.get(mail));await submit('fp-code-form');await fill('rp','Resetpass123');await fill('rc','Resetpass123');await submit('fp-new-form');
@@ -73,6 +102,7 @@ let server,browser;
   assert.deepEqual(errors,[]);console.log('PASS: network error feedback and no JavaScript errors');console.log('ALL BROWSER CHECKS PASSED');
  }finally{
   if(browser)await browser.close();
+  await pool.query('DELETE FROM alerts WHERE title=?',[tag]);
   for(const t of thresholds)await pool.query('UPDATE thresholds SET warn_value=?,limit_value=?,updated_by=? WHERE metric=?',[t.warn_value,t.limit_value,t.updated_by,t.metric]);
   if(settings[0])await pool.query("UPDATE settings SET setting_value=? WHERE setting_key='fan_trigger'",[settings[0].setting_value]);
   for(const m of modes)await pool.query('UPDATE rooms SET vent_mode=? WHERE id=?',[m.vent_mode,m.id]);
