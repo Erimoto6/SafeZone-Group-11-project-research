@@ -24,6 +24,7 @@ let server,browser;
   const close=async()=>page.getByRole('button',{name:'Close',exact:true}).click();
   const dashboard=async()=>page.getByRole('button',{name:/Select room/}).waitFor();
   const logout=async()=>{await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'Log out',exact:true}).click();};
+  await page.clock.install();
   await page.goto('http://127.0.0.1:'+server.address().port);
   await act('role','student');await act('to','vReg1');await fill('email',mail);await fill('phone',phone);await submit('v-reg1-form');
   await fill('rp',password);await fill('rc',password);await submit('v-reg2-form');await page.getByRole('heading',{name:'Account Created!',exact:true}).waitFor();
@@ -40,31 +41,53 @@ let server,browser;
   await act('go','settings');await page.locator('details').filter({has:page.locator('#temp-warn')}).locator('summary').click();await fill('temp-warn',28);await fill('temp-limit',33);await act('trigger','warning');await act('save');
   await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Changes saved to the server');
   const [[threshold]]=await pool.query("SELECT warn_value FROM thresholds WHERE metric='temp'");assert.equal(threshold.warn_value,28);console.log('PASS: settings persist in MySQL');
-  // Database refreshes must retain immediate demo events alongside real database alerts.
+  // Accelerate simulator time while still running the real browser timer callbacks.
   await pool.query("INSERT INTO alerts (type,title,body) VALUES ('normal',?,'Browser integration fixture')",[tag]);
   const demoCounts = {};
   for (const [metric,label] of [['temp','Temperature'],['co2','CO₂'],['hum','Humidity'],['temp','Temperature']]) {
     await act('go','settings');
     if (metric === 'temp') {
-      // The button must still trigger danger above a limit higher than the old 34.5C preset.
       await page.locator('details').filter({has:page.locator('#temp-warn')}).locator('summary').click();
-      await fill('temp-warn',38);await fill('temp-limit',40);await act('save');
-      await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Changes saved to the server');
+      await fill('temp-warn',38);await fill('temp-limit',40);
     }
+    await act('trigger','exceeded');await act('save');
+    await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Changes saved to the server');
+    await act('sim','reset');
+    const danger='Demo: High '+label+' Level', warning='Demo: '+label+' Near Limit';
+    const previous=demoCounts[danger]||0;
     await act('sim',metric);
-    await page.waitForFunction(()=>document.querySelector('#toast').textContent.startsWith('Demo alert created'));
-    assert(Number(await page.locator('.badge').innerText())>0);
+    await page.waitForFunction(()=>document.querySelector('#toast').textContent.startsWith('Simulating rising'));
     await act('go','alerts');
-    const title='Demo: High '+label+' Level';
-    demoCounts[title]=(demoCounts[title]||0)+1;
-    await page.getByText(title,{exact:true}).first().waitFor();
-    assert.equal(await page.getByText(title,{exact:true}).count(),demoCounts[title]);
+    await page.locator('[data-s="alerts"]').waitFor();
+    assert.equal(await page.getByText(danger,{exact:true}).count(),previous,'click must not immediately create danger');
+    await page.clock.fastForward(2000);
+    assert.equal(await page.getByText(danger,{exact:true}).count(),previous,'first rising sample must remain below danger');
+    for (let tick=0;tick<20 && await page.getByText(warning,{exact:true}).count()<=previous;tick++) await page.clock.fastForward(2000);
+    assert.equal(await page.getByText(warning,{exact:true}).count(),previous+1,'warning appears before danger');
+    assert.equal(await page.getByText(danger,{exact:true}).count(),previous,'warning stage must be visible before danger');
+    for (let tick=0;tick<20 && await page.getByText(danger,{exact:true}).count()<=previous;tick++) await page.clock.fastForward(2000);
+    assert.equal(await page.getByText(danger,{exact:true}).count(),previous+1);
+    demoCounts[danger]=previous+1;
+    await act('go','home');await dashboard();await act('go','alerts');
+    await page.locator('[data-s="alerts"]').waitFor();
+    assert.equal(await page.getByText(danger,{exact:true}).count(),previous+1,'database refresh preserves demo events');
     await page.getByText(tag,{exact:true}).waitFor();
-    await act('filter','exceeded');await page.getByText(title,{exact:true}).first().waitFor();
-    await act('filter','message');await page.getByText(title,{exact:true}).first().waitFor();
+    await act('filter','exceeded');await page.getByText(danger,{exact:true}).first().waitFor();
+    await act('filter','message');await page.getByText(warning,{exact:true}).first().waitFor();
     await act('filter','all');
   }
-  console.log('PASS: all three simulation buttons create immediate alerts, survive navigation and retain database alerts; repeated clicks and custom limits work');
+  console.log('PASS: all simulations rise gradually, warn before danger at custom thresholds, and retain alerts during navigation');
+  await act('go','settings');
+  await act('trigger','warning');await act('save');
+  await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Changes saved to the server');
+  await act('sim','reset');await act('sim','temp');
+  for(let tick=0;tick<8;tick++)await page.clock.fastForward(2000);
+  assert(await page.locator('.badge').count()>0,'settings badge updates when warning is reached');
+  for(let tick=0;tick<20;tick++)await page.clock.fastForward(2000);
+  await act('go','alerts');await page.locator('[data-s="alerts"]').waitFor();
+  assert.equal(await page.getByText('Demo: Temperature Near Limit',{exact:true}).count(),3);
+  assert.equal(await page.getByText('Demo: High Temperature Level',{exact:true}).count(),2,'warning-triggered ventilation cools before danger');
+  console.log('PASS: warning-triggered ventilation prevents danger and updates the settings notification badge');
   await act('go','settings');
   await act('addRoom');await act('floor','4');await fill('rn',roomNo);await submit('room-form');await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Room added');await act('go','home');
   await page.getByRole('button',{name:new RegExp('Select room. Now showing Room '+roomNo)}).waitFor();

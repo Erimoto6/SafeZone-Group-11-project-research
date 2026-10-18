@@ -50,7 +50,6 @@ const ROLES = ['Admin', 'Faculty', 'Student', 'Student / Faculty', 'Maintenance'
    ===================================================================== */
 const BASE = { temp: 27.4, hum: 58, co2: 827 };
 const COOLED = { temp: 26, hum: 54, co2: 600 };      // where readings settle while the fan runs
-const SCENARIOS = { co2: { co2: 1380 }, temp: { temp: 34.5 }, hum: { hum: 84 } };
 const KEYS = ['temp', 'hum', 'co2'];
 
 const METRICS = {
@@ -271,7 +270,11 @@ function pushAlert(a, quiet) {
   }
   S.alerts.unshift(alert);
   if (!quiet && S.role) {
-    if (S.screen !== 'alerts') S.unread++;
+    if (S.screen !== 'alerts') {
+      S.unread++;
+      const bar = $('nav.nav');
+      if (bar) bar.outerHTML = nav();
+    }
     if (a.type === 'exceeded' || a.type === 'warning') toast(room ? `${room}: ${a.title}` : a.title);
   }
 }
@@ -328,7 +331,7 @@ function makeRoom(cfg) {
     lights: num(cfg.lights, ROOM_DEFAULTS.lights), lightWatts: num(cfg.lightWatts, ROOM_DEFAULTS.lightWatts), fanWatts: num(cfg.fanWatts, ROOM_DEFAULTS.fanWatts),
     off: { temp: (rnd() - 0.5) * 1.6, hum: (rnd() - 0.5) * 6, co2: (rnd() - 0.5) * 160 },   // makes each room look a bit different
     other: 50 + rnd() * 90,
-    vent: { mode: cfg.mode === 'manual' ? 'manual' : 'auto', on: false }, scenario: null,
+    vent: { mode: cfg.mode === 'manual' ? 'manual' : 'auto', on: false }, scenario: null, simStart: null,
     levels: { temp: 'normal', hum: 'normal', co2: 'normal' }, prevWorst: 0,
     buf: { t: [], temp: [], hum: [], co2: [] }
   };
@@ -350,9 +353,21 @@ function power(r) {
 
 function tick() {
   eachRoom(r => {
-    const target = r.vent.on ? { ...COOLED } : { ...roomBase(r), ...(SCENARIOS[r.scenario] || {}) };
+    const target = r.vent.on ? { ...COOLED } : roomBase(r);
     const noise = { temp: 0.12, hum: 0.5, co2: 10 };
-    KEYS.forEach(k => { r.reading[k] += (target[k] - r.reading[k]) * 0.18 + (Math.random() - 0.5) * noise[k]; });
+    KEYS.forEach(k => {
+      if (k === r.scenario && !r.vent.on) {
+        const { warn, limit } = S.limits[k];
+        // About 12 seconds to Warning, then another 12 seconds to Danger.
+        // Stop at Warning first so even closely spaced limits produce both events.
+        const normal = r.reading[k] < warn;
+        const step = (normal ? Math.max(warn - r.simStart, limit - warn) : limit - warn) / 6;
+        const ceiling = normal ? warn : limit + (limit - warn) / 6;
+        r.reading[k] = Math.min(ceiling, r.reading[k] + step);
+      } else {
+        r.reading[k] += (target[k] - r.reading[k]) * 0.18 + (Math.random() - 0.5) * noise[k];
+      }
+    });
     if (Math.random() < 0.02) r.lightsOn = Math.max(0, Math.min(r.lights, r.lightsOn + (Math.random() < 0.5 ? -1 : 1)));
     r.other = Math.max(30, Math.min(160, r.other + (Math.random() - 0.5) * 3));
     ingest(r.reading, null, true);
@@ -1070,14 +1085,8 @@ const ACTS = {
       KEYS.forEach(k => { S.levels[k] = 'normal'; }); S.prevWorst = 0; render(); toast(`${name} reset`); return;
     }
     if (!KEYS.includes(v)) return;
-    S.scenario = v; S.vent.mode = 'auto'; S.draftAuto = true;
-    // Cross the configured danger limit now, even on repeated clicks or custom limits.
-    // ingest() generates the same hazard and ventilation events as a sensor reading.
-    S.levels[v] = 'normal';
-    const high = Math.max(SCENARIOS[v][v], S.limits[v].limit + Math.max(1, Math.abs(S.limits[v].limit) * 0.05));
-    ingest({ ...S.reading, [v]: high }, null, true);
-    render();
-    toast(`Demo alert created for high ${v === 'co2' ? 'CO₂' : v === 'temp' ? 'temperature' : 'humidity'} in ${name}. Open Alerts to view it.`);
+    S.scenario = v; cur().simStart = S.reading[v]; S.vent.mode = 'auto'; S.draftAuto = true;
+    toast(`Simulating rising ${v === 'co2' ? 'CO₂' : v === 'temp' ? 'temperature' : 'humidity'} in ${name}. Watch Monitoring; alerts appear at your saved thresholds.`);
   }
 };
 

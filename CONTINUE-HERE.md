@@ -25,7 +25,7 @@ The browser now asks the server to create and verify the code. It never creates 
 
 Temperature, humidity, CO2, charts/history, device status, power and fan operation are still simulated and labelled in the app. Database ventilation mode is saved, but no command reaches a physical fan. Saving SMS recipients does not send SMS. Firebase, ESP32 integration and SMS delivery are the next development phase.
 
-Each high-temperature, high-humidity or high-CO2 simulation immediately creates a danger alert, using your saved thresholds. Open Alerts to see messages labelled `Demo:` alongside database alerts. Demo messages stay available while navigating in the current page session; refreshing the browser or logging out clears them. They are not written to MySQL and do not send SMS.
+Each high-temperature, high-humidity or high-CO2 simulation gradually raises that reading toward your saved thresholds. From a normal baseline, Warning takes about 12 seconds and Danger roughly another 12 seconds. Alerts appear only when each threshold is reached. If ventilation is set to start at Warning, cooling can prevent the reading from reaching Danger. Open Alerts to see messages labelled `Demo:` alongside database alerts. Demo messages stay available while navigating in the current page session; refreshing the browser or logging out clears them. They are not written to MySQL and do not send SMS.
 
 ## Validation
 
