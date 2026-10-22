@@ -1,5 +1,7 @@
 (() => {
 'use strict';
+const OFFLINE = window.SAFEZONE_MODE !== 'online';
+const TOKEN_KEY = OFFLINE ? 'safezone.offline.token' : 'safezone.token';
 
 /* =====================================================================
    CONFIG: edit these first
@@ -105,9 +107,14 @@ const store = {
   load() { try { return JSON.parse(localStorage.getItem('safezone.preferences') || 'null'); } catch { return null; } },
   save() { try { localStorage.setItem('safezone.preferences', JSON.stringify({ theme: S.theme, roomId: S.roomId })); } catch { /* preferences are optional */ } }
 };
-let token = sessionStorage.getItem('safezone.token') || '';
+let token = sessionStorage.getItem(TOKEN_KEY) || '';
 const API_BASE = (window.SAFEZONE_API_BASE || '/api').replace(/\/$/, '');
 async function api(path, method = 'GET', body) {
+  if (OFFLINE) {
+    if (!window.SafeZoneOffline) throw new Error('Offline files are missing. Sync the updated app assets and rebuild the APK.');
+    try { return await window.SafeZoneOffline.request(path, method, body, token); }
+    catch(e) { if(e.status===401 && token){signOut();render();} throw e; }
+  }
   const requestToken = token;
   let response;
   try {
@@ -126,8 +133,9 @@ async function api(path, method = 'GET', body) {
   return data;
 }
 function signOut() {
+  if(OFFLINE && token)window.SafeZoneOffline?.logout(token);
   captureEnabled=false; formDrafts.clear(); settingsDraft=null; settingsDirty=false;
-  token = ''; sessionStorage.removeItem('safezone.token');
+  token = ''; sessionStorage.removeItem(TOKEN_KEY);
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
   newestAlertId = null; S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; closeSheet();
@@ -153,7 +161,7 @@ async function refreshData() {
   } else { S.accounts = []; S.users = []; }
 }
 async function signedIn(data) {
-  token = data.token; sessionStorage.setItem('safezone.token', token);
+  token = data.token; sessionStorage.setItem(TOKEN_KEY, token);
   S.me = mapUser(data.user); S.role = data.user.role === 'admin' ? 'admin' : 'student';
   S.roomId = null; // Every login starts at the first configured room, normally Room 101.
   try { await refreshData(); } catch (e) { signOut(); render(); throw e; }
@@ -410,7 +418,7 @@ function topbar() {
   return `<header class="topbar">${home
     ? `${logo(34)}<h1>SafeZone</h1>`
     : `<button data-act="go" data-v="${back}" aria-label="Back to ${back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
-    <button data-act="menu" aria-label="Menu">${I.menu}</button></header>`;
+    ${OFFLINE ? '<span class="offline-badge">Offline</span>' : ''}<button data-act="menu" aria-label="Menu">${I.menu}</button></header>`;
 }
 
 function sensorCard(k) {
@@ -443,7 +451,7 @@ function banner() {
   return `<div class="banner ${w}" role="status">${I[map[0]]}<div><b>${map[1]}</b><span>${map[2]}</span></div></div>`;
 }
 
-const liveLine = () => `<div class="live"><i></i>Live, updated ${tSec(new Date(S.lastUpdate))}</div>`;
+const liveLine = () => `<div class="live"><i></i>${OFFLINE ? 'Offline simulation' : 'Live'}, updated ${tSec(new Date(S.lastUpdate))}</div>`;
 
 // "Select Room" dropdown. Admins also get the Add Room button.
 function roomBar(allowAdd = false) {
@@ -580,8 +588,8 @@ function settingsView() {
           <button data-act="trigger" data-v="exceeded" aria-pressed="${trig === 'exceeded'}">Red (Danger)</button></div></div>
     </div>
     <div style="margin-top:16px"><button class="btn" data-act="save">Save changes</button></div>
-    <p class="section-label">Shared demo tools</p>
-    <p class="note">Everyone connected to this server can see the selected rooms change. Hardware and SMS are not connected.</p>
+    <p class="section-label">${OFFLINE ? 'Simulation tools' : 'Shared demo tools'}</p>
+    <p class="note">${OFFLINE ? 'Simulations and alerts stay on this device. No SMS is sent.' : 'Everyone connected to this server can see the selected rooms change. Hardware and SMS are not connected.'}</p>
     <label class="f">Rooms to affect<select id="sim-scope" aria-label="Rooms to affect">
       ${S.rooms.map(r => `<option value="${r.id === S.roomId ? 'current' : 'room:'+r.id}" ${(S.simScope === 'current' && r.id === S.roomId) || S.simScope === 'room:'+r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
       <option value="selected" ${S.simScope === 'selected' ? 'selected' : ''}>Select multiple rooms</option>
@@ -611,7 +619,9 @@ function aboutView() {
     <li><b>Yellow, Warning:</b> a reading has reached the warning level.</li>
     <li><b>Red, Danger:</b> a reading has reached the danger level.</li></ul>`;
 
-  const overview = admin ? `<p>SafeZone is an IoT-based classroom environmental monitoring system. As an admin you can watch every room, control the ventilation, and manage who can use the system and who receives alerts.</p>
+  const overview = OFFLINE ? `<p>This offline SafeZone demo runs entirely on this device. No backend, MySQL server, Wi-Fi or mobile data is needed.</p>
+    <h4>How it works</h4><ul><li>Admins simulate temperature, humidity and CO₂, set thresholds, and configure rooms and exhaust fans.</li><li>Readings rise gradually and create local warning and danger alerts. Automatic fans simulate cooling.</li><li>Accounts, rooms, settings, alerts and estimated kWh stay in this app's storage. Other phones are independent.</li><li>Simulations advance while the app is open. Sensors, fans and SMS delivery are simulated; no messages are sent.</li></ul>${colors}
+    <h4>Accounts and storage</h4><p>Create the first admin on this device, then use Manage Users for additional admins. Password changes require the current password. Email password recovery is unavailable offline. Clearing app data or uninstalling removes local accounts and saved data.</p>` : admin ? `<p>SafeZone is an IoT-based classroom environmental monitoring system. As an admin you can watch every room, control the ventilation, and manage who can use the system and who receives alerts.</p>
     <h4>How it works</h4><ol>
       <li>Sensors in the classroom measure temperature, humidity and CO₂.</li>
       <li>The readings are compared with the limits you set in Settings.</li>
@@ -637,7 +647,7 @@ function aboutView() {
       <li>Only the classroom with the installed prototype shows live sensor readings. Other rooms are for future expansion.</li>
       <li>Monitoring needs an internet connection. SMS alerts need a cellular network.</li></ul>`;
 
-  const features = admin ? `<ul>
+  const features = OFFLINE ? `<ul><li>Home and Monitoring show local room readings, simulated fan status and estimated electricity use.</li><li>Admins add rooms on Home or Monitoring and edit/delete them using the Room dropdown in Settings.</li><li>Simulation tools can affect one room, selected rooms or all rooms on this device.</li><li>Alerts are saved locally. History charts are illustrative demo data.</li><li>Recipient lists are local configuration only; this version sends no SMS.</li></ul>` : admin ? `<ul>
       <li><b>Admin dashboard:</b> readings, status and power use for each room, with the system status.</li>
       <li><b>Rooms:</b> add a room with the + button. The number follows the floor, such as 101, 201, 301 or 401. Remove rooms in Settings.</li>
       <li><b>Exhaust fan control:</b> turn the fan on or off in Monitoring, or leave it in Automatic mode. Choose whether it starts at yellow or red.</li>
@@ -772,7 +782,7 @@ function vLoginView() {
       ${errLine()}
       <button class="btn" type="submit">Log in</button>
     </form>
-    <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="viewer">Forgot password?</button>
+    ${OFFLINE ? '' : '<button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="viewer">Forgot password?</button>'}
     <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="vReg1">Create an account</button>
   </div></div>`;
 }
@@ -791,9 +801,9 @@ function loginView() {
       ${errLine()}
       <button class="btn" type="submit">Log in</button>
     </form>
-    <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="admin">Forgot password?</button>
+    ${OFFLINE ? '' : '<button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="admin">Forgot password?</button>'}
     <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="fReg">Create an admin account</button>
-    <p class="note" style="margin-top:14px">Use an account created on your SafeZone server.</p>
+    <p class="note" style="margin-top:14px">${OFFLINE ? 'Create a local admin account on this device before logging in.' : 'Use an account created on your SafeZone server.'}</p>
   </div></div>`;
 }
 
@@ -805,14 +815,13 @@ function fRegView() {
     <form id="f-reg-form" style="width:100%" autocomplete="off" novalidate>
       ${textField('user', 'fname', 'Full name', 'text', 'autocomplete="name"')}
       ${textField('user', 'fuser', 'Username', 'text', 'autocapitalize="none" autocomplete="username"')}
-      ${textField('mail', 'femail', 'PUP web mail', 'email', 'inputmode="email" autocapitalize="none" autocomplete="email"')}
-      <p class="hint">${emailHintHtml}</p>
+      ${textField('mail', 'femail', OFFLINE ? 'Email address' : 'PUP web mail', 'email', 'inputmode="email" autocapitalize="none" autocomplete="email"')}
+      ${OFFLINE ? '' : `<p class="hint">${emailHintHtml}</p>`}
       ${textField('phone', 'fphone', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="tel"')}
       ${pwField('rp', 'Password', 'new-password')}
       ${rulesList()}
       ${pwField('rc', 'Confirm password', 'new-password')}
-      ${textField('key', 'fcode', 'Admin access code', 'text', 'autocapitalize="characters" autocomplete="off"')}
-      <p class="hint">Ask your system administrator for the admin access code.</p>
+      ${OFFLINE ? '<p class="hint">First-time setup for this device. Add subsequent admins through Manage Users.</p>' : textField('key', 'fcode', 'Admin access code', 'text', 'autocapitalize="characters" autocomplete="off"')+'<p class="hint">Ask your system administrator for the admin access code.</p>'}
       ${errLine()}
       <button class="btn" type="submit">Create Account</button>
     </form>
@@ -979,7 +988,7 @@ function usersView() {
     <form id="admin-form" class="stack" autocomplete="off" novalidate>
       ${textField('user', 'an', 'Full name', 'text', 'autocomplete="off"')}
       ${textField('user', 'au', 'Username', 'text', 'autocapitalize="none" autocomplete="off"')}
-      ${textField('mail', 'aem', 'PUP web mail', 'email', 'inputmode="email" autocapitalize="none" autocomplete="off"')}
+      ${textField('mail', 'aem', OFFLINE ? 'Email address' : 'PUP web mail', 'email', 'inputmode="email" autocapitalize="none" autocomplete="off"')}
       ${textField('phone', 'ap', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="off"')}
       ${pwField('rp', 'Password for the new admin', 'new-password')}
       ${rulesList()}
@@ -1128,8 +1137,8 @@ const ACTS = {
     };
     const result = await api('/simulation', 'POST', { metric: v, ...selected });
     await refreshData(); render();
-    toast(v === 'reset' ? `Shared readings reset for ${result.affectedRoomIds.length} room(s).` :
-      `Shared simulation started for ${result.affectedRoomIds.length} room(s). Readings will rise gradually.`);
+    toast(v === 'reset' ? `${OFFLINE ? 'Offline' : 'Shared'} readings reset for ${result.affectedRoomIds.length} room(s).` :
+      `${OFFLINE ? 'Offline' : 'Shared'} simulation started for ${result.affectedRoomIds.length} room(s). Readings will rise gradually.`);
   }
 };
 
@@ -1176,11 +1185,11 @@ Object.assign(ACTS, {
     }
     await api('/settings', 'PUT', { thresholds, fanTrigger: S.draftTrigger, ventMode: S.draftAuto ? 'auto' : 'manual' });
     settingsDirty=false;settingsDraft=null;
-    await refreshData(); render(); toast('Changes saved to the server');
+    await refreshData(); render(); toast(OFFLINE ? 'Changes saved on this device' : 'Changes saved to the server');
   },
   async toggleVent() {
     await api('/simulation', 'POST', { metric: 'fan', roomIds: [Number(S.roomId)], fanOn: !S.vent.on });
-    await refreshData(); render(); toast('Shared demo fan updated; hardware is not connected');
+    await refreshData(); render(); toast(OFFLINE ? 'Offline exhaust fan updated' : 'Shared demo fan updated; hardware is not connected');
   },
   async auto() {
     await api('/rooms/' + cur().id, 'PATCH', { ventMode: 'auto' });
@@ -1217,7 +1226,7 @@ document.addEventListener('submit', async e => {
         identifier: value(id === 'login-form' ? 'u' : 'phone').trim(), password: value('pw'), as: id === 'login-form' ? 'admin' : 'viewer'
       }));
     } else if (id === 'f-reg-form') {
-      await api('/auth/register-admin', 'POST', { fullName: value('fname'), username: value('fuser'), email: value('femail'), phone: value('fphone'), password: passwords(), accessCode: value('fcode') });
+      await api('/auth/register-admin', 'POST', { fullName: value('fname'), username: value('fuser'), email: value('femail'), phone: value('fphone'), password: passwords(), accessCode: OFFLINE ? undefined : value('fcode') });
       S.authError = ''; S.notice = 'Account created. You can log in now.'; S.screen = 'login'; render();
     } else if (id === 'v-reg1-form') {
       const email = normEmail(value('email')), phone = normPhone(value('phone'));
@@ -1259,7 +1268,7 @@ document.addEventListener('submit', async e => {
     } else if (id === 'pw-form') {
       if (value('np') !== value('cp')) throw new Error('The two passwords do not match.');
       const data = await api('/auth/change-password', 'POST', { currentPassword: value('current-pw'), newPassword: value('np') });
-      token = data.token; sessionStorage.setItem('safezone.token', token); closeSheet(); toast('Password updated');
+      token = data.token; sessionStorage.setItem(TOKEN_KEY, token); closeSheet(); toast('Password updated');
     }
     formDrafts.delete(formKey(form));
     const freshForm=document.getElementById(id);if(freshForm && id==='admin-form')freshForm.reset();

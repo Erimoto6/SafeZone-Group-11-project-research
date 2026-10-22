@@ -15,7 +15,8 @@
     "test": "node scripts/smoke-test.js",
     "test:browser": "node scripts/browser-test.js",
     "test:shared": "node scripts/shared-test.js",
-    "test:electricity": "node scripts/electricity-test.js"
+    "test:electricity": "node scripts/electricity-test.js",
+    "test:offline": "node scripts/offline-test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
