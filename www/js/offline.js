@@ -51,6 +51,15 @@ async function hash(password,salt){
   const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
   return hex(await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:100000,hash:'SHA-256'},key,256));
 }
+async function ensureDemoAdmin() {
+  if(db.demoAdminSeeded)return;
+  // Seed once without replacing an existing admin or resetting a changed password.
+  if(!db.users.some(u=>u.role==='admin'&&u.username==='admin')){
+    const salt=random(),passwordHash=await hash('safezone',salt);
+    db.users.push({id:db.nextUser++,role:'admin',kind:'faculty',username:'admin',fullName:'Demo Administrator',email:'admin@demo.invalid',phone:'',salt,passwordHash});
+  }
+  db.demoAdminSeeded=true;save();
+}
 function passwordRule(value){if(typeof value!=='string'||value.length<8||value.length>128||!/[a-z]/.test(value)||!/[A-Z]/.test(value)||!/\d/.test(value))fail('Use 8–128 characters with uppercase, lowercase and a number.');}
 function auth(token,admin=false){
   const session=db.sessions[token],u=session&&db.users.find(u=>u.id===session.userId);
@@ -123,7 +132,7 @@ function advance(){
   save();
 }
 async function route(path,method,body,token){
-  load();body=body||{};
+  load();await ensureDemoAdmin();body=body||{};
   if(path==='/auth/register-admin'&&method==='POST'){
     // Only first-run setup is public; subsequent admins must be added by an existing admin.
     if(db.users.some(u=>u.role==='admin'))fail('An admin already exists on this device. Log in and use Manage Users to add another.');

@@ -27,7 +27,7 @@ This temporary version is on **offline-demo**. The shared-backend version remain
 
 ## Use with no network or laptop
 
-Open the installed app, choose Admin, then Create an admin account. First-time setup needs your own name, username, email address (any valid address for offline admins), mobile number and password. No admin access code is needed. Later admins are created in Manage Users. Student/faculty registration retains the PUP email format. Accounts from MySQL are separate and must be created again locally.
+Open the installed app, choose Admin, and log in with username **admin** and password **safezone**. This demo account is created automatically once, including when updating an existing offline installation. An existing admin account with username admin is preserved, and changed passwords are never reset on restart. Additional admins are created in Manage Users with any valid email address. Student/faculty registration retains the PUP email format. Accounts from MySQL are separate and must be created again locally.
 
 Log in and start simulations in Settings. Temperature, humidity, CO₂, alerts, automatic/manual exhaust fans, rooms, devices and estimated kWh operate locally. Turn on airplane mode and repeat login and simulation to verify the installed APK itself.
 

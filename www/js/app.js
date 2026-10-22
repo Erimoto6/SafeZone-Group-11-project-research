@@ -621,7 +621,7 @@ function aboutView() {
 
   const overview = OFFLINE ? `<p>This offline SafeZone demo runs entirely on this device. No backend, MySQL server, Wi-Fi or mobile data is needed.</p>
     <h4>How it works</h4><ul><li>Admins simulate temperature, humidity and CO₂, set thresholds, and configure rooms and exhaust fans.</li><li>Readings rise gradually and create local warning and danger alerts. Automatic fans simulate cooling.</li><li>Accounts, rooms, settings, alerts and estimated kWh stay in this app's storage. Other phones are independent.</li><li>Simulations advance while the app is open. Sensors, fans and SMS delivery are simulated; no messages are sent.</li></ul>${colors}
-    <h4>Accounts and storage</h4><p>Create the first admin on this device, then use Manage Users for additional admins. Password changes require the current password. Email password recovery is unavailable offline. Clearing app data or uninstalling removes local accounts and saved data.</p>` : admin ? `<p>SafeZone is an IoT-based classroom environmental monitoring system. As an admin you can watch every room, control the ventilation, and manage who can use the system and who receives alerts.</p>
+    <h4>Accounts and storage</h4><p>The offline demo starts with admin / safezone. Use Manage Users for additional admins. Password changes require the current password. Email password recovery is unavailable offline. Clearing app data or uninstalling removes local accounts and saved data.</p>` : admin ? `<p>SafeZone is an IoT-based classroom environmental monitoring system. As an admin you can watch every room, control the ventilation, and manage who can use the system and who receives alerts.</p>
     <h4>How it works</h4><ol>
       <li>Sensors in the classroom measure temperature, humidity and CO₂.</li>
       <li>The readings are compared with the limits you set in Settings.</li>
@@ -802,8 +802,8 @@ function loginView() {
       <button class="btn" type="submit">Log in</button>
     </form>
     ${OFFLINE ? '' : '<button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="admin">Forgot password?</button>'}
-    <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="fReg">Create an admin account</button>
-    <p class="note" style="margin-top:14px">${OFFLINE ? 'Create a local admin account on this device before logging in.' : 'Use an account created on your SafeZone server.'}</p>
+    ${OFFLINE ? '' : '<button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="fReg">Create an admin account</button>'}
+    <p class="note" style="margin-top:14px">${OFFLINE ? 'Offline demo login: admin / safezone. Additional admins can be added in Manage Users.' : 'Use an account created on your SafeZone server.'}</p>
   </div></div>`;
 }
 
