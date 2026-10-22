@@ -62,7 +62,7 @@ let server,browser;
   await act('go','home');await dashboard();await act('addRoom');await act('floor','4');await fill('rn',roomNo);await submit('room-form');await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Room added');await act('go','home');
   await page.getByRole('button',{name:new RegExp('Select room. Now showing Room '+roomNo)}).waitFor();
   const [[room]]=await pool.query('SELECT id FROM rooms WHERE room_no=?',[roomNo]);assert(room);
-  await act('addRoom');await act('editRoom',String(room.id));
+  await act('pickRoom');await page.getByRole('button',{name:'Edit Room '+roomNo,exact:true}).click();
   const groups=page.locator('.device-editor');
   await groups.nth(0).locator('[data-device="label"]').fill('LED A');
   await groups.nth(0).locator('[data-device="quantity"]').fill('2');

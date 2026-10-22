@@ -1007,11 +1007,11 @@ function pickSheet() {
   openSheet('Select Room', floorList().map(f => {
     const rooms = roomsOn(f);
     return `<div class="floor"><div class="floor-head"><b>${floorName(f)}</b></div>
-      ${rooms.length ? rooms.map(r => `<button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>`).join('') : '<p class="floor-empty">No rooms yet</p>'}</div>`;
+      ${rooms.length ? rooms.map(r => `<div class="room-choice"><button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>${admin ? `<button class="room-edit" data-act="editRoom" data-v="${r.id}" aria-label="Edit ${esc(r.name)}">${I.edit}<span>Edit</span></button>` : ''}</div>`).join('') : '<p class="floor-empty">No rooms yet</p>'}</div>`;
   }).join(''));
 }
 
-// A single Home entry point manages room information and device groups.
+// Home adds rooms; the room selector also provides direct editing.
 function defaultDevices() { return [
   {type:'light',label:'Lights',quantity:8,activeQuantity:6,wattsPerDevice:18,fanType:'unspecified'},
   {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
