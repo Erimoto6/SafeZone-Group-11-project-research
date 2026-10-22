@@ -72,7 +72,7 @@ const S = {
   draftTrigger: 'exceeded',
   limits: JSON.parse(JSON.stringify(DEFAULT_LIMITS)),
   alerts: [],
-  simScope: 'current', simSelected: [], syncError: '', editingRoomId: null,
+  simScope: 'current', simSelected: [], syncError: '', editingRoomId: null, configRoomId: null,
   pendingDel: '',             // two-tap delete: remembers which Remove? button was tapped once
   addFloor: 2,                // floor chosen in the Add Room form
   reset: null,                // forgot-password progress: { side, email, code, exp, tries, ... }
@@ -129,7 +129,7 @@ function signOut() {
   captureEnabled=false; formDrafts.clear(); settingsDraft=null; settingsDirty=false;
   token = ''; sessionStorage.removeItem('safezone.token');
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
-  newestAlertId = null; S.syncError = ''; S.simSelected = []; S.simScope = 'current';
+  newestAlertId = null; S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
@@ -508,7 +508,7 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `${seg}${roomBar()}${ventCard(true)}${powerCard(false)}${metricChips()}
+    return `${seg}${roomBar(true)}${ventCard(true)}${powerCard(false)}${metricChips()}
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
   }
@@ -516,7 +516,7 @@ function monitorView() {
   const min = Math.min(...h.vals), max = Math.max(...h.vals), avg = h.vals.reduce((a, b) => a + b, 0) / h.vals.length;
   const over = h.vals.filter(v => v >= S.limits[k].limit).length;
   const rc = `<div class="mini-chips" role="group" aria-label="Time range">${[['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']].map(([id, l]) => `<button data-act="range" data-v="${id}" aria-pressed="${r === id}">${l}</button>`).join('')}</div>`;
-  return `${seg}${roomBar()}${metricChips()}${rc}
+  return `${seg}${roomBar(true)}${metricChips()}${rc}
     <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${chartSVG(h.vals, h.labels, k, 'neutral', 'hist')}${legend(k)}</section>
     <div class="stats"><div class="stat"><span>Lowest</span><b>${fmt(k, min)}</b></div><div class="stat"><span>Average</span><b>${fmt(k, avg)}</b></div><div class="stat"><span>Highest</span><b>${fmt(k, max)}</b></div></div>
     <p class="note">${over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
@@ -540,13 +540,15 @@ function limitBlock(k, hint) {
     <label class="f">Limit at (${m.unit})<input type="number" id="${k}-limit" value="${t.limit}" step="any" inputmode="decimal"></label></div></details>`;
 }
 
-function currentRoomsList() {
-  return floorList().map(f=>{
-    const rooms=roomsOn(f);if(!rooms.length)return '';
-    return `<p class="section-label">${floorName(f)}</p><div class="list">${rooms.map(r=>`<div class="user-row"><div><b>${esc(r.name)}</b><span>${(r.devices||[]).reduce((n,d)=>n+d.quantity,0)} configured devices</span></div>
-      <button class="x" data-act="editRoom" data-v="${r.id}" aria-label="Edit ${esc(r.name)}">${I.edit}</button>
-      <button class="x del" data-act="roomDel" data-v="${r.id}" aria-label="Remove ${esc(r.name)}">${I.trash}</button></div>`).join('')}</div>`;
-  }).join('');
+function roomConfiguration() {
+  const room = S.rooms.find(r => r.id === S.configRoomId) || S.rooms[0];
+  S.configRoomId = room.id;
+  return `<section class="room-configuration" aria-label="Room configuration">
+    <label class="f" for="config-room">Room</label>
+    <select id="config-room" aria-label="Room to configure">${S.rooms.map(r => `<option value="${esc(r.id)}" ${r.id === room.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+    <div class="room-config-actions"><button class="btn soft small" id="config-room-edit" data-act="editRoom" data-v="${room.id}">${I.edit} Edit room</button>
+      <button class="btn soft small" id="config-room-delete" data-act="roomDel" data-v="${room.id}">${I.trash} Delete room</button></div>
+  </section>`;
 }
 
 function settingsView() {
@@ -556,8 +558,7 @@ function settingsView() {
       <button class="row" data-act="users"><span class="r-ico">${I.users}</span><div class="r-txt"><b>Manage Users</b><span>Admins and registered accounts</span></div><span class="chev">${I.chev}</span></button>
       <button class="row" data-act="account"><span class="r-ico">${I.user}</span><div class="r-txt"><b>Account Settings</b><span>Username and password</span></div><span class="chev">${I.chev}</span></button>
     </div>
-    ${roomBar()}
-    <section aria-label="Current rooms"><p class="section-label">Current rooms</p>${currentRoomsList()}</section>
+    ${roomConfiguration()}
     <p class="section-label">Alerts</p>
     <div class="list">
       <button class="row" data-act="sms"><span class="r-ico">${I.sms}</span><div class="r-txt"><b>SMS Alerts</b><span>Name, role and mobile number of each recipient</span></div><span class="chev">${I.chev}</span></button>
@@ -1013,15 +1014,15 @@ function smsSheet(edit) {
 
 // Pick a room. Rooms are grouped by floor.
 function pickSheet() {
-  const admin = S.role === 'admin'; const now = cur().id;
+  const now = cur().id;
   openSheet('Select Room', floorList().map(f => {
     const rooms = roomsOn(f);
     return `<div class="floor"><div class="floor-head"><b>${floorName(f)}</b></div>
-      ${rooms.length ? rooms.map(r => `<div class="room-choice"><button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>${admin ? `<button class="room-edit" data-act="editRoom" data-v="${r.id}" aria-label="Edit ${esc(r.name)}">${I.edit}<span>Edit</span></button>` : ''}</div>`).join('') : '<p class="floor-empty">No rooms yet</p>'}</div>`;
+      ${rooms.length ? rooms.map(r => `<button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>`).join('') : '<p class="floor-empty">No rooms yet</p>'}</div>`;
   }).join(''));
 }
 
-// Home adds rooms; the room selector also provides direct editing.
+// Home and Monitoring add rooms; Settings configures existing rooms.
 function defaultDevices() { return [
   {type:'light',label:'Lights',quantity:8,activeQuantity:6,wattsPerDevice:18,fanType:'unspecified'},
   {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
@@ -1049,7 +1050,6 @@ function roomsSheet() {
       <div id="device-groups" class="stack">${deviceRows(devices||[])}</div>
       <button type="button" class="btn soft small" data-act="addDevice">+ Add device</button>
       <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
-      ${edit?'<button type="button" class="btn soft small" data-act="newRoom">Back to add room</button>':''}
     </form>`);
   S.addFloor=floor;
 }
@@ -1106,8 +1106,7 @@ const ACTS = {
   pickRoom() { pickSheet(); },
   room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId = v; store.save(); closeSheet(); render(); } },
   addRoom(v) { if(S.role!=='admin')return; S.editingRoomId=null; S.addFloor=v?+v:cur().floor; roomsSheet(); },
-  editRoom(v) { captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
-  newRoom() { captureDrafts();S.editingRoomId=null;roomsSheet(); },
+  editRoom(v) { if(S.role!=='admin'||S.screen!=='settings')return; captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
   addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'light',label:'Light',quantity:1,activeQuantity:1,wattsPerDevice:18,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
   removeDevice(v) { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.splice(Number(v),1);$('#device-groups').innerHTML=deviceRows(devices); },
   floor(v) {
@@ -1158,6 +1157,7 @@ Object.assign(ACTS, {
     await refreshData(); smsSheet();
   },
   async roomDel(v) {
+    if(S.role!=='admin'||S.screen!=='settings')return;
     const room=S.rooms.find(r=>r.id===v);if(!room)return;
     captureDrafts();
     openSheet('Remove '+room.name+'?',`<p>This will remove ${esc(room.name)}, its devices and accumulated electricity estimate. Alert history will remain without a room link.</p><div class="stack"><button class="btn" data-act="confirmRoomDel" data-v="${v}">Remove ${esc(room.name)}</button><button class="btn soft" data-act="cancelRoomDel">Cancel</button></div>`);
@@ -1251,7 +1251,7 @@ document.addEventListener('submit', async e => {
         floor:S.addFloor,roomNo:Number(value('rn')),devices:readDeviceRows()
       });
       formDrafts.delete(formKey(form));
-      await refreshData(); S.roomId=String(result.room.id); captureEnabled=false; closeSheet(); render();
+      await refreshData(); if(!roomId)S.roomId=String(result.room.id); else S.configRoomId=String(result.room.id); captureEnabled=false; closeSheet(); render();
       toast(roomId?'Room updated':'Room added');
     } else if (id === 'email-form') {
       const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
@@ -1287,6 +1287,11 @@ document.addEventListener('change', e => {
     row.querySelector('[data-powered]').hidden=!['light','exhaust_fan'].includes(type);
     row.querySelector('[data-device="label"]').value=DEVICE_NAMES[type];
     if(type==='exhaust_fan')row.querySelector('[data-device="wattsPerDevice"]').value=40;
+  }
+  if (e.target.id === 'config-room') {
+    S.configRoomId = e.target.value;
+    $('#config-room-edit').dataset.v = S.configRoomId;
+    $('#config-room-delete').dataset.v = S.configRoomId;
   }
   if (e.target.id === 'sim-scope') {
     S.simScope = e.target.value;

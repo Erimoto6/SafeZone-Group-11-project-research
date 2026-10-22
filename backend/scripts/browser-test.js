@@ -25,6 +25,12 @@ let server,browser;
   const act=async(name,v)=>page.locator(`[data-act="${name}"]${v===undefined?'':`[data-v="${v}"]`}`).first().click();
   const close=async()=>page.getByRole('button',{name:'Close',exact:true}).click();
   const dashboard=async()=>page.getByRole('button',{name:/Select room/}).waitFor();
+  const navigate=async screen=>{await act('go',screen);await page.locator('[data-s="'+screen+'"]').waitFor();};
+  const fits=async label=>{
+    const overflow=await page.locator('#screen,.sheet').evaluateAll(els=>els.filter(el=>el.getClientRects().length).filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>({screen:el.dataset.s||'dialog',width:el.clientWidth,content:el.scrollWidth})));
+    assert.deepEqual(overflow,[],label+' must fit horizontally');
+  };
+
   const logout=async()=>{await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'Log out',exact:true}).click();};
   await page.clock.install();
   await page.goto('http://127.0.0.1:'+server.address().port);
@@ -46,11 +52,37 @@ let server,browser;
   await submit('f-reg-form');await page.getByRole('heading',{name:'Admin Login',exact:true}).waitFor();
   await fill('u',tag);await fill('pw',password);await submit('login-form');await dashboard();console.log('PASS: admin registration and login');
   assert((await page.getByRole('button',{name:'Electricity, open monitoring'}).innerText()).includes('kWh'));
+  for(const width of [320,390,768,1280]){
+    await page.setViewportSize({width,height:844});
+    for(const colorScheme of ['light','dark']){
+      await page.emulateMedia({colorScheme});
+      for(const screen of ['home','alerts','monitor','status','settings','about']){
+        await navigate(screen);await fits(screen+' '+width+' '+colorScheme);
+        if(screen==='monitor'){await act('view','history');await fits('history '+width+' '+colorScheme);await act('view','live');}
+      }
+      await navigate('settings');
+      assert.equal(await page.getByText('Current rooms',{exact:true}).count(),0);
+      assert.equal(await page.locator('[data-act="pickRoom"]').count(),0,'Settings configures rooms without changing the viewing selection');
+      const labels=await page.locator('#config-room option').allTextContents();assert(labels.includes('Room 101'),JSON.stringify(labels));
+      for(const dialog of ['account','sms']){await act(dialog);await fits(dialog+' '+width+' '+colorScheme);await close();}
+      await act('users');await page.locator('[data-s="users"]').waitFor();await fits('users '+width+' '+colorScheme);
+      await navigate('home');await act('pickRoom');await fits('room picker '+width+' '+colorScheme);
+      assert.equal(await page.locator('[data-act="editRoom"],[data-act="roomDel"]').count(),0);await close();
+      await act('addRoom');await fits('add room '+width+' '+colorScheme);await close();
+      if(width===390){await navigate('settings');await page.screenshot({path:'/tmp/safezone-room-config-'+colorScheme+'.png'});}
+    }
+  }
+  await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'light'});await navigate('home');
+  const viewingRoom=await page.getByRole('button',{name:/Select room/}).getAttribute('aria-label');
+  await navigate('settings');await page.locator('#config-room').selectOption(await page.locator('#config-room option').last().getAttribute('value'));
+  await navigate('home');assert.equal(await page.getByRole('button',{name:/Select room/}).getAttribute('aria-label'),viewingRoom,'configuring a room must not change the room being viewed');
+  console.log('PASS: main screens, users and dialogs fit 320/390/768/1280 widths in light and dark themes; Settings has configuration only');
+
   await page.screenshot({path:'/tmp/safezone-home-kwh.png'});
   assert.equal(await page.locator('[data-act="addRoom"]').count(),1);
   for(const screen of ['monitor','status','settings']){
     await act('go',screen);await page.locator(`[data-s="${screen}"]`).waitFor();
-    assert.equal(await page.locator('[data-act="addRoom"]').count(),0,'room management stays on Home');
+    assert.equal(await page.locator('[data-act="addRoom"]').count(),screen==='monitor'?1:0,'only Home and Monitoring add rooms');
   }
   await page.locator('details').filter({has:page.locator('#temp-warn')}).locator('summary').click();
   await fill('temp-warn',31);await act('go','home');await dashboard();await act('go','settings');
@@ -62,7 +94,8 @@ let server,browser;
   await act('go','home');await dashboard();await act('addRoom');assert.equal(await page.getByText('Current rooms',{exact:true}).count(),0);await act('floor','4');await fill('rn',roomNo);await submit('room-form');await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Room added');await act('go','home');
   await page.getByRole('button',{name:new RegExp('Select room. Now showing Room '+roomNo)}).waitFor();
   const [[room]]=await pool.query('SELECT id FROM rooms WHERE room_no=?',[roomNo]);assert(room);
-  await act('pickRoom');await page.getByRole('button',{name:'Edit Room '+roomNo,exact:true}).click();
+  await act('pickRoom');assert.equal(await page.locator('[data-act="editRoom"]').count(),0);await close();
+  await act('go','settings');await page.locator('#config-room').selectOption(String(room.id));await act('editRoom',String(room.id));
   const groups=page.locator('.device-editor');
   await groups.nth(0).locator('[data-device="label"]').fill('LED A');
   await groups.nth(0).locator('[data-device="quantity"]').fill('2');
@@ -83,7 +116,7 @@ let server,browser;
   await page.screenshot({path:'/tmp/safezone-room-devices.png'});
   await page.locator('.device-editor').nth(1).screenshot({path:'/tmp/safezone-exhaust-fan-editor.png'});
   await fill('rn',editedRoomNo);await close();
-  await act('go','settings');await page.getByRole('region',{name:'Current rooms',exact:true}).waitFor();await act('editRoom',String(room.id));
+  await act('go','settings');await page.getByRole('region',{name:'Room configuration',exact:true}).waitFor();await page.locator('#config-room').selectOption(String(room.id));await act('editRoom',String(room.id));
   assert.equal(await page.locator('.device-editor').count(),3);
   assert.equal(await page.locator('#rn').inputValue(),String(editedRoomNo));
   await submit('room-form');await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Room updated');
