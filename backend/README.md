@@ -2,7 +2,7 @@
 
 The API behind the app. It handles accounts, login, forgot password (by email), rooms, limits,
 the SMS list and alerts, and stores everything in MySQL.
-It needs the database from `../database` to be set up first, including `04-shared-simulations.sql`. Existing users should run only that new SQL file in phpMyAdmin as the database administrator.
+It needs the database from `../database` to be set up first, including migrations `04-shared-simulations.sql`, `05-electricity-usage.sql` and `06-room-devices.sql`, in order. Existing users with shared simulations already installed should back up the database and run only 05 and 06 in phpMyAdmin as the database administrator. Keep the existing `.env`.
 
 ## Set it up (Windows)
 

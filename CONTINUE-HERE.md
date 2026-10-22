@@ -5,8 +5,8 @@ This update connects the existing frontend to the uploaded Node.js/MySQL backend
 ## Update your existing Windows project
 
 1. Back up your current project. Copy this update's `backend` and `www` files into the matching folders. **Keep your own `backend/.env`**; no private configuration is included in this update.
-2. Start MySQL in XAMPP. Keep your existing `safezone` database and admin account. You do not need to recreate the database or run the SQL again if it is already set up.
-3. In phpMyAdmin, open the SQL tab and run the complete contents of `database/04-shared-simulations.sql` once as the database administrator. It adds the shared-demo table without replacing existing accounts or rooms. Then, in a terminal inside `backend`, run `npm ci`, then `npm run check-db`.
+2. Start MySQL in XAMPP. Keep your existing `safezone` database and admin account. Do not recreate the database or rerun the original setup/seed files.
+3. In phpMyAdmin, open the SQL tab and run `database/05-electricity-usage.sql`, then `database/06-room-devices.sql` as the database administrator. If shared simulations were never installed, run `database/04-shared-simulations.sql` first. These migrations preserve existing accounts and rooms. Then, in a terminal inside `backend`, run `npm ci`, then `npm run check-db`.
 4. Run `npm start`. Open `http://localhost:3000` on your Windows computer. This serves both the app and `/api/health`. Use this address instead of Live Server for this version.
 5. Log in with the admin account you previously created using `npm run create-admin`. The old frontend-only `admin / safezone` demo account no longer grants access. Accounts previously registered only in browser storage are not automatically migrated; register them on the server.
 6. Test student registration and login, admin Settings, Rooms, SMS Alerts, Manage Users, and Account Settings. Saving a password now requires the current password. Old sessions are revoked by the backend when passwords change.

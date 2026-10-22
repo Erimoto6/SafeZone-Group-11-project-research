@@ -35,6 +35,7 @@ async function login(page, role, identifier) {
   const [settings] = await pool.query("SELECT * FROM settings WHERE setting_key='fan_trigger'");
   const [modes] = await pool.query('SELECT id,vent_mode FROM rooms');
   const [originalState] = await pool.query('SELECT * FROM simulation_state');
+  const [originalUsage] = await pool.query('SELECT * FROM electricity_usage');
   const [[alertMark]] = await pool.query('SELECT COALESCE(MAX(id),0) AS id FROM alerts');
   try {
     server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
@@ -132,7 +133,9 @@ async function login(page, role, identifier) {
     if (browser) await browser.close();
     await pool.query('DELETE FROM alerts WHERE id>? AND title LIKE \'Demo: %\'', [alertMark.id]);
     await pool.query('DELETE FROM simulation_state');
+    await pool.query('DELETE FROM electricity_usage');
     for (const row of originalState) await pool.query('INSERT INTO simulation_state SET ?', [row]);
+    for (const row of originalUsage) await pool.query('INSERT INTO electricity_usage SET ?', [row]);
     for (const id of madeRooms) await pool.query('DELETE FROM rooms WHERE id=?', [id]);
     for (const t of thresholds) await pool.query('UPDATE thresholds SET warn_value=?,limit_value=?,updated_by=? WHERE metric=?', [t.warn_value,t.limit_value,t.updated_by,t.metric]);
     if (settings[0]) await pool.query("UPDATE settings SET setting_value=? WHERE setting_key='fan_trigger'", [settings[0].setting_value]);

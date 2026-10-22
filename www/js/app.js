@@ -72,7 +72,7 @@ const S = {
   draftTrigger: 'exceeded',
   limits: JSON.parse(JSON.stringify(DEFAULT_LIMITS)),
   alerts: [],
-  simScope: 'current', simSelected: [], syncError: '',
+  simScope: 'current', simSelected: [], syncError: '', editingRoomId: null,
   pendingDel: '',             // two-tap delete: remembers which Remove? button was tapped once
   addFloor: 2,                // floor chosen in the Add Room form
   reset: null,                // forgot-password progress: { side, email, code, exp, tries, ... }
@@ -115,7 +115,7 @@ async function api(path, method = 'GET', body) {
       method, headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(requestToken ? { Authorization: 'Bearer ' + requestToken } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)
     });
-  } catch { throw new Error('Cannot reach the server. Check your connection and try again.'); }
+  } catch { throw new Error(navigator.onLine===false?'No network connection. Reconnect to Wi-Fi or mobile data and try again.':'Cannot reach the SafeZone server. Check the backend address and network connection, then try again.'); }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401 && token === requestToken && token && path !== '/auth/change-password') {
@@ -126,6 +126,7 @@ async function api(path, method = 'GET', body) {
   return data;
 }
 function signOut() {
+  captureEnabled=false; formDrafts.clear(); settingsDraft=null; settingsDirty=false;
   token = ''; sessionStorage.removeItem('safezone.token');
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
   newestAlertId = null; S.syncError = ''; S.simSelected = []; S.simScope = 'current';
@@ -176,7 +177,7 @@ const levelOf = (k, v) => { const t = S.limits[k]; return v >= t.limit ? 'exceed
 const worst = () => Math.max(...KEYS.map(k => RANK[S.levels[k]]));
 const worstName = () => ['normal', 'warning', 'exceeded'][worst()];
 const hashStr = x => { let h = 7; for (const c of String(x)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
-const wattsText = w => Math.round(w).toLocaleString('en-US') + ' W';
+const energyText = value => Number(value || 0).toFixed(4) + ' kWh';
 const ord = n => { const v = n % 100; return n + ((v >= 11 && v <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] || 'th'); };
 const floorName = f => ord(f) + ' Floor';
 const floorList = () => Array.from({ length: Math.max(FLOORS, ...S.rooms.map(r => r.floor || 1)) }, (_, i) => i + 1);
@@ -271,7 +272,8 @@ function applyShared(shared, alerts) {
       S.rooms.push(room);
     }
     Object.assign(room, { name: state.name, floor: state.floor, lights: state.lights, lightWatts: state.wattsPerLight, fanWatts: state.fanWatts });
-    room.reading = state.reading; room.levels = state.levels;
+    room.reading = state.reading; room.levels = state.levels; room.electricity = state.electricity;
+    room.devices = state.devices || []; room.lightsOn = state.lightsOn;
     room.vent = { mode: state.ventMode, on: state.fanOn }; room.scenario = state.scenario;
     if (room.buf.t[room.buf.t.length - 1] !== state.updatedAt) {
       room.buf.t.push(state.updatedAt);
@@ -342,12 +344,6 @@ function makeRoom(cfg) {
   return r;
 }
 
-// Watts in use. With a real power meter, "total" comes from the meter.
-function power(r) {
-  const lights = r.lightsOn * r.lightWatts, fan = r.vent.on ? r.fanWatts : 0, other = r.other;
-  return { lights, fan, other, total: lights + fan + other };
-}
-
 /* ---------- history (synthetic; replace with an API call) ---------- */
 const RANGES = { '6h': { n: 36, step: 10 * 60e3 }, '24h': { n: 48, step: 30 * 60e3 }, '7d': { n: 56, step: 3 * 3600e3 } };
 function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -398,18 +394,18 @@ const legend = k => `<div class="legend"><span><i style="color:#E5B800"></i>Warn
    VIEWS
    ===================================================================== */
 const LIVE = new Set(['home', 'alerts', 'monitor', 'status']);
-const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About' };
+const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users' };
 
 function nav() {
   const items = S.role === 'admin'
     ? [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['status', 'Devices', 'device'], ['settings', 'Settings', 'sliders']]
     : [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['about', 'About', 'info']];
   return `<nav class="nav" style="--n:${items.length}" aria-label="Main">${items.map(([id, label, ic]) =>
-    `<button data-act="go" data-v="${id}" ${S.screen === id ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
+    `<button data-act="go" data-v="${id}" ${(S.screen === id || (S.screen === 'users' && id === 'settings')) ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
 }
 
 function topbar() {
-  const home = S.screen === 'home'; const back = S.screen === 'about' && S.role === 'admin' ? 'settings' : 'home';
+  const home = S.screen === 'home'; const back = ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
   return `<header class="topbar">${home
     ? `${logo(34)}<h1>SafeZone</h1>`
     : `<button data-act="go" data-v="${back}" aria-label="Back to ${back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
@@ -426,12 +422,12 @@ function sensorCard(k) {
 function ventCard(control) {
   const on = S.vent.on; const auto = S.vent.mode === 'auto'; const admin = S.role === 'admin';
   const foot = control && admin
-    ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Ventilation fan" data-act="toggleVent"><span></span></button>
+    ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Exhaust fan" data-act="toggleVent"><span></span></button>
        ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
     : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>
        ${admin ? '<button class="linkbtn" data-act="toMonitor">Control in Monitoring</button>' : ''}`;
-  return `<article class="card sensor"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Ventilation</div>
-    <div class="s-val">${on ? 'ON' : 'OFF'}</div>${foot}</article>`;
+  return `<article class="card sensor"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Exhaust fan</div>
+    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p>${foot}</article>`;
 }
 
 function cards(control = false) { return `<div class="grid2">${sensorCard('temp')}${sensorCard('hum')}${sensorCard('co2')}${ventCard(control)}</div>`; }
@@ -441,7 +437,7 @@ function banner() {
   const map = {
     normal: ['leaf', 'Environment Healthy', 'Good air quality and safe conditions.'],
     warning: ['alert', 'Readings Rising', 'One or more readings are near the set limit.'],
-    exceeded: ['alert', 'Danger: Limit Exceeded', S.vent.on ? 'Ventilation is on and clearing the air.' : 'Ventilation is off. Turn it on or open a window.']
+    exceeded: ['alert', 'Danger: Limit Exceeded', S.vent.on ? 'The exhaust fan is on and clearing the air.' : 'The exhaust fan is off. Turn it on or open a window.']
   }[w];
   return `<div class="banner ${w}" role="status">${I[map[0]]}<div><b>${map[1]}</b><span>${map[2]}</span></div></div>`;
 }
@@ -449,7 +445,7 @@ function banner() {
 const liveLine = () => `<div class="live"><i></i>Live, updated ${tSec(new Date(S.lastUpdate))}</div>`;
 
 // "Select Room" dropdown. Admins also get the Add Room button.
-function roomBar() {
+function roomBar(allowAdd = false) {
   const admin = S.role === 'admin'; const r = cur();
   if (S.rooms.length < 2 && !admin) return '';
   return `<div class="roombar">
@@ -457,22 +453,22 @@ function roomBar() {
       <span class="rp-ico">${I.building}</span>
       <span class="rp-txt"><small>Select Room, ${floorName(r.floor)}</small><b>${esc(r.name)}</b></span>
       <i class="rdot ${roomLevel(r)}"></i><span class="rp-chev">${I.chevd}</span></button>
-    ${admin ? `<button class="addroom" data-act="addRoom" aria-label="Add room"><span class="plus">${I.plus}</span><small>Add Room</small></button>` : ''}
+    ${admin && allowAdd ? `<button class="addroom" data-act="addRoom" aria-label="Add room"><span class="plus">${I.plus}</span><small>Add Room</small></button>` : ''}
   </div>`;
 }
 
 function powerCard(compact) {
-  const r = cur(); const p = power(r);
+  const r = cur(); const e = r.electricity || { totalKwh: 0, lightsKwh: 0, fanKwh: 0 };
   if (compact) {
-    return `<button class="card power compact" data-act="toMonitor" aria-label="Power in use, open monitoring"><span class="ico ico-pow">${I.bolt}</span>
-      <div><b>${wattsText(p.total)}</b><span>Power in use. ${r.lightsOn} of ${r.lights} lights on.</span></div><span class="chev" style="margin-left:auto">${I.chev}</span></button>`;
+    return `<button class="card power compact" data-act="toMonitor" aria-label="Electricity, open monitoring"><span class="ico ico-pow">${I.bolt}</span>
+      <div><b>${energyText(e.totalKwh)}</b><span>Electricity · accumulated estimate</span></div><span class="chev" style="margin-left:auto">${I.chev}</span></button>`;
   }
-  return `<article class="card power"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Power usage</div>
-    <div class="s-val">${Math.round(p.total).toLocaleString('en-US')}<small>W</small></div>
+  return `<article class="card power"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Electricity</div>
+    <div class="s-val">${Number(e.totalKwh).toFixed(4)}<small>kWh</small></div>
+    <p class="note">Accumulated estimate from configured ratings and simulated operating time.</p>
     <div class="plist">
-      <div>${I.bulb}<span>Lights<small>${r.lightsOn} of ${r.lights} on</small></span><b>${wattsText(p.lights)}</b></div>
-      <div>${I.fan}<span>Ventilation fan<small>${r.vent.on ? 'Running' : 'Off'}</small></span><b>${wattsText(p.fan)}</b></div>
-      <div>${I.device}<span>Other devices<small>Outlets and equipment</small></span><b>${wattsText(p.other)}</b></div>
+      <div>${I.bulb}<span>Lights<small>${r.lightsOn} of ${r.lights} on</small></span><b>${energyText(e.lightsKwh)}</b></div>
+      <div>${I.fan}<span>Exhaust fan<small>${r.vent.on ? 'Running' : 'Off'}</small></span><b>${energyText(e.fanKwh)}</b></div>
     </div></article>`;
 }
 
@@ -480,9 +476,9 @@ function legendCard() {
   const warnFan = S.fanTrigger === 'warning';
   return `<section class="card legend-card"><h3>Status colors</h3>
     <div class="lg"><i class="dot normal"></i><div><b>Green: Normal</b><span>Readings are within the set limits.</span></div></div>
-    <div class="lg"><i class="dot warning"></i><div><b>Yellow: Warning</b><span>Near the limit. SMS delivery is not connected.${warnFan ? ' Ventilation turns ON.' : ''}</span></div></div>
-    <div class="lg"><i class="dot exceeded"></i><div><b>Red: Danger</b><span>Limit exceeded. SMS delivery is not connected.${warnFan ? ' Ventilation stays ON.' : ' Ventilation turns ON.'}</span></div></div>
-    <p class="legend-foot">In automatic mode, ventilation turns OFF again when every reading is green.</p></section>`;
+    <div class="lg"><i class="dot warning"></i><div><b>Yellow: Warning</b><span>Near the limit. SMS delivery is not connected.${warnFan ? ' The exhaust fan turns ON.' : ''}</span></div></div>
+    <div class="lg"><i class="dot exceeded"></i><div><b>Red: Danger</b><span>Limit exceeded. SMS delivery is not connected.${warnFan ? ' The exhaust fan stays ON.' : ' The exhaust fan turns ON.'}</span></div></div>
+    <p class="legend-foot">In automatic mode, the exhaust fan turns OFF again when every reading is green.</p></section>`;
 }
 
 function homeView() {
@@ -490,12 +486,12 @@ function homeView() {
   const head = S.role === 'admin'
     ? `<h2>Welcome, Admin!</h2><p class="sub">Here's the current environment in ${room} and the system status.</p>`
     : `<h2>Classroom Environment</h2><p class="sub">Real-time indoor conditions in ${room}.</p>`;
-  return `<p class="note" role="status">Demo sensor readings and fan behavior. Firebase, hardware and SMS delivery are not connected.</p>${head}${roomBar()}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
+  return `${head}${roomBar(true)}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
 }
 
 function alertsView() {
   const admin = S.role === 'admin';
-  const filters = admin ? [['all', 'All'], ['message', 'Message'], ['exceeded', 'Danger'], ['system', 'System']] : [['all', 'All'], ['exceeded', 'Danger'], ['system', 'System']];
+  const filters = [['all', 'All'], ['message', 'Message'], ['exceeded', 'Danger'], ['system', 'System']];
   const list = S.alerts.filter(a => S.alertFilter === 'all' || a.cats.includes(S.alertFilter));
   return `<div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id, l]) => `<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter === id}">${l}</button>`).join('')}</div>
     ${list.length ? list.map(a => `<article class="alert ${a.type}"><span class="dot ${a.type}"></span><div><b>${esc(a.title)}</b><p>${esc(a.body)}</p><time>${when(a.ts)}</time>${a.room ? `<span class="tag room">${esc(a.room)}</span>` : ''}${admin && a.sms ? '<span class="tag">SMS sent</span>' : ''}</div></article>`).join('')
@@ -511,8 +507,8 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `${seg}${roomBar()}${cards(true)}${powerCard(false)}${metricChips()}
-      <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label} (${m.unit})</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
+    return `${seg}${roomBar()}${ventCard(true)}${powerCard(false)}${metricChips()}
+      <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
   }
   const r = S.mon.range; const h = history(k, r); h.vals = h.vals.map(v => v + cur().off[k]);
@@ -525,20 +521,14 @@ function monitorView() {
     <p class="note">${over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
 }
 
+const DEVICE_NAMES = {light:'Light',exhaust_fan:'Exhaust fan',esp32:'ESP32 controller',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
+const FAN_NAMES = {unspecified:'Not specified',wall:'Wall-mounted',window:'Window-mounted',ceiling:'Ceiling-mounted',inline:'Inline duct'};
 function statusView() {
-  const r = S.reading;
-  const row = (ic, name, sub, st = 'Online') => `<div class="row"><span class="r-ico">${I[ic]}</span><div class="r-txt"><b>${name}</b><span>${sub}</span></div><span class="pill">${st}</span></div>`;
-  return `<h2>All devices online</h2><p class="sub">Connection and sensor health for ${esc(cur().name)}.</p>${roomBar()}${liveLine()}
-    <div class="list">
-      ${row('cpu', 'ESP32 Controller', 'Sending readings every 2 seconds')}
-      ${row('thermo', 'Temperature Sensor', withUnit('temp', r.temp))}
-      ${row('drop', 'Humidity Sensor', withUnit('hum', r.hum))}
-      ${row('cloud', 'CO₂ Sensor', withUnit('co2', r.co2))}
-      ${row('fan', 'Exhaust Fan', S.vent.on ? 'Running' : 'Standing by', S.vent.on ? 'Active' : 'Idle')}
-      ${row('wifi', 'Wi-Fi Connection', 'SafeZone_Network', 'Connected')}
-      ${row('sms', 'SMS Module', 'Ready to send alerts', 'Ready')}
-      ${row('bolt', 'Power Meter', wattsText(power(cur()).total), 'Online')}
-    </div>`;
+  const devices = cur().devices || [];
+  return `<h2>Room devices</h2><p class="sub">Configured devices for ${esc(cur().name)}.</p>${roomBar()}
+    <div class="list">${devices.map(d => `<div class="row"><span class="r-ico">${I[d.type === 'light' ? 'bulb' : d.type === 'exhaust_fan' ? 'fan' : 'device']}</span>
+      <div class="r-txt"><b>${esc(d.label)}</b><span>${d.quantity} × ${esc(DEVICE_NAMES[d.type])}${d.type === 'exhaust_fan' ? ' · ' + esc(FAN_NAMES[d.fanType] || 'Not specified') : ''}${d.wattsPerDevice ? ' · ' + d.wattsPerDevice + ' W each' : ''}</span></div>
+      <span class="pill">${d.type === 'exhaust_fan' ? (S.vent.on ? 'Running' : 'Off') : d.type === 'light' ? d.activeQuantity + ' on' : 'Configured'}</span></div>`).join('') || '<p class="empty">No devices configured.</p>'}</div>`;
 }
 
 function limitBlock(k, hint) {
@@ -556,9 +546,9 @@ function settingsView() {
       <button class="row" data-act="users"><span class="r-ico">${I.users}</span><div class="r-txt"><b>Manage Users</b><span>Admins and registered accounts</span></div><span class="chev">${I.chev}</span></button>
       <button class="row" data-act="account"><span class="r-ico">${I.user}</span><div class="r-txt"><b>Account Settings</b><span>Username and password</span></div><span class="chev">${I.chev}</span></button>
     </div>
-    <p class="section-label">Rooms and alerts</p>
+    ${roomBar()}
+    <p class="section-label">Alerts</p>
     <div class="list">
-      <button class="row" data-act="addRoom"><span class="r-ico">${I.home}</span><div class="r-txt"><b>Rooms</b><span>Add or remove rooms to monitor</span></div><span class="chev">${I.chev}</span></button>
       <button class="row" data-act="sms"><span class="r-ico">${I.sms}</span><div class="r-txt"><b>SMS Alerts</b><span>Name, role and mobile number of each recipient</span></div><span class="chev">${I.chev}</span></button>
     </div>
     <p class="section-label">Help</p>
@@ -570,7 +560,7 @@ function settingsView() {
       ${limitBlock('temp', 'Set the warning and limit')}
       ${limitBlock('hum', 'Set the warning and limit')}
       ${limitBlock('co2', 'Set the warning and limit')}
-      <div class="row"><span class="r-ico">${I.fan}</span><div class="r-txt"><b>Ventilation Control</b><span>Automatic or manual, for all rooms</span></div>
+      <div class="row"><span class="r-ico">${I.fan}</span><div class="r-txt"><b>Exhaust fan control</b><span>Automatic or manual, for all rooms</span></div>
         <button class="switch" role="switch" id="draft-auto" aria-checked="${S.draftAuto}" aria-label="Automatic ventilation" data-act="draftAuto"><span></span></button></div>
       <div class="row" style="flex-wrap:wrap"><span class="r-ico">${I.fan}</span><div class="r-txt"><b>Turn fan on at</b><span>When automatic ventilation starts</span></div>
         <div class="mini-chips opt2" role="group" aria-label="Turn fan on at" style="flex-basis:100%;margin:0">
@@ -635,7 +625,7 @@ function aboutView() {
   const features = admin ? `<ul>
       <li><b>Admin dashboard:</b> readings, status and power use for each room, with the system status.</li>
       <li><b>Rooms:</b> add a room with the + button. The number follows the floor, such as 101, 201, 301 or 401. Remove rooms in Settings.</li>
-      <li><b>Ventilation control:</b> turn the fan on or off in Monitoring, or leave it in Automatic mode. Choose whether it starts at yellow or red.</li>
+      <li><b>Exhaust fan control:</b> turn the fan on or off in Monitoring, or leave it in Automatic mode. Choose whether it starts at yellow or red.</li>
       <li><b>Thresholds:</b> set the warning and limit for temperature, humidity and CO₂.</li>
       <li><b>SMS Alerts:</b> choose who receives texts, with name, role and mobile number. Switch people on or off, edit or remove them.</li>
       <li><b>Manage Users:</b> see admin and registered accounts, and add other admins.</li>
@@ -645,9 +635,9 @@ function aboutView() {
   : `<ul>
       <li><b>Real-time readings:</b> temperature, humidity and CO₂ for the room you choose.</li>
       <li><b>Room status:</b> green, yellow and red indicators show the room's condition.</li>
-      <li><b>Ventilation status:</b> see whether the exhaust fan is running, and whether it is in Automatic or Manual mode.</li>
+      <li><b>Exhaust fan status:</b> see whether the exhaust fan is running, and whether it is in Automatic or Manual mode.</li>
       <li><b>Room selection:</b> pick a room by floor.</li>
-      <li><b>Power usage:</b> watts in use and how many lights are on.</li>
+      <li><b>Electricity:</b> accumulated estimated energy in kWh for lights and exhaust fans.</li>
       <li><b>History:</b> charts for the last 6 hours, 24 hours or 7 days.</li>
       <li><b>Alerts:</b> warnings, danger alerts and system messages, tagged by room.</li>
       <li><b>SMS alerts:</b> your registered mobile number gets a text at Warning or Danger.</li>
@@ -663,8 +653,8 @@ function aboutView() {
 }
 
 function shell() {
-  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView };
-  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}"><p class="note">Readings and fan behavior are shared server simulations. Charts/history and device status are simulated. Hardware and SMS delivery are not connected.</p>${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
+  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView };
+  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
 }
 
 function splashView() {
@@ -875,11 +865,59 @@ function fpDoneView() {
   </div></div>`;
 }
 
+const formDrafts = new Map();
+let captureEnabled = true, settingsDirty = false, settingsDraft = null;
+const formKey = form => form.dataset.draftKey || form.id;
+function readDeviceRows() {
+  return Array.from(document.querySelectorAll('.device-editor'), row => ({
+    type:row.querySelector('[data-device="type"]').value,
+    label:row.querySelector('[data-device="label"]').value,
+    quantity:Number(row.querySelector('[data-device="quantity"]').value),
+    activeQuantity:Number(row.querySelector('[data-device="activeQuantity"]').value),
+    wattsPerDevice:Number(row.querySelector('[data-device="wattsPerDevice"]').value),
+    fanType:row.querySelector('[data-device="fanType"]').value
+  }));
+}
+function captureDrafts() {
+  if (!captureEnabled) return;
+  document.querySelectorAll('form[id]').forEach(form => {
+    if(form.dataset.dirty!=='1' && !formDrafts.has(formKey(form)))return;
+    const values=Array.from(form.querySelectorAll('input,select,textarea'),(el,index)=>({key:el.id || el.name || String(index),value:el.value,checked:el.checked}));
+    formDrafts.set(formKey(form),{values,devices:form.id==='room-form'?readDeviceRows():undefined,floor:form.id==='room-form'?S.addFloor:undefined});
+  });
+  if (settingsDirty && $('#temp-warn')) settingsDraft={
+    values:KEYS.flatMap(k=>['warn','limit'].map(part=>({id:k+'-'+part,value:$('#'+k+'-'+part).value}))),
+    trigger:S.draftTrigger,auto:S.draftAuto
+  };
+}
+function restoreDrafts() {
+  document.querySelectorAll('form[id]').forEach(form => {
+    const draft=formDrafts.get(formKey(form)); if(!draft)return;
+    form.dataset.dirty='1';
+    Array.from(form.querySelectorAll('input,select,textarea')).forEach((el,index)=>{
+      const value=draft.values.find(v=>v.key===(el.id || el.name || String(index)));
+      if(value){el.value=value.value;if(el.type==='checkbox')el.checked=value.checked;}
+    });
+  });
+  if($('#rp') && $('#rules')){
+    const checks=pwRules($('#rp').value);
+    $('#rules').querySelectorAll('li').forEach((el,index)=>el.classList.toggle('ok',checks[index][1]));
+  }
+  if(settingsDraft && $('#temp-warn')){
+    settingsDraft.values.forEach(v=>{$('#'+v.id).value=v.value;});
+    S.draftTrigger=settingsDraft.trigger;S.draftAuto=settingsDraft.auto;
+    document.querySelectorAll('[data-act="trigger"]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.v===S.draftTrigger)));
+    $('#draft-auto').setAttribute('aria-checked',String(S.draftAuto));
+  }
+}
+
 function render() {
+  captureDrafts();
   const view = $('#view'); const prev = $('#screen');
   const top = prev && prev.dataset.s === S.screen ? prev.scrollTop : 0;
   const AUTH = { splash: splashView, login: loginView, fReg: fRegView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpEmail: fpEmailView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
   view.innerHTML = AUTH[S.screen] ? AUTH[S.screen]() : shell();
+  restoreDrafts(); captureEnabled=true;
   const sc = $('#screen'); if (sc) sc.scrollTop = top;
 }
 
@@ -892,23 +930,37 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 function openSheet(title, html) {
+  captureDrafts();
   const prev = $('#sheet-root .sheet'); const keep = prev && prev.getAttribute('aria-label') === title ? prev.scrollTop : 0;
   $('#sheet-root').innerHTML = `<div class="overlay" data-act="closeSheet" data-overlay="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="grab"></div>
     <div class="sheet-head"><h2>${esc(title)}</h2><button class="x" data-act="closeSheet" aria-label="Close">${I.x}</button></div>${html}</div></div>`;
+  restoreDrafts();
   const sh = $('#sheet-root .sheet'); if (sh) { sh.setAttribute('tabindex', '-1'); sh.focus({ preventScroll: true }); sh.scrollTop = keep; }
 }
-const closeSheet = () => { $('#sheet-root').innerHTML = ''; };
+const closeSheet = () => { captureDrafts(); $('#sheet-root').innerHTML = ''; };
 
-function usersSheet() {
-  const admins = S.accounts.filter(a => a.role === 'admin'); const viewers = S.accounts.filter(a => a.role === 'viewer');
-  const mine = S.me ? S.me.username : '';
-  openSheet('Manage Users', `<p class="section-label" style="margin-top:0">Admins (${admins.length})</p>
-    <div class="list">${admins.map(a => `<div class="user-row"><div><b>${esc(a.name)}</b><span>@${esc(a.username)}, ${esc(showPhone(a.phone))}</span>${a.email ? `<span style="display:block">${esc(a.email)}</span>` : ''}</div>${a.username === mine ? '<span class="pill">You</span>' : ''}</div>`).join('')}</div>
-    <p class="section-label">Student / Faculty accounts (${viewers.length})</p>
-    <div class="list">${viewers.length ? viewers.map(v => `<div class="user-row"><div><b>${esc(showPhone(v.phone))}</b><span>${esc(v.email || 'No web mail yet')}</span></div></div>`).join('') : '<p class="empty">No one has registered yet.</p>'}</div>
+function usersView() {
+  if (S.role !== 'admin') return '<p class="empty">Admin access is required.</p>';
+  const admins = S.accounts.filter(a => a.role === 'admin');
+  const students = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'student');
+  const faculty = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'faculty');
+  const table = (title, people, admin = false) => {
+    const headers = admin ? ['Name', 'Username', 'Email', 'Mobile number'] : ['Email', 'Mobile number'];
+    const rows = people.map(a => {
+      const cells = admin ? [a.name, a.username, a.email, showPhone(a.phone)] : [a.email, showPhone(a.phone)];
+      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}</tr>`;
+    }).join('');
+    return `<section class="users-group"><div class="users-table-scroll" role="region" aria-label="${title} table" tabindex="0">
+      <table class="users-table"><caption>${title} (${people.length})</caption>
+        <thead><tr>${headers.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">No ${title.toLowerCase()} accounts yet.</td></tr>`}</tbody>
+      </table></div></section>`;
+  };
+  return `<p class="sub">Registered accounts, grouped by role. Scroll each table sideways to see all columns.</p>
+    ${table('Admins', admins, true)}${table('Faculty', faculty)}${table('Students', students)}
     <p class="note">Who gets SMS alerts is set in Settings, under SMS Alerts.</p>
     <p class="section-label">Add another admin</p>
-    <p class="note" style="margin:0 4px 10px">Give someone else admin access. They log in with the username and password you set here, and can change the password later in Account Settings.</p>
+    <p class="note">Create an account for another administrator. They can change their password in Account Settings.</p>
     <form id="admin-form" class="stack" autocomplete="off" novalidate>
       ${textField('user', 'an', 'Full name', 'text', 'autocomplete="off"')}
       ${textField('user', 'au', 'Username', 'text', 'autocapitalize="none" autocomplete="off"')}
@@ -917,7 +969,7 @@ function usersSheet() {
       ${pwField('rp', 'Password for the new admin', 'new-password')}
       ${rulesList()}
       <button class="btn small" type="submit">Add admin</button>
-    </form>`);
+    </form>`;
 }
 
 // SMS Alerts: who gets a text. Each person has a name, a role and a mobile number.
@@ -950,37 +1002,48 @@ function pickSheet() {
   const admin = S.role === 'admin'; const now = cur().id;
   openSheet('Select Room', floorList().map(f => {
     const rooms = roomsOn(f);
-    return `<div class="floor"><div class="floor-head"><b>${floorName(f)}</b>${admin ? `<button class="linkbtn" data-act="addRoom" data-v="${f}">+ Add room</button>` : ''}</div>
+    return `<div class="floor"><div class="floor-head"><b>${floorName(f)}</b></div>
       ${rooms.length ? rooms.map(r => `<button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>`).join('') : '<p class="floor-empty">No rooms yet</p>'}</div>`;
   }).join(''));
 }
 
-// Rooms: add a room to any floor, or remove one.
+// A single Home entry point manages room information and device groups.
+function defaultDevices() { return [
+  {type:'light',label:'Lights',quantity:8,activeQuantity:6,wattsPerDevice:18,fanType:'unspecified'},
+  {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
+]; }
+function deviceRows(devices) {
+  return devices.map((d,i)=>`<fieldset class="device-editor" data-index="${i}"><legend>Device group ${i+1}</legend>
+    <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
+    <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(d.label)}" maxlength="100"></label>
+    <div class="fields3"><label class="f">Quantity<input data-device="quantity" name="device-${i}-quantity" type="number" min="1" max="100" value="${d.quantity}"></label>
+    <label class="f" data-powered ${!['light','exhaust_fan'].includes(d.type)?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
+    <label class="f" data-light ${d.type!=='light'?'hidden':''}>Lights on<input data-device="activeQuantity" name="device-${i}-active" type="number" min="0" value="${d.activeQuantity}"></label></div>
+    <label class="f" data-fan ${d.type!=='exhaust_fan'?'hidden':''}>Exhaust fan type<select data-device="fanType" name="device-${i}-fan">${Object.entries(FAN_NAMES).map(([key,name])=>`<option value="${key}" ${key===(d.fanType||'unspecified')?'selected':''}>${name}</option>`).join('')}</select></label>
+    <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device group</button></fieldset>`).join('');
+}
 function roomsSheet() {
-  const f0 = S.addFloor || 1; const sug = nextRoomNumber(f0);
-  const groups = floorList().map(f => {
-    const rooms = roomsOn(f); if (!rooms.length) return '';
-    return `<p class="section-label" style="margin:14px 4px 6px">${floorName(f)}</p><div class="list">${rooms.map(r => {
-      const armed = S.pendingDel === 'room:' + r.id;
-      return `<div class="user-row"><div><b>${esc(r.name)}</b><span>${r.lights} lights at ${r.lightWatts} W, fan ${r.fanWatts} W</span></div>
-        <button class="x del ${armed ? 'armed' : ''}" data-act="roomDel" data-v="${r.id}" aria-label="Remove ${esc(r.name)}">${armed ? 'Remove?' : I.trash}</button></div>`;
-    }).join('')}</div>`;
+  const edit=S.rooms.find(r=>r.id===S.editingRoomId), key='room:'+(edit?edit.id:'new');
+  const draft=formDrafts.get(key), devices=draft?.devices || (edit?edit.devices:defaultDevices());
+  const floor=draft?.floor ?? (edit?edit.floor:S.addFloor||1);
+  const groups=floorList().map(f=>{
+    const rooms=roomsOn(f);if(!rooms.length)return '';
+    return `<p class="section-label">${floorName(f)}</p><div class="list">${rooms.map(r=>`<div class="user-row"><div><b>${esc(r.name)}</b><span>${(r.devices||[]).reduce((n,d)=>n+d.quantity,0)} configured devices</span></div>
+      <button class="x" data-act="editRoom" data-v="${r.id}" aria-label="Edit ${esc(r.name)}">${I.edit}</button>
+      <button class="x del" data-act="roomDel" data-v="${r.id}" aria-label="Remove ${esc(r.name)}">${I.trash}</button></div>`).join('')}</div>`;
   }).join('');
-  openSheet('Rooms', `<p class="section-label" style="margin-top:0">Add a room</p>
-    <form id="room-form" class="stack" autocomplete="off" novalidate>
-      <p class="flabel" style="margin:0">Floor</p>
-      <div class="mini-chips" role="group" aria-label="Floor" style="margin:0">${floorList().map(f => `<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f === f0}">${ord(f)}</button>`).join('')}</div>
-      <div class="field roomno">${I.home}<span class="rpre">Room</span><input type="number" id="rn" value="${sug || ''}" min="${f0 * 100 + 1}" max="${f0 * 100 + 99}" inputmode="numeric" aria-label="Room number"></div>
-      <p class="hint" id="rnhint" style="margin:-4px 2px 0">${floorHint(f0)}</p>
-      <div class="fields3">
-        <label class="f">Lights<input type="number" id="rl" value="${ROOM_DEFAULTS.lights}" min="0" max="100" inputmode="numeric"></label>
-        <label class="f">Watts per light<input type="number" id="rw" value="${ROOM_DEFAULTS.lightWatts}" min="1" step="any" inputmode="decimal"></label>
-        <label class="f">Fan watts<input type="number" id="rf" value="${ROOM_DEFAULTS.fanWatts}" min="0" step="any" inputmode="decimal"></label>
-      </div>
-      <p class="note" style="margin:0">The lights and fan numbers are used for the power display.</p>
-      <button class="btn small" type="submit">Add room</button>
-    </form>
-    <p class="section-label">Current rooms</p>${groups}`);
+  openSheet('Rooms',`<h2>${edit?'Edit '+esc(edit.name):'Add a room'}</h2>
+    <form id="room-form" data-draft-key="${key}" data-room-id="${edit?edit.id:''}" class="stack" novalidate>
+      <p class="flabel">Floor</p><div class="mini-chips" role="group" aria-label="Floor">${floorList().map(f=>`<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f===floor}">${ord(f)}</button>`).join('')}</div>
+      <label class="f">Room number<input type="number" id="rn" aria-label="Room number" value="${edit?roomNo(edit):nextRoomNumber(floor)||''}" min="${floor*100+1}" max="${floor*100+99}"></label>
+      <p class="hint" id="rnhint">${floorHint(floor)}</p>
+      <p class="section-label">Devices</p><p class="note">Add separate light groups for different wattages. Configure exhaust fans separately.</p>
+      <div id="device-groups" class="stack">${deviceRows(devices||[])}</div>
+      <button type="button" class="btn soft small" data-act="addDevice">+ Add device</button>
+      <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
+      ${edit?'<button type="button" class="btn soft small" data-act="newRoom">Back to add room</button>':''}
+    </form><p class="section-label">Current rooms</p>${groups}`);
+  S.addFloor=floor;
 }
 
 function accountSheet() {
@@ -1034,8 +1097,13 @@ const ACTS = {
   smsCancel() { S.pendingDel = ''; smsSheet(); },
   pickRoom() { pickSheet(); },
   room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId = v; store.save(); closeSheet(); render(); } },
-  addRoom(v) { if (S.role !== 'admin') return; S.addFloor = v ? +v : cur().floor; S.pendingDel = ''; roomsSheet(); },
+  addRoom(v) { if(S.role!=='admin')return; S.editingRoomId=null; S.addFloor=v?+v:cur().floor; roomsSheet(); },
+  editRoom(v) { captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
+  newRoom() { captureDrafts();S.editingRoomId=null;roomsSheet(); },
+  addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'light',label:'Light',quantity:1,activeQuantity:1,wattsPerDevice:18,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
+  removeDevice(v) { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.splice(Number(v),1);$('#device-groups').innerHTML=deviceRows(devices); },
   floor(v) {
+    if($('#room-form'))$('#room-form').dataset.dirty='1';
     S.addFloor = +v;
     document.querySelectorAll('[data-act="floor"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
     const rn = $('#rn'); if (rn) { rn.value = nextRoomNumber(S.addFloor) || ''; rn.min = S.addFloor * 100 + 1; rn.max = S.addFloor * 100 + 99; }
@@ -1045,8 +1113,8 @@ const ACTS = {
     S.theme = effectiveDark() ? 'light' : 'dark'; applyTheme(); store.save();
     if ($('#sheet-root .sheet')) ACTS.menu(); else render();
   },
-  trigger(v) { S.draftTrigger = v; document.querySelectorAll('[data-act="trigger"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); },
-  draftAuto(v, el) { S.draftAuto = !S.draftAuto; el.setAttribute('aria-checked', S.draftAuto); },
+  trigger(v) { settingsDirty=true; S.draftTrigger = v; document.querySelectorAll('[data-act="trigger"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); },
+  draftAuto(v, el) { settingsDirty=true; S.draftAuto = !S.draftAuto; el.setAttribute('aria-checked', S.draftAuto); },
   async sim(v) {
     const selected = S.simScope === 'all' ? { allRooms: true } : {
       roomIds: S.simScope === 'selected' ? S.simSelected.map(Number) : [Number(S.roomId)]
@@ -1066,7 +1134,10 @@ Object.assign(ACTS, {
     render();
   },
   logout() { signOut(); render(); },
-  async users() { await refreshData(); usersSheet(); },
+  async users() {
+    if (S.role !== 'admin') return;
+    await refreshData(); closeSheet(); S.screen = 'users'; render();
+  },
   async sms() { await refreshData(); S.pendingDel = ''; smsSheet(); },
   async smsDel(v) {
     const key = 'sms:' + v;
@@ -1079,11 +1150,15 @@ Object.assign(ACTS, {
     await refreshData(); smsSheet();
   },
   async roomDel(v) {
-    const key = 'room:' + v;
-    if (S.pendingDel !== key) { S.pendingDel = key; roomsSheet(); return; }
-    await api('/rooms/' + encodeURIComponent(v), 'DELETE'); await refreshData();
-    S.pendingDel = ''; roomsSheet(); render(); toast('Room removed');
+    const room=S.rooms.find(r=>r.id===v);if(!room)return;
+    captureDrafts();
+    openSheet('Remove '+room.name+'?',`<p>This will remove ${esc(room.name)}, its devices and accumulated electricity estimate. Alert history will remain without a room link.</p><div class="stack"><button class="btn" data-act="confirmRoomDel" data-v="${v}">Remove ${esc(room.name)}</button><button class="btn soft" data-act="cancelRoomDel">Cancel</button></div>`);
   },
+  async confirmRoomDel(v) {
+    await api('/rooms/'+encodeURIComponent(v),'DELETE');formDrafts.delete('room:'+v);
+    if(S.editingRoomId===v)S.editingRoomId=null;await refreshData();roomsSheet();render();toast('Room removed');
+  },
+  cancelRoomDel() {roomsSheet();},
   async save() {
     const thresholds = {};
     for (const k of KEYS) {
@@ -1092,6 +1167,7 @@ Object.assign(ACTS, {
       thresholds[k] = { warn, limit };
     }
     await api('/settings', 'PUT', { thresholds, fanTrigger: S.draftTrigger, ventMode: S.draftAuto ? 'auto' : 'manual' });
+    settingsDirty=false;settingsDraft=null;
     await refreshData(); render(); toast('Changes saved to the server');
   },
   async toggleVent() {
@@ -1156,14 +1232,19 @@ document.addEventListener('submit', async e => {
       S.resetSide = S.reset.side; S.reset = null; S.authError = ''; S.screen = 'fpDone'; render();
     } else if (id === 'admin-form') {
       await api('/admin/users', 'POST', { fullName: value('an'), username: value('au'), email: value('aem'), phone: value('ap'), password: passwords() });
-      await refreshData(); usersSheet(); toast('Admin account created');
+      await refreshData(); S.screen = 'users'; render(); toast('Admin account created');
     } else if (id === 'sms-form') {
       const edit = Number(form.dataset.edit), person = S.users[edit];
       await api('/sms-recipients' + (person ? '/' + person.id : ''), person ? 'PATCH' : 'POST', { name: value('sn'), role: value('sr'), phone: value('sp') });
       await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient saved');
     } else if (id === 'room-form') {
-      const result = await api('/rooms', 'POST', { floor: S.addFloor, roomNo: Number(value('rn')), lights: Number(value('rl')), wattsPerLight: Number(value('rw')), fanWatts: Number(value('rf')) });
-      await refreshData(); S.roomId = String(result.room.id); closeSheet(); render(); toast('Room added');
+      const roomId=form.dataset.roomId;
+      const result=await api('/rooms'+(roomId?'/'+roomId:''),roomId?'PATCH':'POST',{
+        floor:S.addFloor,roomNo:Number(value('rn')),devices:readDeviceRows()
+      });
+      formDrafts.delete(formKey(form));
+      await refreshData(); S.roomId=String(result.room.id); captureEnabled=false; closeSheet(); render();
+      toast(roomId?'Room updated':'Room added');
     } else if (id === 'email-form') {
       const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
       S.me = mapUser(data.user); toast('Web mail saved');
@@ -1172,6 +1253,8 @@ document.addEventListener('submit', async e => {
       const data = await api('/auth/change-password', 'POST', { currentPassword: value('current-pw'), newPassword: value('np') });
       token = data.token; sessionStorage.setItem('safezone.token', token); closeSheet(); toast('Password updated');
     }
+    formDrafts.delete(formKey(form));
+    const freshForm=document.getElementById(id);if(freshForm && id==='admin-form')freshForm.reset();
   } catch (err) {
     S.authError = err.message; const error = $('#err');
     if (error) error.textContent = err.message; else toast(err.message);
@@ -1180,6 +1263,8 @@ document.addEventListener('submit', async e => {
 
 // Live tick marks on the password rules while typing.
 document.addEventListener('input', e => {
+  if(e.target.form)e.target.form.dataset.dirty='1';
+  if(/^(temp|hum|co2)-(warn|limit)$/.test(e.target.id))settingsDirty=true;
   if (e.target.id !== 'rp') return;
   const ul = $('#rules'); if (!ul) return;
   const res = pwRules(e.target.value);
@@ -1187,6 +1272,14 @@ document.addEventListener('input', e => {
 });
 
 document.addEventListener('change', e => {
+  if(e.target.form)e.target.form.dataset.dirty='1';
+  if(e.target.matches('[data-device="type"]')){
+    const row=e.target.closest('.device-editor'), type=e.target.value;
+    row.querySelector('[data-fan]').hidden=type!=='exhaust_fan';row.querySelector('[data-light]').hidden=type!=='light';
+    row.querySelector('[data-powered]').hidden=!['light','exhaust_fan'].includes(type);
+    row.querySelector('[data-device="label"]').value=DEVICE_NAMES[type];
+    if(type==='exhaust_fan')row.querySelector('[data-device="wattsPerDevice"]').value=40;
+  }
   if (e.target.id === 'sim-scope') {
     S.simScope = e.target.value;
     $('#sim-room-options').hidden = S.simScope !== 'selected';

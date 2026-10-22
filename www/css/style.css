@@ -53,6 +53,20 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 }
 #view{display:flex;flex-direction:column;flex:1;min-height:0}
 
+/* ---------- Manage Users: spreadsheet-style tables ---------- */
+.users-group{margin:18px 0;min-width:0}
+.users-table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);-webkit-overflow-scrolling:touch}
+.users-table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}
+.users-table caption{text-align:left;padding:12px;font-size:15px;font-weight:700;color:var(--ink);background:var(--surface)}
+.users-table th,.users-table td{padding:10px 12px;border-top:1px solid var(--line);border-right:1px solid var(--line);white-space:nowrap}
+.users-table th:last-child,.users-table td:last-child{border-right:0}
+.users-table th{background:var(--surface-2);font-weight:700}
+.users-table tbody tr:nth-child(even){background:var(--surface-2)}
+.users-table tbody tr:hover{background:var(--brand-soft)}
+.device-editor{margin:0;padding:12px;border:1px solid var(--line);border-radius:12px;min-width:0;display:grid;gap:10px;background:var(--surface)}
+.device-editor legend{font-weight:700;padding:0 5px;font-size:13px}
+[hidden]{display:none!important}
+
 /* ---------- Logo slot ---------- */
 .logo{display:inline-block;flex:none;object-fit:contain}
 .logo-empty{border:1.5px dashed var(--muted);border-radius:14px;opacity:.7}

@@ -1,7 +1,7 @@
 # SafeZone database (MySQL)
 
 This folder builds the MySQL database that stores accounts, rooms, limits, the SMS list, alerts and logs.
-(Live temperature, humidity and CO2 readings go to Firebase later, not here.)
+Shared simulated readings are stored here; physical sensor integration is not included.
 
 | Table | What it holds |
 |---|---|
@@ -17,6 +17,8 @@ This folder builds the MySQL database that stores accounts, rooms, limits, the S
 | `device_status` | the Devices screen (ESP32, sensors, fan, Wi-Fi, SMS module, power meter) |
 | `reading_hourly` | optional hourly summaries for charts and reports (for later) |
 | `simulation_state` | shared demo readings, scenario and fan state for each room |
+| `electricity_usage` | accumulated estimated lighting and exhaust fan energy |
+| `room_devices` | configured device groups, quantities, ratings and fan types |
 
 ## Run the setup files, in order
 
@@ -25,9 +27,11 @@ This folder builds the MySQL database that stores accounts, rooms, limits, the S
    phpMyAdmin or Workbench. Do not save it in the file you push to GitHub.
 2. `02-schema.sql` creates the tables.
 3. `03-seed.sql` adds the starting data: limits, Room 101 to 110, and device rows.
-4. `04-shared-simulations.sql` adds the shared demo table. For an existing working database, run **only this new file** as the database administrator; keep existing accounts and configuration.
+4. `04-shared-simulations.sql` adds the shared demo table.
+5. `05-electricity-usage.sql` adds persistent estimated energy totals.
+6. `06-room-devices.sql` adds device groups and converts existing light/fan ratings.
 
-For an existing working database, run only the new step 4. Its `CREATE TABLE IF NOT EXISTS` keeps existing data intact.
+For an existing database with shared simulations installed, back up the database and run **only 05, then 06** as the database administrator. Keep existing accounts, configuration and `.env`; do not rerun the setup/seed files.
 The first admin account is NOT created here. You create it from the backend with `npm run create-admin`.
 
 ### Option A: XAMPP (easiest)
@@ -36,8 +40,8 @@ The first admin account is NOT created here. You create it from the backend with
 2. Open the XAMPP Control Panel and click **Start** next to **MySQL** and **Apache**.
 3. Click **Admin** next to MySQL (or open http://localhost/phpmyadmin).
 4. Click the **SQL** tab, paste the whole content of `01-create-database.sql` (with your password), click **Go**.
-5. Do the same with `02-schema.sql`, then `03-seed.sql`, then `04-shared-simulations.sql`.
-6. Check: on the left you should see `safezone` with 12 tables, and `rooms` has 10 rows.
+5. Do the same with `02-schema.sql`, then `03-seed.sql`, then `04-shared-simulations.sql`, `05-electricity-usage.sql` and `06-room-devices.sql`.
+6. Check: on the left you should see `safezone` with 14 tables, and `rooms` has 10 rows.
 
 XAMPP's database is **MariaDB**, a MySQL-compatible database. These files work on both.
 If your adviser needs the real "MySQL" product, use Option B.
@@ -46,7 +50,7 @@ If your adviser needs the real "MySQL" product, use Option B.
 
 1. Download **MySQL Installer for Windows** from dev.mysql.com. Install **MySQL Server** and **MySQL Workbench**, and set a root password.
 2. Open Workbench, connect as root, then **File > Open SQL Script**, pick `01-create-database.sql`, and click the lightning bolt.
-3. Repeat with `02-schema.sql`, `03-seed.sql` and `04-shared-simulations.sql`.
+3. Repeat with `02-schema.sql`, `03-seed.sql` `04-shared-simulations.sql`, `05-electricity-usage.sql` and `06-room-devices.sql`.
 
 ### Command line (any computer)
 
@@ -54,6 +58,8 @@ If your adviser needs the real "MySQL" product, use Option B.
     mysql -u root -p < 02-schema.sql
     mysql -u root -p < 03-seed.sql
     mysql -u root -p < 04-shared-simulations.sql
+    mysql -u root -p < 05-electricity-usage.sql
+    mysql -u root -p < 06-room-devices.sql
 
 ## Common problems
 

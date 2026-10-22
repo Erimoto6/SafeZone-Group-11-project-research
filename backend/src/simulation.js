@@ -1,6 +1,7 @@
 // Shared demo state lives in MySQL. Only the server advances it, even with no phones open.
 const { pool } = require('./db');
 const { HttpError } = require('./http');
+const inventory = require('./room-devices');
 const KEYS = ['temp', 'hum', 'co2'];
 const BASE = { temp: 27.4, hum: 58, co2: 827 };
 const COOLED = { temp: 26, hum: 54, co2: 600 };
@@ -10,6 +11,7 @@ const level = (value, t) => value >= t.limit ? 'exceeded' : value >= t.warn ? 'w
 
 async function seed(conn) {
   await conn.query('INSERT IGNORE INTO simulation_state (room_id) SELECT id FROM rooms');
+  await conn.query('INSERT IGNORE INTO electricity_usage (room_id) SELECT id FROM rooms');
 }
 async function transaction(fn) {
   const conn = await pool.getConnection();
@@ -20,22 +22,28 @@ async function transaction(fn) {
     return result;
   } catch (e) {
     await conn.rollback();
-    if (e.code === 'ER_NO_SUCH_TABLE') throw new HttpError(503, 'Shared simulations need database/04-shared-simulations.sql. Run it in phpMyAdmin first.');
+    if (e.code === 'ER_NO_SUCH_TABLE') throw new HttpError(503, 'Install the database migrations 04, 05 and 06 from the database folder first.');
     throw e;
   } finally { conn.release(); }
 }
 async function read() {
   return transaction(async conn => {
     await seed(conn);
-    const [rows] = await conn.query(`SELECT s.*, r.vent_mode,r.room_no,r.floor_no,r.lights,r.watts_per_light,r.fan_watts FROM simulation_state s JOIN rooms r ON r.id=s.room_id ORDER BY s.room_id`);
+    const [rows] = await conn.query(`SELECT s.*, r.vent_mode,r.room_no,r.floor_no,r.lights,r.watts_per_light,r.fan_watts,
+      e.lights_kwh,e.fan_kwh,e.operating_ms FROM simulation_state s JOIN rooms r ON r.id=s.room_id
+      JOIN electricity_usage e ON e.room_id=s.room_id ORDER BY s.room_id`);
     const [limits] = await conn.query('SELECT metric,warn_value,limit_value FROM thresholds');
+    const groups = await inventory.load(conn);
     const [[setting]] = await conn.query("SELECT setting_value FROM settings WHERE setting_key='fan_trigger'");
     return { source: 'simulation',
       thresholds: Object.fromEntries(limits.map(t => [t.metric, { warn: Number(t.warn_value), limit: Number(t.limit_value) }])),
       fanTrigger: setting?.setting_value || 'exceeded', rooms: rows.map(s => ({
       id: s.room_id, name: 'Room ' + s.room_no, floor: s.floor_no,
       lights: s.lights, wattsPerLight: s.watts_per_light, fanWatts: s.fan_watts,
+      devices: groups.get(s.room_id) || [],
+      lightsOn: groups.has(s.room_id) ? inventory.totals(groups.get(s.room_id)).lightsOn : Math.round(s.lights*0.75),
       reading: { temp: s.temp, hum: s.hum, co2: s.co2 },
+      electricity: { lightsKwh: s.lights_kwh, fanKwh: s.fan_kwh, totalKwh: s.lights_kwh + s.fan_kwh, operatingMs: Number(s.operating_ms) },
       levels: { temp: s.temp_level, hum: s.hum_level, co2: s.co2_level },
       fanOn: !!s.fan_on, ventMode: s.vent_mode, scenario: s.scenario,
       updatedAt: new Date(s.last_step_at).getTime()
@@ -67,7 +75,7 @@ async function control({ metric, roomIds, allRooms, fanOn }) {
     return { ok: true, affectedRoomIds: ids };
   });
 }
-async function advance(now = Date.now()) {
+async function advance(now = Date.now(), startedAt = now - 2000) {
   return transaction(async conn => {
     await seed(conn);
     const [limits] = await conn.query('SELECT metric,warn_value,limit_value FROM thresholds');
@@ -76,11 +84,19 @@ async function advance(now = Date.now()) {
     const [[setting]] = await conn.query("SELECT setting_value FROM settings WHERE setting_key='fan_trigger'");
     const need = setting?.setting_value === 'warning' ? 1 : 2;
     // Row locks and last_step_at prevent two backend workers advancing the same interval twice.
-    const [states] = await conn.query('SELECT s.*,r.vent_mode,r.room_no FROM simulation_state s JOIN rooms r ON r.id=s.room_id ORDER BY s.room_id FOR UPDATE');
+    const [states] = await conn.query('SELECT s.*,r.vent_mode,r.room_no,r.lights,r.watts_per_light,r.fan_watts FROM simulation_state s JOIN rooms r ON r.id=s.room_id ORDER BY s.room_id FOR UPDATE');
+    const groups = await inventory.load(conn);
     for (const s of states) {
       if (now - new Date(s.last_step_at).getTime() < 2000) continue;
       const previousWorst = Math.max(...KEYS.map(k => rank[s[k + '_level']]));
       const oldFan = !!s.fan_on;
+      // W * milliseconds / 3,600,000,000 = kWh. Never charge for server downtime.
+      const elapsedMs = Math.max(0, Math.min(now - new Date(s.last_step_at).getTime(), now - startedAt));
+      const rated = groups.has(s.room_id) ? inventory.totals(groups.get(s.room_id)) : {
+        activeLightWatts: Math.round(s.lights*0.75)*s.watts_per_light, fanWatts:s.fan_watts
+      };
+      await conn.query('UPDATE electricity_usage SET lights_kwh=lights_kwh+?,fan_kwh=fan_kwh+?,operating_ms=operating_ms+? WHERE room_id=?',
+        [rated.activeLightWatts * elapsedMs / 3600000000, (oldFan ? rated.fanWatts : 0) * elapsedMs / 3600000000, elapsedMs, s.room_id]);
       const events = [];
       for (const k of KEYS) {
         const t = thresholds[k];
@@ -116,10 +132,11 @@ async function advance(now = Date.now()) {
 }
 function start() {
   let busy = false;
+  const startedAt = Date.now();
   const timer = setInterval(async () => {
     if (busy) return;
     busy = true;
-    try { await advance(); } catch (e) { console.error('Shared simulation:', e.message); }
+    try { await advance(Date.now(), startedAt); } catch (e) { console.error('Shared simulation:', e.message); }
     finally { busy = false; }
   }, 2000);
   timer.unref();
