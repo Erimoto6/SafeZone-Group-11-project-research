@@ -540,6 +540,15 @@ function limitBlock(k, hint) {
     <label class="f">Limit at (${m.unit})<input type="number" id="${k}-limit" value="${t.limit}" step="any" inputmode="decimal"></label></div></details>`;
 }
 
+function currentRoomsList() {
+  return floorList().map(f=>{
+    const rooms=roomsOn(f);if(!rooms.length)return '';
+    return `<p class="section-label">${floorName(f)}</p><div class="list">${rooms.map(r=>`<div class="user-row"><div><b>${esc(r.name)}</b><span>${(r.devices||[]).reduce((n,d)=>n+d.quantity,0)} configured devices</span></div>
+      <button class="x" data-act="editRoom" data-v="${r.id}" aria-label="Edit ${esc(r.name)}">${I.edit}</button>
+      <button class="x del" data-act="roomDel" data-v="${r.id}" aria-label="Remove ${esc(r.name)}">${I.trash}</button></div>`).join('')}</div>`;
+  }).join('');
+}
+
 function settingsView() {
   const trig = S.draftTrigger;
   return `<p class="section-label" style="margin-top:0">Admin account</p>
@@ -548,6 +557,7 @@ function settingsView() {
       <button class="row" data-act="account"><span class="r-ico">${I.user}</span><div class="r-txt"><b>Account Settings</b><span>Username and password</span></div><span class="chev">${I.chev}</span></button>
     </div>
     ${roomBar()}
+    <section aria-label="Current rooms"><p class="section-label">Current rooms</p>${currentRoomsList()}</section>
     <p class="section-label">Alerts</p>
     <div class="list">
       <button class="row" data-act="sms"><span class="r-ico">${I.sms}</span><div class="r-txt"><b>SMS Alerts</b><span>Name, role and mobile number of each recipient</span></div><span class="chev">${I.chev}</span></button>
@@ -1017,25 +1027,19 @@ function defaultDevices() { return [
   {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
 ]; }
 function deviceRows(devices) {
-  return devices.map((d,i)=>`<fieldset class="device-editor" data-index="${i}"><legend>Device ${i+1}</legend><div class="device-editor-body">
+  return devices.map((d,i)=>`<section class="device-editor" data-index="${i}" aria-labelledby="device-title-${i}"><h3 class="device-editor-title" id="device-title-${i}">Device ${i+1}</h3><div class="device-editor-body">
     <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
     <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(d.label)}" maxlength="100"></label>
     <div class="fields3"><label class="f">Quantity<input data-device="quantity" name="device-${i}-quantity" type="number" min="1" max="100" value="${d.quantity}"></label>
     <label class="f" data-powered ${!['light','exhaust_fan'].includes(d.type)?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
     <label class="f" data-light ${d.type!=='light'?'hidden':''}>Lights on<input data-device="activeQuantity" name="device-${i}-active" type="number" min="0" value="${d.activeQuantity}"></label></div>
     <label class="f" data-fan ${d.type!=='exhaust_fan'?'hidden':''}>Exhaust fan type<select data-device="fanType" name="device-${i}-fan">${Object.entries(FAN_NAMES).map(([key,name])=>`<option value="${key}" ${key===(d.fanType||'unspecified')?'selected':''}>${name}</option>`).join('')}</select></label>
-    <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device</button></div></fieldset>`).join('');
+    <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device</button></div></section>`).join('');
 }
 function roomsSheet() {
   const edit=S.rooms.find(r=>r.id===S.editingRoomId), key='room:'+(edit?edit.id:'new');
   const draft=formDrafts.get(key), devices=draft?.devices || (edit?edit.devices:defaultDevices());
   const floor=draft?.floor ?? (edit?edit.floor:S.addFloor||1);
-  const groups=floorList().map(f=>{
-    const rooms=roomsOn(f);if(!rooms.length)return '';
-    return `<p class="section-label">${floorName(f)}</p><div class="list">${rooms.map(r=>`<div class="user-row"><div><b>${esc(r.name)}</b><span>${(r.devices||[]).reduce((n,d)=>n+d.quantity,0)} configured devices</span></div>
-      <button class="x" data-act="editRoom" data-v="${r.id}" aria-label="Edit ${esc(r.name)}">${I.edit}</button>
-      <button class="x del" data-act="roomDel" data-v="${r.id}" aria-label="Remove ${esc(r.name)}">${I.trash}</button></div>`).join('')}</div>`;
-  }).join('');
   openSheet('Rooms',`<h2>${edit?'Edit '+esc(edit.name):'Add a room'}</h2>
     <form id="room-form" data-draft-key="${key}" data-room-id="${edit?edit.id:''}" class="stack" novalidate>
       <p class="flabel">Floor</p><div class="mini-chips" role="group" aria-label="Floor">${floorList().map(f=>`<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f===floor}">${ord(f)}</button>`).join('')}</div>
@@ -1046,7 +1050,7 @@ function roomsSheet() {
       <button type="button" class="btn soft small" data-act="addDevice">+ Add device</button>
       <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
       ${edit?'<button type="button" class="btn soft small" data-act="newRoom">Back to add room</button>':''}
-    </form><p class="section-label">Current rooms</p>${groups}`);
+    </form>`);
   S.addFloor=floor;
 }
 
@@ -1160,9 +1164,9 @@ Object.assign(ACTS, {
   },
   async confirmRoomDel(v) {
     await api('/rooms/'+encodeURIComponent(v),'DELETE');formDrafts.delete('room:'+v);
-    if(S.editingRoomId===v)S.editingRoomId=null;await refreshData();roomsSheet();render();toast('Room removed');
+    if(S.editingRoomId===v)S.editingRoomId=null;await refreshData();closeSheet();S.screen='settings';render();toast('Room removed');
   },
-  cancelRoomDel() {roomsSheet();},
+  cancelRoomDel() {closeSheet();S.screen='settings';render();},
   async save() {
     const thresholds = {};
     for (const k of KEYS) {

@@ -367,3 +367,17 @@ select option{background:var(--surface);color:var(--ink)}
 .device-editor .f{font-size:13px}
 .device-editor .f input,.device-editor .f select{margin-top:6px;font-size:14px;min-height:48px}
 .device-editor .fields3{row-gap:12px}
+
+/* Device cards use ordinary blocks so native fieldset sizing cannot widen the sheet. */
+.device-editor{padding:16px;border-radius:16px;overflow-wrap:anywhere}
+.device-editor-title{margin:0 0 14px;font-size:14px;line-height:1.4;color:var(--ink)}
+.device-editor-body{gap:14px}
+.device-editor [data-light]{grid-column:1/-1}
+.device-editor .f select{display:block;line-height:1.4;border-radius:12px}
+#device-groups{gap:16px}
+#room-form{gap:14px}
+#room-form .room-device-heading{margin-top:4px}
+#room-form .mini-chips{gap:8px}
+#room-form .mini-chips button{min-height:40px;min-width:52px}
+section[aria-label="Current rooms"] .user-row{flex-wrap:nowrap;gap:8px}
+section[aria-label="Current rooms"] .user-row b{overflow-wrap:anywhere}
