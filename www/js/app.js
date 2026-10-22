@@ -1041,7 +1041,7 @@ function roomsSheet() {
       <p class="flabel">Floor</p><div class="mini-chips" role="group" aria-label="Floor">${floorList().map(f=>`<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f===floor}">${ord(f)}</button>`).join('')}</div>
       <label class="f">Room number<input type="number" id="rn" aria-label="Room number" value="${edit?roomNo(edit):nextRoomNumber(floor)||''}" min="${floor*100+1}" max="${floor*100+99}"></label>
       <p class="hint" id="rnhint">${floorHint(floor)}</p>
-      <p class="section-label">Devices</p><p class="note">Add separate light groups for different wattages. Configure exhaust fans separately.</p>
+      <div class="room-device-heading"><p class="section-label">Devices</p><p class="note">Add separate light groups for different wattages. Configure exhaust fans separately.</p></div>
       <div id="device-groups" class="stack">${deviceRows(devices||[])}</div>
       <button type="button" class="btn soft small" data-act="addDevice">+ Add device</button>
       <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
