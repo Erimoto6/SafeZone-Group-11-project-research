@@ -49,7 +49,7 @@ It needs the database from `../database` to be set up first, including migration
        npx playwright install chromium
        npm run test:browser
 
-   Both test suites disable real email delivery. See [the continuation guide](../CONTINUE-HERE.md)
+   Both test suites disable real email delivery. See [the project guide](../README.md)
    for connecting your Windows app, Android API configuration and remaining simulated features.
 
 Keep `.env` private. It is already in `.gitignore`, so it will not go to GitHub.
@@ -65,7 +65,7 @@ Keep `.env` private. It is already in `.gitignore`, so it will not go to GitHub.
 
 ## Shared room simulations
 
-Settings → Shared demo tools lets admins choose the current room, selected rooms or all rooms. The backend worker advances readings every two seconds using the saved thresholds. Apps poll the same server for readings and alerts; phones do not run their own simulator. State and alerts persist in MySQL. See [SHARED-SIMULATIONS.md](../SHARED-SIMULATIONS.md). Run `SAFEZONE_TEST_DB=1 npm run test:shared` against a disposable database to test independent admin/student clients.
+Settings → Shared demo tools lets admins choose the current room, selected rooms or all rooms. The backend worker advances readings every two seconds using the saved thresholds. Apps poll the same server for readings and alerts; phones do not run their own simulator. State and alerts persist in MySQL. See [Shared room simulations](../README.md#shared-room-simulations). Run `SAFEZONE_TEST_DB=1 npm run test:shared` against a disposable database to test independent admin/student clients.
 
 ## What the API offers
 
