@@ -385,4 +385,3 @@ select option{background:var(--surface);color:var(--ink)}
 .chart-head{flex-wrap:wrap;gap:8px}
 @media(max-width:360px){.card{padding:12px}.s-val{font-size:25px}.s-val small{font-size:12px}.s-head{font-size:12px;gap:6px}.roombar{gap:8px}}
 
-.offline-badge{font-size:11px;line-height:1.4;padding:4px 8px;border:1px solid currentColor;border-radius:999px;flex:none;margin-left:auto}

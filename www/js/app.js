@@ -418,7 +418,7 @@ function topbar() {
   return `<header class="topbar">${home
     ? `${logo(34)}<h1>SafeZone</h1>`
     : `<button data-act="go" data-v="${back}" aria-label="Back to ${back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
-    ${OFFLINE ? '<span class="offline-badge">Offline</span>' : ''}<button data-act="menu" aria-label="Menu">${I.menu}</button></header>`;
+    <button data-act="menu" aria-label="Menu">${I.menu}</button></header>`;
 }
 
 function sensorCard(k) {
