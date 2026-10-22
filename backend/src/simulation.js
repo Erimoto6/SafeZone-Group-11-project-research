@@ -106,6 +106,8 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
           const ceiling = normal ? t.warn : t.limit;
           const epsilon = Number.EPSILON * Math.max(1, Math.abs(ceiling)) * 16;
           s[k] = ceiling - s[k] <= step + epsilon ? ceiling : s[k] + step;
+          // Finish a single demo run at the limit, then recover on later ticks.
+          if (s[k] >= t.limit) s.scenario = null;
         } else {
           const target = s.fan_on ? Math.min(COOLED[k], t.warn - (t.limit - t.warn) / 2) : BASE[k];
           s[k] += (target - s[k]) * 0.18;

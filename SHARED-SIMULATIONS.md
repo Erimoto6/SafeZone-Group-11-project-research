@@ -6,13 +6,13 @@ All devices must connect to the **same Node.js backend and MySQL database**. A s
 
 1. Stop the backend with Ctrl+C and back up the project and database.
 2. Download the latest `Test-ni-eleyn` branch. Copy its `backend`, `www` and `database` folders into your project. **Keep your existing `backend/.env` and MySQL database.** No private settings are included in this update.
-3. Start MySQL in XAMPP. In phpMyAdmin's SQL tab, run the entire contents of `database/04-shared-simulations.sql`. It only creates the shared-demo table if it is missing. Do not recreate the database or rerun the earlier setup scripts.
+3. Start MySQL in XAMPP. In phpMyAdmin's SQL tab, run the entire contents of `database/04-shared-simulations.sql`. If not already installed, run `05-electricity-usage.sql` and then `06-room-devices.sql` too. Do not recreate the database or rerun the earlier setup scripts.
 4. In the VS Code terminal inside `backend`, run `npm ci`, `npm run check-db`, then `npm start`.
 5. Open `http://localhost:3000/`, press Ctrl+F5 and sign in as an admin.
-6. In Settings → Shared demo tools, choose Current room, Choose rooms, or All rooms. For Choose rooms, tick the rooms first. Start a simulation, then watch Monitoring or Alerts. Reset readings uses the same room selection.
+6. In Settings → Shared demo tools, choose a room by number, Select multiple rooms, or All rooms. For multiple rooms, tick the rooms inside the dropdown. Start a simulation, then watch Monitoring or Alerts. Reset readings uses the same room selection.
 7. Open a separate browser or private window, register/sign in as a student/faculty member, and view the same room. Updates arrive automatically about every two seconds while the app is open. No page refresh is needed. Student/faculty accounts cannot start simulations.
 
-Changing a scenario keeps the room's existing readings and ventilation mode. Use Reset readings for a fresh baseline. If the fan is configured to start at Warning, its cooling may prevent Danger. Demo alerts remain stored after reset, page reload or server restart; reset changes readings, not alert history. All simulations are labelled Demo and never send SMS or control an actual fan. Charts/history and device status still contain synthetic data.
+Each demo rises gradually to the configured limit, then returns gradually toward its baseline. Automatic ventilation can cool it earlier. Login opens Room 101 (or the first configured room); it does not reset shared readings. Changing a scenario keeps the room's existing readings and ventilation mode. Use Reset readings for a fresh baseline. If the fan is configured to start at Warning, its cooling may prevent Danger. Demo alerts remain stored after reset, page reload or server restart; reset changes readings, not alert history. All simulations are labelled Demo and never send SMS or control an actual fan. Charts/history and device status still contain synthetic data.
 
 ## Test on phones on the same Wi-Fi
 

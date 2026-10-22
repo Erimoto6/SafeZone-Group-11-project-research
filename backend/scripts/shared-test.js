@@ -97,7 +97,7 @@ async function login(page, role, identifier) {
     const [[dangerCount]] = await pool.query("SELECT COUNT(*) AS n FROM alerts WHERE room_id=? AND title='Demo: High Temperature Level'", [madeRooms[0]]);
     assert.equal(dangerCount.n, 1, 'same tick must not duplicate alerts');
     await studentPage.reload();
-    await studentPage.getByRole('button', { name: /Select room/ }).waitFor();
+    await studentPage.getByRole('button', { name: /Select room.*Room 101/ }).waitFor();
     await studentPage.locator('[data-act="go"][data-v="alerts"]').click();
     await studentPage.getByText('Demo: High Temperature Level', { exact: true }).first().waitFor();
     console.log('PASS: admin selects two rooms; separate student sees gradual readings and alerts without refreshing; unaffected third room and persistence after reload');
@@ -107,6 +107,19 @@ async function login(page, role, identifier) {
       const [[event]] = await pool.query("SELECT COUNT(*) AS n FROM alerts WHERE room_id=? AND metric=? AND type='exceeded'", [madeRooms[2], metric]);
       assert.equal(event.n, 1);
     }
+    await control({ metric: 'reset', roomIds: [madeRooms[2]] });
+    await control({ metric: 'fan', roomIds: [madeRooms[2]], fanOn: false });
+    await control({ metric: 'co2', roomIds: [madeRooms[2]] });
+    await step(12);
+    states = await snapshot();
+    let manual = states.find(s => s.id === madeRooms[2]);
+    assert.equal(manual.reading.co2, 1200);
+    assert.equal(manual.scenario, null, 'a demo run must finish at its limit');
+    await step(1);
+    manual = (await snapshot()).find(s => s.id === madeRooms[2]);
+    assert(manual.reading.co2 < 1200 && manual.reading.co2 > 827, 'manual mode must recover gradually instead of holding 1200 ppm');
+    await call('/rooms/'+madeRooms[2], 'PATCH', { ventMode: 'auto' }, admin);
+    console.log('PASS: manual fan-off simulation reaches danger and then gradually recovers');
     await control({ metric: 'reset', allRooms: true });
     await control({ metric: 'hum', allRooms: true });
     states = await snapshot(); assert(states.every(s => s.scenario === 'hum'));

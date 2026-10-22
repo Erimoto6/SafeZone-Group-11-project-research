@@ -136,7 +136,7 @@ const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' }
 async function refreshData() {
   const [rooms, settings, alerts, shared] = await Promise.all([api('/rooms'), api('/settings'), api('/alerts'), api('/simulation')]);
   const previous = new Map(S.rooms.map(r => [r.id, r]));
-  S.rooms = rooms.rooms.map(r => {
+  S.rooms = rooms.rooms.slice().sort((a,b) => a.floor-b.floor || a.name.localeCompare(b.name, undefined, {numeric:true})).map(r => {
     const room = previous.get(String(r.id)) || makeRoom({ ...r, id: String(r.id), lightWatts: r.wattsPerLight, mode: r.ventMode });
     Object.assign(room, { name: r.name, floor: r.floor, lights: r.lights, lightWatts: r.wattsPerLight, fanWatts: r.fanWatts });
     room.vent.mode = r.ventMode; return room;
@@ -155,6 +155,7 @@ async function refreshData() {
 async function signedIn(data) {
   token = data.token; sessionStorage.setItem('safezone.token', token);
   S.me = mapUser(data.user); S.role = data.user.role === 'admin' ? 'admin' : 'student';
+  S.roomId = null; // Every login starts at the first configured room, normally Room 101.
   try { await refreshData(); } catch (e) { signOut(); render(); throw e; }
   S.authError = ''; S.notice = ''; S.reg = { phone: '' }; S.screen = 'home'; render();
 }
@@ -571,13 +572,16 @@ function settingsView() {
     <p class="section-label">Shared demo tools</p>
     <p class="note">Everyone connected to this server can see the selected rooms change. Hardware and SMS are not connected.</p>
     <label class="f">Rooms to affect<select id="sim-scope" aria-label="Rooms to affect">
-      <option value="current" ${S.simScope === 'current' ? 'selected' : ''}>Current room: ${esc(cur().name)}</option>
-      <option value="selected" ${S.simScope === 'selected' ? 'selected' : ''}>Choose rooms</option>
+      ${S.rooms.map(r => `<option value="${r.id === S.roomId ? 'current' : 'room:'+r.id}" ${(S.simScope === 'current' && r.id === S.roomId) || S.simScope === 'room:'+r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+      <option value="selected" ${S.simScope === 'selected' ? 'selected' : ''}>Select multiple rooms</option>
       <option value="all" ${S.simScope === 'all' ? 'selected' : ''}>All rooms</option>
     </select></label>
-    <div id="sim-room-options" ${S.simScope !== 'selected' ? 'hidden' : ''} class="stack">
-      ${S.rooms.map(r => `<label><input type="checkbox" class="sim-room" value="${esc(r.id)}" ${S.simSelected.includes(String(r.id)) ? 'checked' : ''}> ${esc(r.name)}</label>`).join('')}
-    </div>
+    <details id="sim-room-options" ${S.simScope !== 'selected' ? 'hidden' : ''} class="room-multiselect">
+      <summary>Select rooms <span id="sim-room-count">(${S.simSelected.length} selected)</span></summary>
+      <div class="room-checkboxes">
+        ${S.rooms.map(r => `<label><input type="checkbox" class="sim-room" value="${esc(r.id)}" ${S.simSelected.includes(String(r.id)) ? 'checked' : ''}> <span>${esc(r.name)}</span></label>`).join('')}
+      </div>
+    </details>
     <div class="stack">
       <button class="btn soft small" data-act="sim" data-v="co2">Simulate high CO₂</button>
       <button class="btn soft small" data-act="sim" data-v="temp">Simulate high temperature</button>
@@ -1013,14 +1017,14 @@ function defaultDevices() { return [
   {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
 ]; }
 function deviceRows(devices) {
-  return devices.map((d,i)=>`<fieldset class="device-editor" data-index="${i}"><legend>Device group ${i+1}</legend>
+  return devices.map((d,i)=>`<fieldset class="device-editor" data-index="${i}"><legend>Device ${i+1}</legend><div class="device-editor-body">
     <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
     <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(d.label)}" maxlength="100"></label>
     <div class="fields3"><label class="f">Quantity<input data-device="quantity" name="device-${i}-quantity" type="number" min="1" max="100" value="${d.quantity}"></label>
     <label class="f" data-powered ${!['light','exhaust_fan'].includes(d.type)?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
     <label class="f" data-light ${d.type!=='light'?'hidden':''}>Lights on<input data-device="activeQuantity" name="device-${i}-active" type="number" min="0" value="${d.activeQuantity}"></label></div>
     <label class="f" data-fan ${d.type!=='exhaust_fan'?'hidden':''}>Exhaust fan type<select data-device="fanType" name="device-${i}-fan">${Object.entries(FAN_NAMES).map(([key,name])=>`<option value="${key}" ${key===(d.fanType||'unspecified')?'selected':''}>${name}</option>`).join('')}</select></label>
-    <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device group</button></fieldset>`).join('');
+    <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device</button></div></fieldset>`).join('');
 }
 function roomsSheet() {
   const edit=S.rooms.find(r=>r.id===S.editingRoomId), key='room:'+(edit?edit.id:'new');
@@ -1117,7 +1121,7 @@ const ACTS = {
   draftAuto(v, el) { settingsDirty=true; S.draftAuto = !S.draftAuto; el.setAttribute('aria-checked', S.draftAuto); },
   async sim(v) {
     const selected = S.simScope === 'all' ? { allRooms: true } : {
-      roomIds: S.simScope === 'selected' ? S.simSelected.map(Number) : [Number(S.roomId)]
+      roomIds: S.simScope === 'selected' ? S.simSelected.map(Number) : [Number(S.simScope.startsWith('room:') ? S.simScope.slice(5) : S.roomId)]
     };
     const result = await api('/simulation', 'POST', { metric: v, ...selected });
     await refreshData(); render();
@@ -1283,8 +1287,12 @@ document.addEventListener('change', e => {
   if (e.target.id === 'sim-scope') {
     S.simScope = e.target.value;
     $('#sim-room-options').hidden = S.simScope !== 'selected';
+    $('#sim-room-options').open = S.simScope === 'selected';
   }
-  if (e.target.matches('.sim-room')) S.simSelected = Array.from(document.querySelectorAll('.sim-room:checked'), el => el.value);
+  if (e.target.matches('.sim-room')) {
+    S.simSelected = Array.from(document.querySelectorAll('.sim-room:checked'), el => el.value);
+    $('#sim-room-count').textContent = '('+S.simSelected.length+' selected)';
+  }
 });
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
