@@ -28,7 +28,7 @@ You need Node.js/npm, MySQL or MariaDB (for example, XAMPP), and a browser. Andr
    npm ci
    ```
 
-3. If you already have `backend/.env`, keep it. For a new installation, copy `.env.example` to `.env` inside `backend`, then configure the database connection, `JWT_SECRET` and `ADMIN_ACCESS_CODE` as described in [backend/README.md](backend/README.md). Keep those values private and out of frontend code and GitHub.
+3. For a separate local backend, set `window.SAFEZONE_API_BASE = '/api';` in `www/js/config.js`; the checked-in frontend currently points to the working Railway backend for the Android app. If you already have `backend/.env`, keep it. For a new installation, copy `.env.example` to `.env` inside `backend`, then configure the database connection, `JWT_SECRET` and `ADMIN_ACCESS_CODE` as described in [backend/README.md](backend/README.md). Keep those values private and out of frontend code and GitHub.
 4. From `backend`, check the database and create the first admin:
 
    ```powershell
@@ -111,6 +111,8 @@ For an APK that works away from the laptop:
    ```js
    window.SAFEZONE_API_BASE = 'https://YOUR-BACKEND-HOST/api';
    ```
+
+   The current shared endpoint is `https://safezone-group-11-project-research-production.up.railway.app/api`.
 
    This is a backend API address, not a MySQL connection URL or password. The browser version can retain `/api` when the backend serves the page.
 4. From the project root containing `capacitor.config.json`, install root dependencies if necessary, then sync and open the actual Android project:

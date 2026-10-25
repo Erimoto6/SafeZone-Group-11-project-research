@@ -1,0 +1,23 @@
+# Installed dependencies and build output
+node_modules/
+build/
+dist/
+.gradle/
+.idea/
+*.apk
+*.aab
+
+# Private configuration and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+keystore.properties
+key.properties
+local.properties
+
+# Local logs and OS files
+*.log
+.DS_Store
+Thumbs.db

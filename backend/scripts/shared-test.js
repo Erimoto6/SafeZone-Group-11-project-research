@@ -60,6 +60,8 @@ async function login(page, role, identifier) {
     await call('/settings', 'PUT', { thresholds: { temp: { warn: 38, limit: 40 }, hum: { warn: 65, limit: 75 }, co2: { warn: 1000, limit: 1200 } }, fanTrigger: 'exceeded', ventMode: 'auto' }, admin);
     browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'] });
     const adminContext = await browser.newContext(), studentContext = await browser.newContext();
+    await adminContext.addInitScript(()=>window.SAFEZONE_API_BASE='/api');
+    await studentContext.addInitScript(()=>window.SAFEZONE_API_BASE='/api');
     const adminPage = await adminContext.newPage(), studentPage = await studentContext.newPage();
     const errors = []; for (const p of [adminPage, studentPage]) p.on('pageerror', e => errors.push(e.message));
     await studentPage.clock.install();

@@ -19,7 +19,7 @@ let server,browser;
  try{
   server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
   browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox']});
-  const page=await browser.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage();await page.addInitScript(()=>window.SAFEZONE_API_BASE='/api');page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const fill=async(id,v)=>page.locator('#'+id).fill(String(v));
   const submit=async id=>page.locator('#'+id+' button[type="submit"]').click();
   const act=async(name,v)=>page.locator(`[data-act="${name}"]${v===undefined?'':`[data-v="${v}"]`}`).first().click();
