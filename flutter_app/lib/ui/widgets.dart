@@ -55,10 +55,11 @@ class SzCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding,
-    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: Theme.of(context).dividerColor)),
-    child: child,
+  Widget build(BuildContext context) => Material(
+    color: Theme.of(context).colorScheme.surface,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: Theme.of(context).dividerColor)),
+    clipBehavior: Clip.antiAlias,
+    child: Padding(padding: padding, child: child),
   );
 }
 class SectionTitle extends StatelessWidget {
@@ -159,10 +160,11 @@ class RoomSelector extends StatelessWidget {
     Expanded(child: SzCard(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Row(children: [
       Icon(Icons.apartment_outlined, color: Theme.of(context).colorScheme.primary), const SizedBox(width: 10),
       Expanded(child: DropdownButtonHideUnderline(child: DropdownButton<int>(isExpanded: true, value: selected.id,
+        itemHeight: ((MediaQuery.textScalerOf(context).scale(11) + MediaQuery.textScalerOf(context).scale(17)) * 1.2 + 8).clamp(48.0, double.infinity).toDouble(),
         hint: const Text('Select room'), items: rooms.map((r) => DropdownMenuItem(value: r.id, child: Text(r.name, overflow: TextOverflow.ellipsis))).toList(),
         selectedItemBuilder: (_) => rooms.map((r) => Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Select Room, ${floorName(r.floor)}', style: const TextStyle(fontSize: 11)),
-          Text(r.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          Text('Select Room, ${floorName(r.floor)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.2)),
+          Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, height: 1.2, fontWeight: FontWeight.w700)),
         ])).toList(), onChanged: (id) { if (id != null) onSelect(id); }))),
       Icon(Icons.circle, size: 9, color: statusColor(selected.worst, context)),
     ]))),
