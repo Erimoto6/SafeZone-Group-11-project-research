@@ -39,7 +39,7 @@ You need Node.js/npm, MySQL or MariaDB (for example, XAMPP), and a browser. Andr
 
 5. Open **http://localhost:3000/api/health**. A working connection returns `"database":"connected"`. Open **http://localhost:3000/** to use the app, then log in with the admin you created. This version is served by the backend; use its address rather than Live Server.
 
-The `admin / safezone` demo login is not enabled on this branch. Accounts previously stored only in an offline app or browser are not automatically imported into MySQL. Student and faculty registration uses the PUP email formats shown in the app. Admin registration from the app requires the private admin access code; an authenticated admin can add further admins through Manage Users.
+The `admin / safezone` demo login is not enabled on this branch. Accounts previously stored only in an offline app or browser are not automatically imported into MySQL. Student and faculty registration uses the PUP email formats shown in the app. The login screen does not offer admin registration. An authenticated admin adds appointed admins through Settings → Manage Users; first-time server setup uses `npm run create-admin`.
 
 ## Update an existing installation
 

@@ -47,10 +47,15 @@ let server,browser;
   assert.equal(await page.locator('[data-v="settings"]').count(),0);await page.reload();await dashboard();
   assert.equal(await page.evaluate(()=>localStorage.getItem('safezone.v1')),null);
   console.log('PASS: student login, permissions and session reload');
-  await logout();await act('role','admin');await act('to','fReg');
-  for(const [id,v] of Object.entries({fname:'Browser Admin',fuser:tag,femail:adminMail,fphone:adminPhone,rp:password,rc:password,fcode:process.env.ADMIN_ACCESS_CODE}))await fill(id,v);
-  await submit('f-reg-form');await page.getByRole('heading',{name:'Admin Login',exact:true}).waitFor();
-  await fill('u',tag);await fill('pw',password);await submit('login-form');await dashboard();console.log('PASS: admin registration and login');
+  await logout();await act('role','admin');
+  assert.equal(await page.getByText('Create an admin account',{exact:true}).count(),0);
+  assert.equal(await page.locator('[data-v="fReg"]').count(),0);
+  // Bootstrap a fixture directly; users no longer register admins on the login screen.
+  const adminResponse=await fetch('http://127.0.0.1:'+server.address().port+'/api/auth/register-admin',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:'Browser Admin',username:tag,email:adminMail,phone:adminPhone,password,accessCode:process.env.ADMIN_ACCESS_CODE})
+  });
+  assert.equal(adminResponse.status,201);
+  await fill('u',tag);await fill('pw',password);await submit('login-form');await dashboard();console.log('PASS: existing admin login without a public admin registration option');
   assert((await page.getByRole('button',{name:'Electricity, open monitoring'}).innerText()).includes('kWh'));
   for(const width of [320,390,768,1280]){
     await page.setViewportSize({width,height:844});
@@ -139,6 +144,7 @@ let server,browser;
   await page.getByText(tag,{exact:true}).waitFor({state:'hidden'});await close();console.log('PASS: SMS recipient creation, toggle and deletion');
   await act('users');await page.getByRole('heading',{name:'Manage Users',exact:true}).waitFor();
   assert.equal(await page.getByRole('dialog').count(),0,'Manage Users is a full page');
+  assert.equal(await page.locator('#admin-form').count(),1,'appointed admin creation remains in Manage Users');
   const studentTable=page.getByRole('region',{name:'Students table',exact:true});
   const facultyTable=page.getByRole('region',{name:'Faculty table',exact:true});
   await studentTable.getByText(mail,{exact:true}).waitFor();

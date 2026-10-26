@@ -63,7 +63,7 @@ const RANK = { normal: 0, warning: 1, exceeded: 2 };
    ===================================================================== */
 const S = {
   role: null,                 // null | 'student' (Student / Faculty) | 'admin'
-  screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | fReg | home | alerts | monitor | status | settings | about
+  screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | home | alerts | monitor | status | settings | about
   mon: { view: 'live', metric: 'temp', range: '6h' },
   alertFilter: 'all',
   rooms: [],                  // every room has its own readings, levels and fan. Built in init().
@@ -792,30 +792,7 @@ function loginView() {
       <button class="btn" type="submit">Log in</button>
     </form>
     <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="admin">Forgot password?</button>
-    <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="fReg">Create an admin account</button>
     <p class="note" style="margin-top:14px">Use an account created on your SafeZone server.</p>
-  </div></div>`;
-}
-
-function fRegView() {
-  return `<div class="splash auth">${authBack('login')}<div class="auth-in">
-    ${circle('sliders')}
-    <h2>Admin Account</h2>
-    <p class="tag-line" style="margin-bottom:18px">Create an account to manage and control SafeZone.</p>
-    <form id="f-reg-form" style="width:100%" autocomplete="off" novalidate>
-      ${textField('user', 'fname', 'Full name', 'text', 'autocomplete="name"')}
-      ${textField('user', 'fuser', 'Username', 'text', 'autocapitalize="none" autocomplete="username"')}
-      ${textField('mail', 'femail', 'PUP web mail', 'email', 'inputmode="email" autocapitalize="none" autocomplete="email"')}
-      <p class="hint">${emailHintHtml}</p>
-      ${textField('phone', 'fphone', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="tel"')}
-      ${pwField('rp', 'Password', 'new-password')}
-      ${rulesList()}
-      ${pwField('rc', 'Confirm password', 'new-password')}
-      ${textField('key', 'fcode', 'Admin access code', 'text', 'autocapitalize="characters" autocomplete="off"')}
-      <p class="hint">Ask your system administrator for the admin access code.</p>
-      ${errLine()}
-      <button class="btn" type="submit">Create Account</button>
-    </form>
   </div></div>`;
 }
 
@@ -930,7 +907,7 @@ function render() {
   captureDrafts();
   const view = $('#view'); const prev = $('#screen');
   const top = prev && prev.dataset.s === S.screen ? prev.scrollTop : 0;
-  const AUTH = { splash: splashView, login: loginView, fReg: fRegView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpEmail: fpEmailView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
+  const AUTH = { splash: splashView, login: loginView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpEmail: fpEmailView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
   view.innerHTML = AUTH[S.screen] ? AUTH[S.screen]() : shell();
   restoreDrafts(); captureEnabled=true;
   const sc = $('#screen'); if (sc) sc.scrollTop = top;
@@ -1216,9 +1193,6 @@ document.addEventListener('submit', async e => {
       await signedIn(await api('/auth/login', 'POST', {
         identifier: value(id === 'login-form' ? 'u' : 'phone').trim(), password: value('pw'), as: id === 'login-form' ? 'admin' : 'viewer'
       }));
-    } else if (id === 'f-reg-form') {
-      await api('/auth/register-admin', 'POST', { fullName: value('fname'), username: value('fuser'), email: value('femail'), phone: value('fphone'), password: passwords(), accessCode: value('fcode') });
-      S.authError = ''; S.notice = 'Account created. You can log in now.'; S.screen = 'login'; render();
     } else if (id === 'v-reg1-form') {
       const email = normEmail(value('email')), phone = normPhone(value('phone'));
       if (!emailKind(email)) throw new Error('Use your PUP web mail. ' + emailHint);
