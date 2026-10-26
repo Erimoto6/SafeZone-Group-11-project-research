@@ -24,7 +24,8 @@ const fanNames = {
   'unspecified': 'Not specified', 'wall': 'Wall-mounted',
   'window': 'Window-mounted', 'ceiling': 'Ceiling-mounted', 'inline': 'Inline',
 };
-const recipientRoles = ['Admin', 'Faculty', 'Student', 'Student / Faculty', 'Maintenance', 'Other'];
+const recipientRoles = ['Admin', 'Faculty', 'Student', 'Maintenance', 'Other'];
+String recipientRole(dynamic value) => value == 'Student / Faculty' ? 'Student' : recipientRoles.contains(value) ? '$value' : 'Other';
 String readingText(String metric, double value) {
   if (metric == 'temp') return value.toStringAsFixed(1);
   final text = value.round().toString();

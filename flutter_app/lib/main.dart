@@ -20,13 +20,18 @@ class _SafeZoneAppState extends State<SafeZoneApp> with WidgetsBindingObserver {
   late final AppModel model;
   final navigatorKey = GlobalKey<NavigatorState>();
   bool signedIn = false;
+  late bool wasLoading;
+  late ThemeMode lastTheme;
   @override
-  void initState() { super.initState(); model = widget.model ?? AppModel(); WidgetsBinding.instance.addObserver(this); signedIn = model.user != null; model.addListener(sessionChanged); model.initialize(); }
+  void initState() { super.initState(); model = widget.model ?? AppModel(); WidgetsBinding.instance.addObserver(this); signedIn = model.user != null; wasLoading = model.loading; lastTheme = model.themeMode; model.addListener(sessionChanged); model.initialize(); }
   void sessionChanged() {
     if (signedIn && model.user == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) navigatorKey.currentState?.popUntil((route) => route.isFirst); });
     }
-    signedIn = model.user != null;
+    final changed = signedIn != (model.user != null) || wasLoading != model.loading || lastTheme != model.themeMode;
+    signedIn = model.user != null; wasLoading = model.loading; lastTheme = model.themeMode;
+    // Live samples update the shell, not the app's navigator and theme hierarchy.
+    if (changed && mounted) setState(() {});
   }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -35,12 +40,12 @@ class _SafeZoneAppState extends State<SafeZoneApp> with WidgetsBindingObserver {
   @override
   void dispose() { WidgetsBinding.instance.removeObserver(this); model.removeListener(sessionChanged); if (widget.model == null) model.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(animation: model, builder: (_, _) => MaterialApp(
+  Widget build(BuildContext context) => MaterialApp(
     navigatorKey: navigatorKey, title: 'SafeZone', debugShowCheckedModeBanner: false,
     theme: safeZoneTheme(Brightness.light), darkTheme: safeZoneTheme(Brightness.dark), themeMode: model.themeMode,
     home: model.loading ? const Scaffold(body: Center(child: CircularProgressIndicator()))
       : model.user == null ? AuthFlow(model: model) : SafeZoneShell(model: model),
-  ));
+  );
 }
 
 class SafeZoneShell extends StatefulWidget {
@@ -57,7 +62,8 @@ class _SafeZoneShellState extends State<SafeZoneShell> {
     catch (e) { if (mounted) message(context, '$e'); }
   }
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(animation: widget.model, builder: (context, _) => shell(context));
+  Widget shell(BuildContext context) {
     final m = widget.model;
     final titles = m.isAdmin ? ['SafeZone', 'Alerts', 'Monitoring', 'Devices', 'Settings'] : ['SafeZone', 'Alerts', 'Monitoring', 'About'];
     final icons = m.isAdmin ? [Icons.home_outlined, Icons.notifications_none, Icons.bar_chart, Icons.memory, Icons.tune] : [Icons.home_outlined, Icons.notifications_none, Icons.bar_chart, Icons.info_outline];

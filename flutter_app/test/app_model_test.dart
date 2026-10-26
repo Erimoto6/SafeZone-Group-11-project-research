@@ -102,6 +102,12 @@ void main() {
     expect(() => validatePassword('abc', 'abc'), throwsException);
     expect(() => validatePassword('abc123', 'different'), throwsException);
   });
+  test('SMS role choices separate students from faculty and retain legacy contacts', () {
+    expect(recipientRoles.where((role) => role == 'Student').length, 1);
+    expect(recipientRoles, isNot(contains('Student / Faculty')));
+    expect(recipientRole('Student / Faculty'), 'Student');
+    expect(recipientRole('Faculty'), 'Faculty');
+  });
   test('threshold equality is danger and decimal API values are accepted', () {
     expect(const Limit(1000, 1200).level(1200), 'exceeded');
     expect(number('1.25'), 1.25); expect(readingText('co2', 1200), '1,200');

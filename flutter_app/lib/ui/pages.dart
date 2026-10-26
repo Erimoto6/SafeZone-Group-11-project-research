@@ -19,17 +19,19 @@ class HomePage extends StatelessWidget {
       RoomSelector(rooms: model.rooms, selected: room, onSelect: model.selectRoom, onAdd: model.isAdmin ? () => editRoom(context, model) : null),
       const SizedBox(height: 12), Row(children: [Icon(Icons.circle, size: 9, color: model.syncError.isEmpty ? statusColor('normal', context) : statusColor('warning', context)), const SizedBox(width: 6), Flexible(child: Note('Live, updated ${timeText(room.updatedAt)}'))]),
       const SizedBox(height: 16), LayoutBuilder(builder: (_, constraints) {
-        final columns = constraints.maxWidth < 265 ? 1 : 2;
-        final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
-        return Wrap(spacing: 12, runSpacing: 12, children: [
-          for (final metric in metrics) SizedBox(width: width, child: sensor(context, room, metric)),
-          SizedBox(width: width, child: SzCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Row(children: [Icon(Icons.air, size: 23), SizedBox(width: 8), Flexible(child: Text('Exhaust fan', style: TextStyle(fontSize: 13)))]),
-            const SizedBox(height: 10), Text(room.fanOn ? 'ON' : 'OFF', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 30)),
-            const SizedBox(height: 6), Note('${room.fanCount} exhaust fan(s)'), Note(room.mode == 'auto' ? 'Automatic' : 'Manual'),
-            if (model.isAdmin) TextButton(onPressed: onMonitor, style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 36)), child: const Text('Control in Monitoring', style: TextStyle(fontSize: 11))),
-          ]))),
-        ]);
+        final cards = [for (final metric in metrics) sensor(context, room, metric), fanCard(room)];
+        if (constraints.maxWidth < 265) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (int i = 0; i < cards.length; i++) Padding(padding: EdgeInsets.only(bottom: i == cards.length - 1 ? 0 : 12), child: cards[i]),
+          ]);
+        }
+        // Both columns divide the height of the tallest card into equal cells.
+        // Intrinsic sizing accommodates font scaling and the extra admin fan link.
+        return IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: cards[0]), const SizedBox(height: 12), Expanded(child: cards[2])])),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: cards[1]), const SizedBox(height: 12), Expanded(child: cards[3])])),
+        ]));
       }),
       const SizedBox(height: 16), InkWell(onTap: onMonitor, borderRadius: BorderRadius.circular(18), child: SzCard(child: Row(children: [
         Icon(Icons.bolt, color: Theme.of(context).colorScheme.primary), const SizedBox(width: 12),
@@ -45,13 +47,20 @@ class HomePage extends StatelessWidget {
       ])),
     ]);
   }
-  Widget sensor(BuildContext context, Room room, String metric) => SzCard(child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 118), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget sensor(BuildContext context, Room room, String metric) => SzCard(key: ValueKey('sensor-$metric'), child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 118), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     Row(children: [Icon(metricIcons[metric], size: 23, color: metric == 'temp' ? const Color(0xFFE77A74) : metric == 'hum' ? const Color(0xFF6BA4D8) : null), const SizedBox(width: 7), Flexible(child: Text(metricNames[metric]!, style: const TextStyle(fontSize: 13)))]),
     const SizedBox(height: 10), FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text.rich(TextSpan(children: [
       TextSpan(text: readingText(metric, room.reading[metric] ?? 0), style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w800)),
       TextSpan(text: ' ${metricUnits[metric]}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
     ]))), const SizedBox(height: 9), StatusPill(room.levels[metric] ?? 'normal'),
   ])));
+  Widget fanCard(Room room) => SzCard(key: const ValueKey('sensor-fan'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Row(children: [Icon(Icons.air, size: 23), SizedBox(width: 8), Flexible(child: Text('Exhaust fan', style: TextStyle(fontSize: 13)))]),
+    const SizedBox(height: 10), Text(room.fanOn ? 'ON' : 'OFF', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 30)),
+    const SizedBox(height: 6), Note('${room.fanCount} exhaust fan(s)'), Note(room.mode == 'auto' ? 'Automatic' : 'Manual'),
+    if (model.isAdmin) TextButton(onPressed: onMonitor, style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 36)), child: const Text('Control in Monitoring', style: TextStyle(fontSize: 11))),
+  ]));
+
 }
 
 class AlertsPage extends StatefulWidget {
@@ -146,8 +155,14 @@ class AboutPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     Center(child: Logo()), SizedBox(height: 16), Text('SafeZone', textAlign: TextAlign.center, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800)), SizedBox(height: 10),
-    Text('A safer classroom. A healthier environment.', textAlign: TextAlign.center),
-    SectionTitle('How it works'), SzCard(child: Text('SafeZone compares room temperature, humidity and CO₂ with configured warning and danger thresholds. Admins configure rooms, start shared simulations and choose automatic or manual exhaust fan operation. Students and faculty view readings and alerts from the same backend.', style: TextStyle(height: 1.6))),
-    SectionTitle('Current prototype'), SzCard(child: Text('Sensor readings and fan operation are simulated. Device lists are configured inventory. Electricity is estimated in kWh. No physical fan commands or SMS messages are sent. Accounts and shared state are saved in MySQL through the Node.js/Express API.', style: TextStyle(height: 1.6))),
+    Text('A safer classroom. A healthier environment.', textAlign: TextAlign.center), SizedBox(height: 22),
+    SzCard(padding: EdgeInsets.symmetric(horizontal: 14), child: ExpansionTile(
+      key: PageStorageKey('about-how'), leading: Icon(Icons.info_outline), title: Text('How it works', style: TextStyle(fontWeight: FontWeight.w700)), tilePadding: EdgeInsets.zero,
+      children: [Padding(padding: EdgeInsets.only(bottom: 16), child: Text('SafeZone compares room temperature, humidity and CO₂ with configured warning and danger thresholds. Admins configure rooms, start shared simulations and choose automatic or manual exhaust fan operation. Students and faculty view readings and alerts from the same backend.', style: TextStyle(height: 1.6)))],
+    )), SizedBox(height: 12),
+    SzCard(padding: EdgeInsets.symmetric(horizontal: 14), child: ExpansionTile(
+      key: PageStorageKey('about-prototype'), leading: Icon(Icons.memory), title: Text('Current prototype', style: TextStyle(fontWeight: FontWeight.w700)), tilePadding: EdgeInsets.zero,
+      children: [Padding(padding: EdgeInsets.only(bottom: 16), child: Text('Sensor readings and fan operation are simulated. Device lists are configured inventory. Electricity is estimated in kWh. No physical fan commands or SMS messages are sent. Accounts and shared state are saved in MySQL through the Node.js/Express API.', style: TextStyle(height: 1.6)))],
+    )),
   ]);
 }

@@ -19,6 +19,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String scope = '';
   final Set<int> selected = {};
   bool busy = false;
+  final Set<String> expandedThresholds = {};
   @override
   void initState() { super.initState(); loadValues(); }
   void loadValues() {
@@ -65,6 +66,29 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget link(IconData icon, String title, String subtitle, VoidCallback onTap) => ListTile(
     contentPadding: EdgeInsets.zero, leading: Icon(icon, color: Theme.of(context).colorScheme.primary), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)), subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)), trailing: const Icon(Icons.chevron_right), onTap: onTap,
   );
+  Widget roomAction(IconData icon, String label, VoidCallback action, {bool destructive = false}) => OutlinedButton(
+    onPressed: busy ? null : action,
+    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12), foregroundColor: destructive ? Theme.of(context).colorScheme.error : null),
+    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 16), const SizedBox(width: 6), Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, softWrap: false)))]),
+  );
+  Widget thresholdEditor(String metric) {
+    final open = expandedThresholds.contains(metric);
+    return Column(key: ValueKey('threshold-$metric'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Semantics(button: true, expanded: open, child: InkWell(key: ValueKey('threshold-toggle-$metric'), onTap: () {
+        FocusScope.of(context).unfocus();
+        setState(() => open ? expandedThresholds.remove(metric) : expandedThresholds.add(metric));
+      }, child: Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Row(children: [
+        Icon(metricIcons[metric]), const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${metricNames[metric]} Threshold', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)), const SizedBox(height: 4), const Note('Set the warning and limit')])),
+        Icon(open ? Icons.expand_less : Icons.expand_more),
+      ])))),
+      // Keep editable elements mounted across collapse and live polling updates.
+      Visibility(visible: open, maintainState: true, child: Padding(padding: const EdgeInsets.only(top: 4, bottom: 16), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: TextField(key: ValueKey('$metric-warn'), controller: values['$metric-warn'], keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: 'Warning (${metricUnits[metric]})'))), const SizedBox(width: 10),
+        Expanded(child: TextField(key: ValueKey('$metric-limit'), controller: values['$metric-limit'], keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: 'Limit (${metricUnits[metric]})'))),
+      ]))),
+    ]);
+  }
   @override
   Widget build(BuildContext context) {
     final m = widget.model;
@@ -81,18 +105,13 @@ class _SettingsPageState extends State<SettingsPage> {
         InputDecorator(decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 3)), child: DropdownButtonHideUnderline(child: DropdownButton<int>(
           isExpanded: true, value: room.id, items: m.rooms.map((r) => DropdownMenuItem(value: r.id, child: Text(r.name))).toList(), onChanged: (v) => setState(() => configId = v),
         ))), const SizedBox(height: 10), Row(children: [
-          Expanded(child: OutlinedButton.icon(onPressed: busy ? null : () => editRoom(context, m, room: room), icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Edit room'))), const SizedBox(width: 10),
-          Expanded(child: OutlinedButton.icon(onPressed: busy ? null : () => deleteRoom(room), style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error), icon: const Icon(Icons.delete_outline, size: 18), label: const Text('Delete room'))),
+          Expanded(child: roomAction(Icons.edit_outlined, 'Edit room', () => editRoom(context, m, room: room))), const SizedBox(width: 10),
+          Expanded(child: roomAction(Icons.delete_outline, 'Delete room', () => deleteRoom(room), destructive: true)),
         ]),
       ])),
-      const SectionTitle('Alerts'), SzCard(child: link(Icons.sms_outlined, 'SMS Alerts', 'Recipient names, roles and mobile numbers', widget.onRecipients)),
+      const SectionTitle('Alerts'), SzCard(child: link(Icons.sms_outlined, 'SMS Alerts', 'SMS contacts, roles and mobile numbers', widget.onRecipients)),
       const SectionTitle('System settings'), SzCard(child: Column(children: [
-        for (final k in metrics) ExpansionTile(tilePadding: EdgeInsets.zero, leading: Icon(metricIcons[k]), title: Text('${metricNames[k]} Threshold', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)), subtitle: const Text('Set the warning and limit', style: TextStyle(fontSize: 12)), children: [
-          Padding(padding: const EdgeInsets.only(bottom: 16), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: TextField(controller: values['$k-warn'], keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: 'Warning (${metricUnits[k]})'))), const SizedBox(width: 10),
-            Expanded(child: TextField(controller: values['$k-limit'], keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: InputDecoration(labelText: 'Limit (${metricUnits[k]})'))),
-          ])),
-        ]),
+        for (final k in metrics) thresholdEditor(k),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Automatic ventilation', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)), subtitle: const Text('Automatic or manual, for all rooms', style: TextStyle(fontSize: 12)), value: automatic, onChanged: (v) => setState(() => automatic = v)),
         const Align(alignment: Alignment.centerLeft, child: Text('Turn fan on at', style: TextStyle(fontWeight: FontWeight.w700))), const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 6, children: [ChoiceChip(label: const Text('Yellow (Warning)'), selected: trigger == 'warning', onSelected: (_) => setState(() => trigger = 'warning')), ChoiceChip(label: const Text('Red (Danger)'), selected: trigger == 'exceeded', onSelected: (_) => setState(() => trigger = 'exceeded'))]),
@@ -170,7 +189,7 @@ class _RecipientsPageState extends State<RecipientsPage> {
   int version = 0;
   bool busy = false;
   Future<void> remove(Map<String, dynamic> recipient) async {
-    final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: Text('Remove ${recipient['name']}?'), content: const Text('Remove this person from the recipient list?'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove'))]));
+    final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: Text('Remove ${recipient['name']}?'), content: const Text('Remove this person from the SMS contact list?'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove'))]));
     if (yes != true || busy) return;
     setState(() => busy = true);
     try { await widget.model.mutate('/sms-recipients/${recipient['id']}', method: 'DELETE', body: {}); if (editing?['id'] == recipient['id']) setState(() { editing = null; version++; }); }
@@ -180,9 +199,9 @@ class _RecipientsPageState extends State<RecipientsPage> {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(animation: widget.model, builder: (_, _) => Scaffold(
     appBar: AppBar(title: const Text('SMS Alerts')), body: SafeArea(child: SingleChildScrollView(padding: const EdgeInsets.all(18), child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const Note('Configure recipient names, roles and mobile numbers. Real SMS delivery is not connected.'),
+      const Note('SMS contacts are people on your notification list, not necessarily registered users. Real SMS delivery is not connected.'),
       for (final person in widget.model.recipients) Padding(padding: const EdgeInsets.only(top: 12), child: SzCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('${person['name']}', style: const TextStyle(fontWeight: FontWeight.w700)), Note('${person['role']} · ${person['phone']}'),
+        Text('${person['name']}', style: const TextStyle(fontWeight: FontWeight.w700)), Note('${recipientRole(person['role'])} · ${person['phone']}'),
         Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Switch(value: person['smsEnabled'] == true, onChanged: busy ? null : (v) async {
             setState(() => busy = true);
@@ -190,16 +209,16 @@ class _RecipientsPageState extends State<RecipientsPage> {
             catch (e) { if (context.mounted) message(context, '$e'); }
             finally { if (mounted) setState(() => busy = false); }
           }),
-          TextButton.icon(onPressed: busy ? null : () => setState(() { editing = person; role = recipientRoles.contains(person['role']) ? '${person['role']}' : 'Other'; version++; }), icon: const Icon(Icons.edit_outlined), label: const Text('Edit')),
+          TextButton.icon(onPressed: busy ? null : () => setState(() { editing = person; role = recipientRole(person['role']); version++; }), icon: const Icon(Icons.edit_outlined), label: const Text('Edit')),
           IconButton(tooltip: 'Remove ${person['name']}', onPressed: busy ? null : () => remove(person), icon: const Icon(Icons.delete_outline)),
         ]),
       ]))),
-      SectionTitle(editing == null ? 'Add recipient' : 'Edit recipient'),
+      SectionTitle(editing == null ? 'Add SMS contact' : 'Edit SMS contact'),
       EntryForm(key: ValueKey(version), fields: [FieldSpec('name', 'Full name', initial: '${editing?['name'] ?? ''}'), FieldSpec('phone', 'Mobile number', phone: true, initial: '${editing?['phone'] ?? ''}')],
         footer: DropdownButtonFormField<String>(initialValue: role, decoration: const InputDecoration(labelText: 'Role'), items: recipientRoles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(), onChanged: (v) => role = v ?? 'Other'),
-        submit: 'Save recipient', onSubmit: (v) async {
+        submit: 'Save contact', onSubmit: (v) async {
           await widget.model.mutate('/sms-recipients${editing == null ? '' : '/${editing!['id']}'}', method: editing == null ? 'POST' : 'PATCH', body: {...v, 'role': role});
-          if (mounted && context.mounted) { setState(() { editing = null; role = recipientRoles.first; version++; }); message(context, 'Recipient saved'); }
+          if (mounted && context.mounted) { setState(() { editing = null; role = recipientRoles.first; version++; }); message(context, 'SMS contact saved'); }
         }),
       if (editing != null) TextButton(onPressed: () => setState(() { editing = null; role = recipientRoles.first; version++; }), child: const Text('Cancel editing')),
     ]))))),
