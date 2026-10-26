@@ -22,7 +22,7 @@ Use an Android phone/emulator listed by `devices`, then run:
 
 If Flutter is on PATH, use `flutter` instead of the full executable path. Run these commands inside `flutter_app`, not the original Capacitor project root. `flutter run` launches this Flutter app; `npx cap sync` still updates only the original Capacitor app.
 
-The Flutter Android app currently uses a separate application ID, `com.group11.safezone_flutter`, so it can be tested alongside the original `com.group10.safezone` app. Both use the same backend and accounts. No demo `admin / safezone` login is bundled. Use your existing online account; public admin registration requires the code configured privately in Railway.
+The Flutter Android app currently uses a separate application ID, `com.group11.safezone_flutter`, so it can be tested alongside the original `com.group10.safezone` app. Both use the same backend and accounts. No demo `admin / safezone` login is bundled. Use your existing online account; the Flutter login screen offers no public admin registration. Existing admins add appointed admins through Settings → Manage Users.
 
 ## API and session configuration
 

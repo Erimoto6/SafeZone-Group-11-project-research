@@ -19,7 +19,7 @@ class _AuthFlowState extends State<AuthFlow> {
     final theme = Theme.of(context);
     final title = switch (stage) {
       'login' => admin ? 'Admin Login' : 'Student / Faculty Login',
-      'register' => admin ? 'Admin Account' : 'Create Account',
+      'register' => 'Create Account',
       'password' => 'Create Password', 'done' => 'Account Created!',
       'forgot' => 'Forgot Password', 'code' => 'Verification Code',
       'reset' => 'New Password', 'resetDone' => 'Password Updated', _ => 'SafeZone',
@@ -42,23 +42,15 @@ class _AuthFlowState extends State<AuthFlow> {
           EntryForm(key: ValueKey('login-$admin'), fields: [FieldSpec('identifier', admin ? 'Username' : 'Mobile number or PUP web mail'), const FieldSpec('password', 'Password', password: true)], submit: 'Log in',
             onSubmit: (v) => widget.model.login(v['identifier']!, v['password']!, admin)),
           TextButton(onPressed: () => go('forgot'), child: const Text('Forgot password?')),
-          TextButton(onPressed: () => go('register'), child: Text(admin ? 'Create an admin account' : 'Create an account')),
+          if (!admin) TextButton(onPressed: () => go('register'), child: const Text('Create an account')),
           const Note('Use an account created on your SafeZone server.'),
-        ] else if (stage == 'register') ...[
-          const SizedBox(height: 16), EntryForm(key: ValueKey('register-$admin'), fields: [
-            if (admin) ...[const FieldSpec('fullName', 'Full name'), const FieldSpec('username', 'Username')],
+        ] else if (stage == 'register' && !admin) ...[
+          const SizedBox(height: 16), EntryForm(key: const ValueKey('register-viewer'), fields: [
             FieldSpec('email', 'PUP web mail', email: true, initial: registration['email'] ?? ''),
             FieldSpec('phone', 'Mobile number (09XXXXXXXXX)', phone: true, initial: registration['phone'] ?? ''),
-            if (admin) ...[const FieldSpec('password', 'Password', password: true), const FieldSpec('confirmation', 'Confirm password', password: true), const FieldSpec('accessCode', 'Admin access code')],
-          ], footer: Note(admin ? '$passwordHint\nAsk your system administrator for the admin access code.' : 'Students: @iskolarngbayan.pup.edu.ph\nFaculty: @pup.edu.ph'),
-          submit: admin ? 'Create Account' : 'Continue', onSubmit: (v) async {
-            if (admin) {
-              validatePassword(v['password']!, v['confirmation']!);
-              await widget.model.api.request('/auth/register-admin', method: 'POST', body: v);
-              go('done');
-            } else { registration = v; go('password'); }
-          }),
-        ] else if (stage == 'password') EntryForm(key: const ValueKey('password'), fields: const [FieldSpec('password', 'Password', password: true), FieldSpec('confirmation', 'Confirm password', password: true)],
+          ], footer: const Note('Students: @iskolarngbayan.pup.edu.ph\nFaculty: @pup.edu.ph'),
+          submit: 'Continue', onSubmit: (v) async { registration = v; go('password'); }),
+        ] else if (stage == 'password' && !admin) EntryForm(key: const ValueKey('password'), fields: const [FieldSpec('password', 'Password', password: true), FieldSpec('confirmation', 'Confirm password', password: true)],
           footer: const Note(passwordHint), submit: 'Create Account', onSubmit: (v) async {
             validatePassword(v['password']!, v['confirmation']!);
             await widget.model.api.request('/auth/register', method: 'POST', body: {...registration, 'password': v['password']}); registration = {}; go('done');

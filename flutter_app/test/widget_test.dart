@@ -14,6 +14,11 @@ void main() {
     expect(find.text('Student / Faculty'), findsOneWidget); expect(find.text('Admin'), findsOneWidget);
     await tester.tap(find.text('Admin')); await tester.pumpAndSettle();
     expect(find.text('Admin Login'), findsOneWidget); expect(find.text('Forgot password?'), findsOneWidget);
+    expect(find.text('Create an admin account'), findsNothing);
+    expect(find.text('Create an account'), findsNothing);
+    await tester.tap(find.text('Back')); await tester.pumpAndSettle();
+    await tester.tap(find.text('Student / Faculty')); await tester.pumpAndSettle();
+    expect(find.text('Create an account'), findsOneWidget);
     await tester.pumpWidget(const SizedBox()); model.dispose();
   });
   testWidgets('narrow room selector accommodates large text without wrapping its two lines', (tester) async {
