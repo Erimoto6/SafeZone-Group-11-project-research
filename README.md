@@ -1,5 +1,7 @@
 # SafeZone
 
+The new native frontend is in [`flutter_app/`](flutter_app/README.md) on the `flutter-version` branch. Its setup and validation status are documented there. The guide below describes the original shared-backend Capacitor app.
+
 SafeZone is a classroom monitoring app for temperature, humidity, carbon dioxide (CO₂), simulated exhaust fan operation and estimated electricity use. Admins configure rooms and thresholds, run simulations and manage accounts. Students and faculty view room readings and alerts.
 
 This branch, **Test-ni-eleyn**, uses a shared Node.js/Express backend and MySQL/MariaDB database. The backend serves the browser app and API from the same address. An Android APK bundles the frontend and connects to that backend. Login, saved data and shared simulations require a running backend and database.

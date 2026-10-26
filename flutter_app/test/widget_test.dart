@@ -1,30 +1,34 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:safezone_flutter/main.dart';
+import 'app_model_test.dart' as fixtures;
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('welcome screen offers the same two account roles', (tester) async {
+    final model = fixtures.testModel(); await model.initialize();
+    await tester.pumpWidget(SafeZoneApp(model: model)); await tester.pumpAndSettle();
+    expect(find.text('SafeZone'), findsOneWidget);
+    expect(find.text('Student / Faculty'), findsOneWidget); expect(find.text('Admin'), findsOneWidget);
+    await tester.tap(find.text('Admin')); await tester.pumpAndSettle();
+    expect(find.text('Admin Login'), findsOneWidget); expect(find.text('Forgot password?'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox()); model.dispose();
   });
+  for (final width in [320.0, 390.0, 768.0]) {
+    testWidgets('dashboard and room configuration fit width $width', (tester) async {
+      tester.view.physicalSize = Size(width, 950); tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
+      final model = fixtures.testModel(); await model.initialize(); await model.login('admin', 'Test12345', true); model.pause();
+      await tester.pumpWidget(SafeZoneApp(model: model)); await tester.pumpAndSettle();
+      expect(find.text('Room 101'), findsOneWidget); expect(find.text('Exhaust fan'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Settings').last); await tester.pumpAndSettle();
+      expect(find.text('Edit room'), findsOneWidget); expect(find.text('Delete room'), findsOneWidget);
+      expect(find.text('Current rooms'), findsNothing); expect(find.text('Add Room'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Edit room')); await tester.pumpAndSettle();
+      expect(find.text('Edit Room 101'), findsOneWidget); expect(find.text('Device 1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox()); model.dispose();
+    });
+  }
 }
