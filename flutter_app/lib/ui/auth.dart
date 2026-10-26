@@ -24,10 +24,17 @@ class _AuthFlowState extends State<AuthFlow> {
       'forgot' => 'Forgot Password', 'code' => 'Verification Code',
       'reset' => 'New Password', 'resetDone' => 'Password Updated', _ => 'SafeZone',
     };
-    return Scaffold(body: SafeArea(child: LayoutBuilder(builder: (_, constraints) => SingleChildScrollView(
+    return Scaffold(
+      appBar: stage == 'welcome' ? null : AppBar(
+        backgroundColor: theme.scaffoldBackgroundColor, surfaceTintColor: Colors.transparent,
+        foregroundColor: theme.colorScheme.primary, elevation: 0, scrolledUnderElevation: 0,
+        automaticallyImplyLeading: false, leadingWidth: 112,
+        leading: TextButton.icon(onPressed: () => go(stage == 'password' ? 'register' : 'welcome'),
+          icon: const Icon(Icons.chevron_left), label: const Text('Back')),
+      ),
+      body: SafeArea(child: LayoutBuilder(builder: (_, constraints) => SingleChildScrollView(
       padding: const EdgeInsets.all(24), child: ConstrainedBox(constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
       child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 400), child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (stage != 'welcome') Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => go(stage == 'password' ? 'register' : 'welcome'), icon: const Icon(Icons.chevron_left), label: const Text('Back'))),
         const Center(child: Logo()), const SizedBox(height: 18),
         if (stage != 'welcome') Text('SafeZone', textAlign: TextAlign.center, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: theme.colorScheme.primary)),
         Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: stage == 'welcome' ? 38 : 23, fontWeight: FontWeight.w800, color: stage == 'welcome' ? theme.colorScheme.primary : null)),
