@@ -136,7 +136,7 @@ class _UsersPageState extends State<UsersPage> {
       const SectionTitle('Add another admin'), EntryForm(key: ValueKey(formVersion), fields: const [FieldSpec('fullName', 'Full name'), FieldSpec('username', 'Username'), FieldSpec('email', 'PUP web mail', email: true), FieldSpec('phone', 'Mobile number', phone: true), FieldSpec('password', 'Password', password: true), FieldSpec('confirmation', 'Confirm password', password: true)],
         submit: 'Create admin account', footer: const Note(passwordHint), onSubmit: (v) async {
           validatePassword(v['password']!, v['confirmation']!); await widget.model.mutate('/admin/users', body: v);
-          if (mounted) { setState(() => formVersion++); message(context, 'Admin account created'); }
+          if (mounted && context.mounted) { setState(() => formVersion++); message(context, 'Admin account created'); }
         }),
     ]))))),
   ));
@@ -199,7 +199,7 @@ class _RecipientsPageState extends State<RecipientsPage> {
         footer: DropdownButtonFormField<String>(initialValue: role, decoration: const InputDecoration(labelText: 'Role'), items: recipientRoles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(), onChanged: (v) => role = v ?? 'Other'),
         submit: 'Save recipient', onSubmit: (v) async {
           await widget.model.mutate('/sms-recipients${editing == null ? '' : '/${editing!['id']}'}', method: editing == null ? 'POST' : 'PATCH', body: {...v, 'role': role});
-          if (mounted) { setState(() { editing = null; role = recipientRoles.first; version++; }); message(context, 'Recipient saved'); }
+          if (mounted && context.mounted) { setState(() { editing = null; role = recipientRoles.first; version++; }); message(context, 'Recipient saved'); }
         }),
       if (editing != null) TextButton(onPressed: () => setState(() { editing = null; role = recipientRoles.first; version++; }), child: const Text('Cancel editing')),
     ]))))),
