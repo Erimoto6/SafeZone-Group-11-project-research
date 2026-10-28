@@ -63,7 +63,7 @@ Migration 06 converts existing light/fan ratings into editable device groups wit
 
 - **Home and Monitoring:** select a room to view; admins can also use Add Room. Add Room contains only the creation form. Viewing selectors have no edit/delete controls. Login opens Room 101, or the first configured room if 101 no longer exists, without resetting shared readings.
 - **Settings → Room:** use the dropdown to choose the room to configure, then Edit room or Delete room. This choice is separate from the room being viewed. Room information includes floor, room number and device groups.
-- **Device groups:** configure quantities, names, different light wattages, the number of lights on, exhaust fan wattages/types and optional controller, sensor or network modules. The Devices page displays the room's configured inventory.
+- **Device groups:** configure quantities, names, exhaust fan wattages/types and optional controller, sensor or network modules. The Devices page displays the room's configured inventory.
 - **Delete room:** a named confirmation dialog allows cancellation. Deleting a room removes its inventory and energy totals. Alert history remains without its room link. At least one room must remain, including during concurrent deletion requests.
 - **Manage Users:** separate spreadsheet-style Admins, Faculty and Students tables, with horizontal scrolling on phones. Admin creation is on that page. These tables do not provide an Excel download.
 - **Account Settings:** changing a password requires the current password and revokes old sessions. Unsaved room/device, settings and password form values survive navigation within the current session. Password drafts stay only in browser memory, clear on logout/success and are not promised after reload or closing the app.
@@ -80,7 +80,7 @@ To verify sharing, sign in as an admin in one browser and a student/faculty memb
 
 ## Estimated electricity
 
-Electricity displays accumulated **estimated kWh**, separately for lights and exhaust fans. Device quantities, active light counts, configured wattages and simulated fan operating time determine the estimate:
+Electricity displays accumulated **estimated kWh**, separately for exhaust fans. Fan quantities, configured wattages and simulated fan operating time determine the estimate:
 
 ```text
 kWh = watts × operating milliseconds ÷ 3,600,000,000
@@ -136,7 +136,7 @@ Codes expire after 10 minutes, allow five incorrect attempts and require 30 seco
 
 ## What remains simulated
 
-Temperature, humidity, CO₂, chart history and exhaust fan operation are demos. Devices represent configured inventory, not proof of physical connectivity. Electricity is estimated from configured ratings and simulated operation. Saving SMS recipients does not send SMS. Real ESP32/Firebase integration, fan commands, SMS delivery and background/closed-app push notifications are separate work. Demo alerts remain labelled as such.
+Temperature, humidity, CO₂, chart history and exhaust fan operation are demos. Devices represent configured inventory, not proof of physical connectivity. Electricity is estimated from configured ratings and simulated operation. Saving SMS recipients does not send SMS. Real NodeMCU V3 ESP8266/Firebase integration, fan commands, SMS delivery and background/closed-app push notifications are separate work. Demo alerts remain labelled as such.
 
 ## Validation
 
@@ -159,3 +159,7 @@ Run suites sequentially. In Bash, use `SAFEZONE_TEST_DB=1` and the test database
 Validation completed against a disposable MariaDB database: 96 API checks; browser registration/login, role checks, session reload, settings, room/device CRUD, SMS recipient CRUD/toggles, password changes/reset and network errors; independent admin/student shared simulations; and estimated energy conversion, persistence, reset behavior, downtime exclusion and duplicate-tick protection. Layout checks covered main screens and dialogs at 320, 390, 768 and 1280 pixels in light and dark themes. These browser checks do not replace testing an installed APK.
 
 The cloud development database and private configuration are separate from your Windows or hosted database; they do not contain your existing accounts or create a public API.
+
+### Classroom hardware scope
+
+The default roster includes 43 classrooms across four floors, excluding rooms 108 (clinic), 205 (SCO office), 210 (Registrar and Admission Office), and 307/309 (campus library). For an existing database, run `database/07-classroom-roster.sql` after migrations 01–06. Existing records are preserved. Devices use NodeMCU V3 ESP8266 inventory naming. Lighting configuration is removed; electricity estimates cover exhaust fans only. Physical hardware integration remains future work.

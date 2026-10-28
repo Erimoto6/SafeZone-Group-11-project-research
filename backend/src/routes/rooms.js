@@ -16,7 +16,7 @@ const roomJson = (r, devices = []) => ({
 });
 
 router.get('/', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT * FROM rooms ORDER BY floor_no, room_no');
+  const [rows] = await pool.query('SELECT * FROM rooms WHERE room_no NOT IN (108,205,210,307,309) ORDER BY floor_no, room_no');
   const devices = await inventory.load(pool);
   res.json({ rooms: rows.map(r => roomJson(r, devices.get(r.id) || [])) });
 }));
@@ -24,7 +24,7 @@ router.get('/', requireAuth, wrap(async (req, res) => {
 router.post('/', requireAdmin, wrap(async (req, res) => {
   const b = req.body || {};
   const floor = Number(b.floor), roomNo = Number(b.roomNo);
-  const lights = b.lights == null ? 8 : Number(b.lights);
+  const lights = 0;
   const wattsPerLight = b.wattsPerLight == null ? 18 : Number(b.wattsPerLight);
   const fanWatts = b.fanWatts == null ? 40 : Number(b.fanWatts);
 
@@ -33,11 +33,12 @@ router.post('/', requireAdmin, wrap(async (req, res) => {
   if (!Number.isInteger(roomNo) || roomNo < lo || roomNo > hi) {
     throw new HttpError(400, `Floor ${floor} rooms are numbered ${lo}, ${lo + 1}, ${lo + 2} and so on, up to ${hi}.`);
   }
+  if (b.lights && Number(b.lights) !== 0) throw new HttpError(400, 'Lighting is not supported.');
+  if ([108,205,210,307,309].includes(roomNo)) throw new HttpError(400, 'That room is not a classroom.');
   if (!Number.isInteger(lights) || lights < 0 || lights > 100) throw new HttpError(400, 'Lights: enter a number from 0 to 100.');
   if (!(wattsPerLight > 0 && wattsPerLight <= 500)) throw new HttpError(400, 'Watts per light: enter a number from 1 to 500.');
   if (!(fanWatts >= 0 && fanWatts <= 2000)) throw new HttpError(400, 'Fan watts: enter a number from 0 to 2000.');
   const devices = inventory.validate(b.devices ?? [
-    ...(lights ? [{type:'light',label:'Lights',quantity:lights,activeQuantity:Math.round(lights*0.75),wattsPerDevice:wattsPerLight}] : []),
     ...(fanWatts ? [{type:'exhaust_fan',label:'Exhaust fan',quantity:1,wattsPerDevice:fanWatts,fanType:'unspecified'}] : [])
   ]);
 
@@ -69,15 +70,16 @@ router.patch('/:id', requireAdmin, wrap(async (req, res) => {
   const conn=await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [[room]]=await conn.query('SELECT * FROM rooms WHERE id=? FOR UPDATE',[id]);
+    const [[room]]=await conn.query('SELECT * FROM rooms WHERE room_no NOT IN (108,205,210,307,309) AND id=? FOR UPDATE',[id]);
     if (!room) throw new HttpError(404,'Room not found.');
     const floor=b.floor===undefined?room.floor_no:Number(b.floor), no=b.roomNo===undefined?room.room_no:Number(b.roomNo);
     if (!Number.isInteger(floor)||floor<1||floor>MAX_FLOOR||!Number.isInteger(no)||no<floor*100+1||no>floor*100+99) throw new HttpError(400,'Room number must match its selected floor.');
+    if ([108,205,210,307,309].includes(no)) throw new HttpError(400, 'That room is not a classroom.');
     if (!Object.keys(b).some(k=>['floor','roomNo','ventMode','devices'].includes(k))) throw new HttpError(400,'Choose room information to update.');
     await conn.query('UPDATE rooms SET floor_no=?,room_no=?,vent_mode=? WHERE id=?',[floor,no,b.ventMode??room.vent_mode,id]);
     if (devices) await inventory.replace(conn,id,devices);
     await conn.commit();
-    const [[fresh]]=await conn.query('SELECT * FROM rooms WHERE id=?',[id]);
+    const [[fresh]]=await conn.query('SELECT * FROM rooms WHERE room_no NOT IN (108,205,210,307,309) AND id=?',[id]);
     const all=await inventory.load(conn);
     res.json({room:roomJson(fresh,all.get(id)||[])});
   } catch(e) {
@@ -91,9 +93,9 @@ router.delete('/:id', requireAdmin, wrap(async (req, res) => {
   const conn=await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [rooms]=await conn.query('SELECT id FROM rooms ORDER BY id FOR UPDATE');
+    const [rooms]=await conn.query('SELECT id FROM rooms WHERE room_no NOT IN (108,205,210,307,309) ORDER BY id FOR UPDATE');
     if(rooms.length<=1)throw new HttpError(400,'Keep at least one room.');
-    const [r]=await conn.query('DELETE FROM rooms WHERE id=?',[Number(req.params.id)]);
+    const [r]=await conn.query('DELETE FROM rooms WHERE room_no NOT IN (108,205,210,307,309) AND id=?',[Number(req.params.id)]);
     if(!r.affectedRows)throw new HttpError(404,'Room not found.');
     await conn.commit();res.json({ok:true});
   } catch(e){await conn.rollback();throw e;} finally {conn.release();}

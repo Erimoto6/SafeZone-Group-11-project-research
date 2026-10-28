@@ -31,7 +31,7 @@ async function read() {
     await seed(conn);
     const [rows] = await conn.query(`SELECT s.*, r.vent_mode,r.room_no,r.floor_no,r.lights,r.watts_per_light,r.fan_watts,
       e.lights_kwh,e.fan_kwh,e.operating_ms FROM simulation_state s JOIN rooms r ON r.id=s.room_id
-      JOIN electricity_usage e ON e.room_id=s.room_id ORDER BY s.room_id`);
+      JOIN electricity_usage e ON e.room_id=s.room_id WHERE r.room_no NOT IN (108,205,210,307,309) ORDER BY s.room_id`);
     const [limits] = await conn.query('SELECT metric,warn_value,limit_value FROM thresholds');
     const groups = await inventory.load(conn);
     const [[setting]] = await conn.query("SELECT setting_value FROM settings WHERE setting_key='fan_trigger'");
@@ -43,7 +43,7 @@ async function read() {
       devices: groups.get(s.room_id) || [],
       lightsOn: groups.has(s.room_id) ? inventory.totals(groups.get(s.room_id)).lightsOn : Math.round(s.lights*0.75),
       reading: { temp: s.temp, hum: s.hum, co2: s.co2 },
-      electricity: { lightsKwh: s.lights_kwh, fanKwh: s.fan_kwh, totalKwh: s.lights_kwh + s.fan_kwh, operatingMs: Number(s.operating_ms) },
+      electricity: { lightsKwh: s.lights_kwh, fanKwh: s.fan_kwh, totalKwh: s.fan_kwh, operatingMs: Number(s.operating_ms) },
       levels: { temp: s.temp_level, hum: s.hum_level, co2: s.co2_level },
       fanOn: !!s.fan_on, ventMode: s.vent_mode, scenario: s.scenario,
       updatedAt: new Date(s.last_step_at).getTime()
@@ -59,7 +59,7 @@ async function control({ metric, roomIds, allRooms, fanOn }) {
   }
   return transaction(async conn => {
     await seed(conn);
-    const [rooms] = await conn.query('SELECT id FROM rooms ORDER BY id FOR UPDATE');
+    const [rooms] = await conn.query('SELECT id FROM rooms WHERE room_no NOT IN (108,205,210,307,309) ORDER BY id FOR UPDATE');
     const ids = allRooms ? rooms.map(r => r.id) : [...new Set(roomIds)];
     if (!ids.length || ids.some(id => !rooms.some(r => r.id === id))) throw new HttpError(400, 'One or more selected rooms no longer exist.');
     if (metric === 'reset') {
@@ -84,7 +84,7 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
     const [[setting]] = await conn.query("SELECT setting_value FROM settings WHERE setting_key='fan_trigger'");
     const need = setting?.setting_value === 'warning' ? 1 : 2;
     // Row locks and last_step_at prevent two backend workers advancing the same interval twice.
-    const [states] = await conn.query('SELECT s.*,r.vent_mode,r.room_no,r.lights,r.watts_per_light,r.fan_watts FROM simulation_state s JOIN rooms r ON r.id=s.room_id ORDER BY s.room_id FOR UPDATE');
+    const [states] = await conn.query('SELECT s.*,r.vent_mode,r.room_no,r.lights,r.watts_per_light,r.fan_watts FROM simulation_state s JOIN rooms r ON r.id=s.room_id WHERE r.room_no NOT IN (108,205,210,307,309) ORDER BY s.room_id FOR UPDATE');
     const groups = await inventory.load(conn);
     for (const s of states) {
       if (now - new Date(s.last_step_at).getTime() < 2000) continue;
@@ -93,10 +93,10 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
       // W * milliseconds / 3,600,000,000 = kWh. Never charge for server downtime.
       const elapsedMs = Math.max(0, Math.min(now - new Date(s.last_step_at).getTime(), now - startedAt));
       const rated = groups.has(s.room_id) ? inventory.totals(groups.get(s.room_id)) : {
-        activeLightWatts: Math.round(s.lights*0.75)*s.watts_per_light, fanWatts:s.fan_watts
+        activeLightWatts: 0, fanWatts:s.fan_watts
       };
       await conn.query('UPDATE electricity_usage SET lights_kwh=lights_kwh+?,fan_kwh=fan_kwh+?,operating_ms=operating_ms+? WHERE room_id=?',
-        [rated.activeLightWatts * elapsedMs / 3600000000, (oldFan ? rated.fanWatts : 0) * elapsedMs / 3600000000, elapsedMs, s.room_id]);
+        [0, (oldFan ? rated.fanWatts : 0) * elapsedMs / 3600000000, elapsedMs, s.room_id]);
       const events = [];
       for (const k of KEYS) {
         const t = thresholds[k];

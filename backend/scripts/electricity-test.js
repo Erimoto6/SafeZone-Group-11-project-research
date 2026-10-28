@@ -23,27 +23,25 @@ let roomId;
     await pool.query('UPDATE simulation_state SET last_step_at=? WHERE room_id=?', [new Date(now - hour),roomId]);
     await simulation.advance(now, now - hour);
     let e = await energy();
-    close(e.lightsKwh, 0.075); // 3 simulated active lights * 25W * 1 hour / 1000.
+    close(e.lightsKwh, 0); // Legacy light ratings no longer accrue energy.
     close(e.fanKwh, 0);
     await simulation.control({ metric: 'fan', roomIds: [roomId], fanOn: true });
     now += hour;
     await simulation.advance(now, now - hour);
     e = await energy();
-    close(e.lightsKwh, 0.15); close(e.fanKwh, 0.08); close(e.totalKwh, 0.23);
+    close(e.lightsKwh, 0); close(e.fanKwh, 0.08); close(e.totalKwh, 0.08);
     assert.deepEqual(e, await energy(), 'reads must not accumulate more usage');
     await simulation.control({ metric: 'reset', roomIds: [roomId] });
     assert.deepEqual(e, await energy(), 'resetting readings must preserve accumulated energy');
     await pool.query('UPDATE simulation_state SET last_step_at=? WHERE room_id=?', [new Date(now - 24 * hour),roomId]);
     await simulation.advance(now + 2000, now);
     e = await energy();
-    close(e.totalKwh, 0.23 + 75 * 2000 / 3600000000);
+    close(e.totalKwh, 0.08);
     assert.equal(e.operatingMs, 2 * hour + 2000, 'server downtime must be excluded');
     await simulation.advance(now + 2000, now);
     assert.deepEqual(e, await energy(), 'duplicate worker tick must not double-count');
     const inventory=require('../src/room-devices');
     const groups=inventory.validate([
-      {type:'light',label:'LED A',quantity:2,activeQuantity:2,wattsPerDevice:10},
-      {type:'light',label:'LED B',quantity:3,activeQuantity:1,wattsPerDevice:20},
       {type:'exhaust_fan',label:'Window fans',quantity:2,wattsPerDevice:60,fanType:'window'}
     ]);
     assert.throws(()=>inventory.validate([{type:'light',label:'Bad',quantity:1,activeQuantity:2,wattsPerDevice:10}]));
@@ -52,8 +50,8 @@ let roomId;
     const before=await energy();now+=hour;
     await pool.query('UPDATE simulation_state SET last_step_at=? WHERE room_id=?',[new Date(now-hour),roomId]);
     await simulation.advance(now,now-hour);
-    e=await energy();close(e.lightsKwh-before.lightsKwh,0.04);close(e.fanKwh-before.fanKwh,0.12);
-    console.log('PASS: kWh conversion, persistence, downtime exclusion, duplicate protection, mixed light wattages and multiple exhaust fans');
+    e=await energy();close(e.lightsKwh-before.lightsKwh,0);close(e.fanKwh-before.fanKwh,0.12);
+    console.log('PASS: kWh conversion, persistence, downtime exclusion, duplicate protection, legacy lighting exclusion and multiple exhaust fans');
   } finally {
     await pool.query("DELETE FROM alerts WHERE id>? AND title LIKE 'Demo: %'", [mark.id]);
     await pool.query('DELETE FROM electricity_usage');

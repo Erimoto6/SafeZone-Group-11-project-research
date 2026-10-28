@@ -30,14 +30,16 @@ const DEFAULT_LIMITS = {
 
 // Rooms shown the first time the app opens. Admins add more with the + button.
 const FLOORS = 4;                                   // how many floors the building has
-// 1st floor starts with rooms 101 to 110. Floors 2, 3 and 4 start empty.
+// Classroom roster excludes the clinic, offices and campus library.
 // Rooms are numbered by floor: 1st = 101, 102...  2nd = 201, 202...  3rd = 301...  4th = 401...
-const DEFAULT_ROOMS = Array.from({ length: 10 }, (_, i) => ({ name: 'Room ' + (101 + i), floor: 1 }));
+const EXCLUDED_ROOMS = [108, 205, 210, 307, 309];
+const DEFAULT_ROOMS = Array.from({ length: 4 }, (_, i) => i + 1).flatMap(floor =>
+  Array.from({ length: 12 }, (_, i) => floor * 100 + i + 1).filter(n => !EXCLUDED_ROOMS.includes(n)).map(n => ({ name: 'Room ' + n, floor })));
 const ROOMS_V = 2;                                  // bump when the default rooms change (runs a one-time update)
 
 // A new room starts with these numbers. Admins can change them when adding a room.
 // (Used for the power display. With a real power meter the total comes from the meter.)
-const ROOM_DEFAULTS = { lights: 8, lightWatts: 18, fanWatts: 40 };
+const ROOM_DEFAULTS = { lights: 0, lightWatts: 18, fanWatts: 40 };
 
 // Choices in the SMS Alerts "role" list.
 const ROLES = ['Admin', 'Faculty', 'Student', 'Student / Faculty', 'Maintenance', 'Other'];
@@ -187,7 +189,7 @@ const guessFloor = name => { const m = String(name).match(/(\d)\d\d/); const f =
 const roomNo = r => { const m = String(r.name).match(/\d+/); return m ? parseInt(m[0], 10) : 0; };
 const roomsOn = f => S.rooms.filter(r => r.floor === f).sort((a, b) => roomNo(a) - roomNo(b) || a.name.localeCompare(b.name));
 // Next free number on a floor: 1st -> 101, 102...  2nd -> 201, 202...
-const nextRoomNumber = f => { for (let n = f * 100 + 1; n <= f * 100 + 99; n++) if (!S.rooms.some(r => r.name.toLowerCase() === 'room ' + n)) return n; return null; };
+const nextRoomNumber = f => { for (let n = f * 100 + 1; n <= f * 100 + 99; n++) if (!EXCLUDED_ROOMS.includes(n) && !S.rooms.some(r => r.name.toLowerCase() === 'room ' + n)) return n; return null; };
 const floorHint = f => `${ord(f)} floor rooms are ${f}01, ${f}02, ${f}03 and so on, up to ${f}99.`;
 const effectiveDark = () => S.theme ? S.theme === 'dark' : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
 const applyTheme = () => { const h = document.documentElement; if (S.theme) h.setAttribute('data-theme', S.theme); else h.removeAttribute('data-theme'); };
@@ -462,13 +464,12 @@ function powerCard(compact) {
   const r = cur(); const e = r.electricity || { totalKwh: 0, lightsKwh: 0, fanKwh: 0 };
   if (compact) {
     return `<button class="card power compact" data-act="toMonitor" aria-label="Electricity, open monitoring"><span class="ico ico-pow">${I.bolt}</span>
-      <div><b>${energyText(e.totalKwh)}</b><span>Electricity · accumulated estimate</span></div><span class="chev" style="margin-left:auto">${I.chev}</span></button>`;
+      <div><b>${energyText(e.fanKwh)}</b><span>Estimated fan electricity</span></div><span class="chev" style="margin-left:auto">${I.chev}</span></button>`;
   }
-  return `<article class="card power"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Electricity</div>
-    <div class="s-val">${Number(e.totalKwh).toFixed(4)}<small>kWh</small></div>
-    <p class="note">Accumulated estimate from configured ratings and simulated operating time.</p>
+  return `<article class="card power"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Estimated electricity usage</div>
+    <div class="s-val">${Number(e.fanKwh).toFixed(4)}<small>kWh</small></div>
+    <p class="note">Exhaust fan estimate from configured ratings and simulated operating time.</p>
     <div class="plist">
-      <div>${I.bulb}<span>Lights<small>${r.lightsOn} of ${r.lights} on</small></span><b>${energyText(e.lightsKwh)}</b></div>
       <div>${I.fan}<span>Exhaust fan<small>${r.vent.on ? 'Running' : 'Off'}</small></span><b>${energyText(e.fanKwh)}</b></div>
     </div></article>`;
 }
@@ -522,10 +523,10 @@ function monitorView() {
     <p class="note">${over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
 }
 
-const DEVICE_NAMES = {light:'Light',exhaust_fan:'Exhaust fan',esp32:'ESP32 controller',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
+const DEVICE_NAMES = {exhaust_fan:'Exhaust fan',esp8266:'NodeMCU V3 ESP8266',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
 const FAN_NAMES = {unspecified:'Not specified',wall:'Wall-mounted',window:'Window-mounted',ceiling:'Ceiling-mounted',inline:'Inline duct'};
 function statusView() {
-  const devices = cur().devices || [];
+  const devices = (cur().devices || []).filter(d => d.type !== 'light');
   return `<h2>Room devices</h2><p class="sub">Configured devices for ${esc(cur().name)}.</p>${roomBar()}
     <div class="list">${devices.map(d => `<div class="row"><span class="r-ico">${I[d.type === 'light' ? 'bulb' : d.type === 'exhaust_fan' ? 'fan' : 'device']}</span>
       <div class="r-txt"><b>${esc(d.label)}</b><span>${d.quantity} × ${esc(DEVICE_NAMES[d.type])}${d.type === 'exhaust_fan' ? ' · ' + esc(FAN_NAMES[d.fanType] || 'Not specified') : ''}${d.wattsPerDevice ? ' · ' + d.wattsPerDevice + ' W each' : ''}</span></div>
@@ -652,7 +653,7 @@ function aboutView() {
       <li><b>Room status:</b> green, yellow and red indicators show the room's condition.</li>
       <li><b>Exhaust fan status:</b> see whether the exhaust fan is running, and whether it is in Automatic or Manual mode.</li>
       <li><b>Room selection:</b> pick a room by floor.</li>
-      <li><b>Electricity:</b> accumulated estimated energy in kWh for lights and exhaust fans.</li>
+      <li><b>Electricity:</b> accumulated estimated energy in kWh for exhaust fans.</li>
       <li><b>History:</b> charts for the last 6 hours, 24 hours or 7 days.</li>
       <li><b>Alerts:</b> warnings, danger alerts and system messages, tagged by room.</li>
       <li><b>SMS alerts:</b> your registered mobile number gets a text at Warning or Danger.</li>
@@ -865,7 +866,7 @@ function readDeviceRows() {
     type:row.querySelector('[data-device="type"]').value,
     label:row.querySelector('[data-device="label"]').value,
     quantity:Number(row.querySelector('[data-device="quantity"]').value),
-    activeQuantity:Number(row.querySelector('[data-device="activeQuantity"]').value),
+    activeQuantity:0,
     wattsPerDevice:Number(row.querySelector('[data-device="wattsPerDevice"]').value),
     fanType:row.querySelector('[data-device="fanType"]').value
   }));
@@ -1001,7 +1002,6 @@ function pickSheet() {
 
 // Home and Monitoring add rooms; Settings configures existing rooms.
 function defaultDevices() { return [
-  {type:'light',label:'Lights',quantity:8,activeQuantity:6,wattsPerDevice:18,fanType:'unspecified'},
   {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
 ]; }
 function deviceRows(devices) {
@@ -1009,21 +1009,21 @@ function deviceRows(devices) {
     <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
     <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(d.label)}" maxlength="100"></label>
     <div class="fields3"><label class="f">Quantity<input data-device="quantity" name="device-${i}-quantity" type="number" min="1" max="100" value="${d.quantity}"></label>
-    <label class="f" data-powered ${!['light','exhaust_fan'].includes(d.type)?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
-    <label class="f" data-light ${d.type!=='light'?'hidden':''}>Lights on<input data-device="activeQuantity" name="device-${i}-active" type="number" min="0" value="${d.activeQuantity}"></label></div>
+    <label class="f" data-powered ${d.type!=='exhaust_fan'?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
+    </div>
     <label class="f" data-fan ${d.type!=='exhaust_fan'?'hidden':''}>Exhaust fan type<select data-device="fanType" name="device-${i}-fan">${Object.entries(FAN_NAMES).map(([key,name])=>`<option value="${key}" ${key===(d.fanType||'unspecified')?'selected':''}>${name}</option>`).join('')}</select></label>
     <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device</button></div></section>`).join('');
 }
 function roomsSheet() {
   const edit=S.rooms.find(r=>r.id===S.editingRoomId), key='room:'+(edit?edit.id:'new');
-  const draft=formDrafts.get(key), devices=draft?.devices || (edit?edit.devices:defaultDevices());
+  const draft=formDrafts.get(key), devices=draft?.devices || (edit?(edit.devices || []).filter(d => d.type !== 'light'):defaultDevices());
   const floor=draft?.floor ?? (edit?edit.floor:S.addFloor||1);
   openSheet('Rooms',`<h2>${edit?'Edit '+esc(edit.name):'Add a room'}</h2>
     <form id="room-form" data-draft-key="${key}" data-room-id="${edit?edit.id:''}" class="stack" novalidate>
       <p class="flabel">Floor</p><div class="mini-chips" role="group" aria-label="Floor">${floorList().map(f=>`<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f===floor}">${ord(f)}</button>`).join('')}</div>
       <label class="f">Room number<input type="number" id="rn" aria-label="Room number" value="${edit?roomNo(edit):nextRoomNumber(floor)||''}" min="${floor*100+1}" max="${floor*100+99}"></label>
       <p class="hint" id="rnhint">${floorHint(floor)}</p>
-      <div class="room-device-heading"><p class="section-label">Devices</p><p class="note">Add separate light groups for different wattages. Configure exhaust fans separately.</p></div>
+      <div class="room-device-heading"><p class="section-label">Devices</p><p class="note">Configure exhaust fans and the NodeMCU V3 ESP8266 with its sensors.</p></div>
       <div id="device-groups" class="stack">${deviceRows(devices||[])}</div>
       <button type="button" class="btn soft small" data-act="addDevice">+ Add device</button>
       <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
@@ -1084,7 +1084,7 @@ const ACTS = {
   room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId = v; store.save(); closeSheet(); render(); } },
   addRoom(v) { if(S.role!=='admin')return; S.editingRoomId=null; S.addFloor=v?+v:cur().floor; roomsSheet(); },
   editRoom(v) { if(S.role!=='admin'||S.screen!=='settings')return; captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
-  addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'light',label:'Light',quantity:1,activeQuantity:1,wattsPerDevice:18,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
+  addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
   removeDevice(v) { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.splice(Number(v),1);$('#device-groups').innerHTML=deviceRows(devices); },
   floor(v) {
     if($('#room-form'))$('#room-form').dataset.dirty='1';
@@ -1257,8 +1257,8 @@ document.addEventListener('change', e => {
   if(e.target.form)e.target.form.dataset.dirty='1';
   if(e.target.matches('[data-device="type"]')){
     const row=e.target.closest('.device-editor'), type=e.target.value;
-    row.querySelector('[data-fan]').hidden=type!=='exhaust_fan';row.querySelector('[data-light]').hidden=type!=='light';
-    row.querySelector('[data-powered]').hidden=!['light','exhaust_fan'].includes(type);
+    row.querySelector('[data-fan]').hidden=type!=='exhaust_fan';
+    row.querySelector('[data-powered]').hidden=type!=='exhaust_fan';
     row.querySelector('[data-device="label"]').value=DEVICE_NAMES[type];
     if(type==='exhaust_fan')row.querySelector('[data-device="wattsPerDevice"]').value=40;
   }

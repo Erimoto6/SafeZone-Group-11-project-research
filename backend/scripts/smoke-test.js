@@ -111,8 +111,8 @@ const MAIL = { student: k => `${E(k)}@iskolarngbayan.pup.edu.ph`, faculty: k => 
     r = await call('POST', '/api/rooms', { floor: 5, roomNo: 501 }, aTok); ok(r.status === 400, 'floor 5 is refused (only 4 floors)');
     r = await call('POST', '/api/rooms', { floor: 1, roomNo: 101 }, aTok); ok(r.status === 409, 'Room 101 already exists');
     const roomNo = 400 + 1 + (Date.now() % 90) + 5;      // a 4xx number unlikely to exist
-    r = await call('POST', '/api/rooms', { floor: 4, roomNo, lights: 10, wattsPerLight: 20, fanWatts: 50 }, aTok);
-    ok(r.status === 201 && r.body.room.name === 'Room ' + roomNo && r.body.room.lights === 10 && r.body.room.wattsPerLight === 20, `admin adds Room ${roomNo} on the 4th floor`);
+    r = await call('POST', '/api/rooms', { floor: 4, roomNo, lights: 0, wattsPerLight: 20, fanWatts: 50 }, aTok);
+    ok(r.status === 201 && r.body.room.name === 'Room ' + roomNo && r.body.room.lights === 0 && r.body.room.wattsPerLight === 20, `admin adds Room ${roomNo} on the 4th floor`);
     const roomId = r.body.room.id; madeRooms.push(roomId);
     const [dev] = await pool.query('SELECT COUNT(*) AS n FROM device_status WHERE room_id = ?', [roomId]); ok(dev[0].n === 8, 'the new room gets its 8 device rows');
     r = await call('PATCH', '/api/rooms/' + roomId, { ventMode: 'manual' }, aTok); ok(r.status === 200 && r.body.room.ventMode === 'manual', 'ventilation mode of one room can change');

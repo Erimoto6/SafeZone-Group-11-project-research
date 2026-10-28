@@ -51,13 +51,13 @@ CREATE TABLE IF NOT EXISTS password_resets (
 
 -- ---------------------------------------------------------------------------
 -- rooms: floor 1 = rooms 101-199, floor 2 = 201-299, floor 3 = 301-399, floor 4 = 401-499.
--- device_id is how the room is linked to its ESP32 / Firebase path later.
+-- device_id is how the room is linked to its NodeMCU V3 ESP8266 integration later.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS rooms (
   id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
   floor_no         TINYINT UNSIGNED  NOT NULL,
   room_no          SMALLINT UNSIGNED NOT NULL,
-  lights           SMALLINT UNSIGNED NOT NULL DEFAULT 8,
+  lights           SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   watts_per_light  DECIMAL(6,1) NOT NULL DEFAULT 18.0,
   fan_watts        DECIMAL(6,1) NOT NULL DEFAULT 40.0,
   vent_mode        ENUM('auto','manual') NOT NULL DEFAULT 'auto',

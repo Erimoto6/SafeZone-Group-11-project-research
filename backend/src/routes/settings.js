@@ -12,7 +12,7 @@ async function readSettings() {
   const thresholds = {};
   for (const row of t) thresholds[row.metric] = { warn: row.warn_value, limit: row.limit_value };
   const [s] = await pool.query("SELECT setting_value FROM settings WHERE setting_key = 'fan_trigger'");
-  const [m] = await pool.query("SELECT SUM(vent_mode = 'auto') AS auto_n, COUNT(*) AS total FROM rooms");
+  const [m] = await pool.query("SELECT SUM(vent_mode = 'auto') AS auto_n, COUNT(*) AS total FROM rooms WHERE room_no NOT IN (108,205,210,307,309)");
   const [[sms]] = await pool.query('SELECT COUNT(*) AS n FROM sms_recipients WHERE sms_enabled = 1');
   return { thresholds, fanTrigger: s[0] ? s[0].setting_value : 'exceeded', ventMode: m[0].total && Number(m[0].auto_n) === m[0].total ? 'auto' : 'manual', smsEnabledCount: sms.n };
 }
