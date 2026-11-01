@@ -33,7 +33,7 @@ if (process.env.RATE_LIMIT !== 'off') app.use(rateLimit({
 app.get('/api/health', wrap(async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    const out = { ok: true, database: 'connected', time: new Date().toISOString() };
+    const out = { ok: true, database: 'connected', time: new Date().toISOString(), revision: process.env.RAILWAY_GIT_COMMIT_SHA || null };
     if (process.env.NODE_ENV !== 'production') out.mail = process.env.SMTP_HOST ? 'smtp' : 'test-mode';   // test-mode = codes are printed in the backend terminal
     res.json(out);
   } catch (e) {
@@ -50,7 +50,12 @@ app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/simulation', require('./routes/simulation'));
 
 // Serve the web app and API from one address during development and hosting.
-app.use(express.static(require('path').join(__dirname, '../../www')));
+app.use(express.static(require('path').join(__dirname, '../../www'), {
+  setHeaders(res, filePath) {
+    // Revalidate the entry page and frontend code after every deployment.
+    if (/\.(html|js|css)$/.test(filePath)) res.setHeader('Cache-Control', 'no-store');
+  }
+}));
 
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
 
