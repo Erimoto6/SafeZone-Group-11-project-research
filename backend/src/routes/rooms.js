@@ -1,12 +1,13 @@
-// Rooms. Numbers follow the floor: 1st = 101-199, 2nd = 201-299, 3rd = 301-399, 4th = 401-499.
+// Classrooms: x01–x12 on floors 1–4, excluding clinic, offices and library.
 const express = require('express');
 const { pool } = require('../db');
 const { HttpError, wrap } = require('../http');
 const { requireAuth, requireAdmin } = require('../auth');
 const inventory = require('../room-devices');
+const { isClassroom } = require('../classrooms');
 
 const router = express.Router();
-const MAX_FLOOR = Number(process.env.MAX_FLOOR) || 4;
+const MAX_FLOOR = 4;
 const DEVICES = ['esp32', 'temp_sensor', 'hum_sensor', 'co2_sensor', 'fan', 'wifi', 'sms_module', 'power_meter'];
 
 const roomJson = (r, devices = []) => ({
@@ -29,12 +30,12 @@ router.post('/', requireAdmin, wrap(async (req, res) => {
   const fanWatts = b.fanWatts == null ? 40 : Number(b.fanWatts);
 
   if (!Number.isInteger(floor) || floor < 1 || floor > MAX_FLOOR) throw new HttpError(400, `Floor must be from 1 to ${MAX_FLOOR}.`);
-  const lo = floor * 100 + 1, hi = floor * 100 + 99;
+  const lo = floor * 100 + 1, hi = floor * 100 + 12;
   if (!Number.isInteger(roomNo) || roomNo < lo || roomNo > hi) {
     throw new HttpError(400, `Floor ${floor} rooms are numbered ${lo}, ${lo + 1}, ${lo + 2} and so on, up to ${hi}.`);
   }
   if (b.lights && Number(b.lights) !== 0) throw new HttpError(400, 'Lighting is not supported.');
-  if ([108,205,210,307,309].includes(roomNo)) throw new HttpError(400, 'That room is not a classroom.');
+  if (!isClassroom(floor, roomNo)) throw new HttpError(400, 'That room is not a classroom.');
   if (!Number.isInteger(lights) || lights < 0 || lights > 100) throw new HttpError(400, 'Lights: enter a number from 0 to 100.');
   if (!(wattsPerLight > 0 && wattsPerLight <= 500)) throw new HttpError(400, 'Watts per light: enter a number from 1 to 500.');
   if (!(fanWatts >= 0 && fanWatts <= 2000)) throw new HttpError(400, 'Fan watts: enter a number from 0 to 2000.');
@@ -73,8 +74,7 @@ router.patch('/:id', requireAdmin, wrap(async (req, res) => {
     const [[room]]=await conn.query('SELECT * FROM rooms WHERE room_no NOT IN (108,205,210,307,309) AND id=? FOR UPDATE',[id]);
     if (!room) throw new HttpError(404,'Room not found.');
     const floor=b.floor===undefined?room.floor_no:Number(b.floor), no=b.roomNo===undefined?room.room_no:Number(b.roomNo);
-    if (!Number.isInteger(floor)||floor<1||floor>MAX_FLOOR||!Number.isInteger(no)||no<floor*100+1||no>floor*100+99) throw new HttpError(400,'Room number must match its selected floor.');
-    if ([108,205,210,307,309].includes(no)) throw new HttpError(400, 'That room is not a classroom.');
+    if (!isClassroom(floor, no)) throw new HttpError(400, 'Choose a classroom from 01 to 12 on its matching floor, excluding the clinic, offices and library.');
     if (!Object.keys(b).some(k=>['floor','roomNo','ventMode','devices'].includes(k))) throw new HttpError(400,'Choose room information to update.');
     await conn.query('UPDATE rooms SET floor_no=?,room_no=?,vent_mode=? WHERE id=?',[floor,no,b.ventMode??room.vent_mode,id]);
     if (devices) await inventory.replace(conn,id,devices);

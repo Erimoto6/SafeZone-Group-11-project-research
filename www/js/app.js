@@ -189,8 +189,19 @@ const guessFloor = name => { const m = String(name).match(/(\d)\d\d/); const f =
 const roomNo = r => { const m = String(r.name).match(/\d+/); return m ? parseInt(m[0], 10) : 0; };
 const roomsOn = f => S.rooms.filter(r => r.floor === f).sort((a, b) => roomNo(a) - roomNo(b) || a.name.localeCompare(b.name));
 // Next free number on a floor: 1st -> 101, 102...  2nd -> 201, 202...
-const nextRoomNumber = f => { for (let n = f * 100 + 1; n <= f * 100 + 99; n++) if (!EXCLUDED_ROOMS.includes(n) && !S.rooms.some(r => r.name.toLowerCase() === 'room ' + n)) return n; return null; };
-const floorHint = f => `${ord(f)} floor rooms are ${f}01, ${f}02, ${f}03 and so on, up to ${f}99.`;
+const nextRoomNumber = f => { for (let n = f * 100 + 1; n <= f * 100 + 12; n++) if (!EXCLUDED_ROOMS.includes(n) && !S.rooms.some(r => r.name.toLowerCase() === 'room ' + n)) return n; return null; };
+const floorHint = f => {
+  const excluded = EXCLUDED_ROOMS.filter(n => Math.floor(n / 100) === f);
+  return `${ord(f)} floor classrooms: ${f}01–${f}12.${excluded.length ? ' Excludes ' + excluded.join(', ') + '.' : ''}`;
+};
+function updateRoomAvailability() {
+  const form = $('#room-form'); if (!form) return;
+  const edit = S.rooms.find(r => r.id === form.dataset.roomId);
+  const full = nextRoomNumber(S.addFloor) === null && (!edit || edit.floor !== S.addFloor);
+  $('#rnhint').textContent = floorHint(S.addFloor) + (full ? ' All classrooms on this floor are already added.' : '');
+  $('#rn').disabled = full;
+  form.querySelector('[type="submit"]').disabled = full;
+}
 const effectiveDark = () => S.theme ? S.theme === 'dark' : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
 const applyTheme = () => { const h = document.documentElement; if (S.theme) h.setAttribute('data-theme', S.theme); else h.removeAttribute('data-theme'); };
 
@@ -488,7 +499,7 @@ function homeView() {
   const head = S.role === 'admin'
     ? `<h2>Welcome, Admin!</h2><p class="sub">Here's the current environment in ${room} and the system status.</p>`
     : `<h2>Classroom Environment</h2><p class="sub">Real-time indoor conditions in ${room}.</p>`;
-  return `${head}${roomBar(true)}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
+  return `${head}${roomBar()}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
 }
 
 function alertsView() {
@@ -1021,7 +1032,7 @@ function roomsSheet() {
   openSheet('Rooms',`<h2>${edit?'Edit '+esc(edit.name):'Add a room'}</h2>
     <form id="room-form" data-draft-key="${key}" data-room-id="${edit?edit.id:''}" class="stack" novalidate>
       <p class="flabel">Floor</p><div class="mini-chips" role="group" aria-label="Floor">${floorList().map(f=>`<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f===floor}">${ord(f)}</button>`).join('')}</div>
-      <label class="f">Room number<input type="number" id="rn" aria-label="Room number" value="${edit?roomNo(edit):nextRoomNumber(floor)||''}" min="${floor*100+1}" max="${floor*100+99}"></label>
+      <label class="f">Room number<input type="number" id="rn" aria-label="Room number" value="${edit?roomNo(edit):nextRoomNumber(floor)||''}" min="${floor*100+1}" max="${floor*100+12}"></label>
       <p class="hint" id="rnhint">${floorHint(floor)}</p>
       <div class="room-device-heading"><p class="section-label">Devices</p><p class="note">Configure exhaust fans and the NodeMCU V3 ESP8266 with its sensors.</p></div>
       <div id="device-groups" class="stack">${deviceRows(devices||[])}</div>
@@ -1029,6 +1040,7 @@ function roomsSheet() {
       <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
     </form>`);
   S.addFloor=floor;
+  updateRoomAvailability();
 }
 
 function accountSheet() {
@@ -1090,8 +1102,8 @@ const ACTS = {
     if($('#room-form'))$('#room-form').dataset.dirty='1';
     S.addFloor = +v;
     document.querySelectorAll('[data-act="floor"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
-    const rn = $('#rn'); if (rn) { rn.value = nextRoomNumber(S.addFloor) || ''; rn.min = S.addFloor * 100 + 1; rn.max = S.addFloor * 100 + 99; }
-    const hint = $('#rnhint'); if (hint) hint.textContent = floorHint(S.addFloor);
+    const rn = $('#rn'); if (rn) { const edit = S.rooms.find(r => r.id === $('#room-form').dataset.roomId); rn.value = edit && edit.floor === S.addFloor ? roomNo(edit) : nextRoomNumber(S.addFloor) || ''; rn.min = S.addFloor * 100 + 1; rn.max = S.addFloor * 100 + 12; }
+    updateRoomAvailability();
   },
   theme() {
     S.theme = effectiveDark() ? 'light' : 'dark'; applyTheme(); store.save();
@@ -1221,6 +1233,9 @@ document.addEventListener('submit', async e => {
       await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient saved');
     } else if (id === 'room-form') {
       const roomId=form.dataset.roomId;
+      const no=Number(value('rn'));
+      if (!Number.isInteger(no) || no < S.addFloor*100+1 || no > S.addFloor*100+12 || EXCLUDED_ROOMS.includes(no)) throw new Error('Choose a valid classroom. ' + floorHint(S.addFloor));
+      if (S.rooms.some(r => r.id !== roomId && roomNo(r) === no)) throw new Error('That classroom is already added.');
       const result=await api('/rooms'+(roomId?'/'+roomId:''),roomId?'PATCH':'POST',{
         floor:S.addFloor,roomNo:Number(value('rn')),devices:readDeviceRows()
       });

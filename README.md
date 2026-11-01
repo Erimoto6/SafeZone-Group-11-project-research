@@ -163,3 +163,5 @@ The cloud development database and private configuration are separate from your 
 ### Classroom hardware scope
 
 The default roster includes 43 classrooms across four floors, excluding rooms 108 (clinic), 205 (SCO office), 210 (Registrar and Admission Office), and 307/309 (campus library). For an existing database, run `database/07-classroom-roster.sql` after migrations 01–06. Existing records are preserved. Devices use NodeMCU V3 ESP8266 inventory naming. Lighting configuration is removed; electricity estimates cover exhaust fans only. Physical hardware integration remains future work.
+
+Home only selects rooms for viewing. Admins add missing classrooms from Monitoring and edit existing rooms in Settings. Add/Edit validates room numbers 01–12 on each matching floor and excludes the clinic, offices and library; fully populated floors cannot add another classroom. No database migration is needed for this validation change.

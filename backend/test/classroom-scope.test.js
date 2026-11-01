@@ -34,3 +34,19 @@ test('legacy controller inventory displays ESP8266 and editing preserves lightin
   await inventory.replace(conn, 1, inventory.validate([{type:'exhaust_fan',label:'Fan',quantity:1,wattsPerDevice:40}]));
   assert(queries.find(([sql]) => sql.startsWith('DELETE')).at(0).includes("device_type <> 'light'"));
 });
+
+
+test('backend restricts creation and editing to the 43 building classrooms', () => {
+  const { isClassroom } = require('../src/classrooms');
+  let count = 0;
+  for (let floor = 1; floor <= 4; floor++) {
+    for (let number = 0; number <= 599; number++) {
+      const expected = number >= floor*100+1 && number <= floor*100+12 && ![108,205,210,307,309].includes(number);
+      assert.equal(isClassroom(floor, number), expected, `floor ${floor}, room ${number}`);
+      if (expected) count++;
+    }
+  }
+  assert.equal(count, 43);
+  for (const floor of [0,5,1.5,NaN]) assert.equal(isClassroom(floor,101),false);
+  assert.equal(isClassroom(1,101.5),false);
+});
