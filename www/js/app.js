@@ -198,7 +198,7 @@ function updateRoomAvailability() {
   const form = $('#room-form'); if (!form) return;
   const edit = S.rooms.find(r => r.id === form.dataset.roomId);
   const full = nextRoomNumber(S.addFloor) === null && (!edit || edit.floor !== S.addFloor);
-  $('#rnhint').textContent = floorHint(S.addFloor) + (full ? ' All classrooms on this floor are already added.' : '');
+  $('#rnhint').textContent = floorHint(S.addFloor);
   $('#rn').disabled = full;
   form.querySelector('[type="submit"]').disabled = full;
 }
