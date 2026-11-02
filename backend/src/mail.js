@@ -10,14 +10,34 @@ if (process.env.SMTP_HOST) {
     host: process.env.SMTP_HOST,
     port,
     secure: port === 465,
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 8000,
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
   });
+}
+
+// Check configuration/connectivity before looking up an account. This returns the
+// same outage response for registered and unregistered addresses.
+let verifiedUntil = 0, verification = null;
+async function ensureDeliveryAvailable() {
+  if (!transport) {
+    if (process.env.NODE_ENV === 'production') throw new Error('SMTP is not configured.');
+    return;
+  }
+  if (!process.env.MAIL_FROM && !process.env.SMTP_USER) throw new Error('MAIL_FROM is required.');
+  if (Date.now() < verifiedUntil) return;
+  if (!verification) verification = transport.verify().then(() => {
+    verifiedUntil = Date.now() + 60000;
+  }).finally(() => { verification = null; });
+  await verification;
 }
 
 // Remembers the last code per address, only while testing. Not kept in production.
 const lastCodes = new Map();
 
 async function sendResetCode(to, code, minutes) {
+  await ensureDeliveryAvailable();
   if (process.env.NODE_ENV !== 'production') lastCodes.set(to, code);
 
   if (!transport) {
@@ -40,4 +60,4 @@ async function sendResetCode(to, code, minutes) {
   return { sent: true, testMode: false };
 }
 
-module.exports = { sendResetCode, lastCodes };
+module.exports = { sendResetCode, lastCodes, ensureDeliveryAvailable };

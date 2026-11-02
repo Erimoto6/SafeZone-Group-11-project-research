@@ -117,6 +117,12 @@ router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
 
   const wait = Math.ceil(((lastRequest.get(email) || 0) + RESEND_SECONDS * 1000 - Date.now()) / 1000);
   if (wait > 0) throw new HttpError(429, `Please wait ${wait} seconds before asking for a new code.`);
+  try {
+    await mail.ensureDeliveryAvailable();
+  } catch (e) {
+    console.error('Password reset email unavailable:', e.message);
+    throw new HttpError(503, 'Password reset email is temporarily unavailable. Please contact your administrator or try again later.');
+  }
   lastRequest.set(email, Date.now());
   if (lastRequest.size > 5000) for (const [k, t] of lastRequest) if (Date.now() - t > 3600e3) lastRequest.delete(k);
 

@@ -831,7 +831,7 @@ function fpCodeView() {
   return `<div class="splash auth">${authBack('fpEmail')}<div class="auth-in">
     ${circle('key')}
     <h2>Enter Code</h2>
-    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> is registered, we sent a 6-digit code to it. The code works for ${RESET_MINUTES} minutes.<br>Check your Junk folder. During local testing, the code appears only in the backend terminal.</p>
+    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> is registered, we sent a 6-digit code to it. The code works for ${RESET_MINUTES} minutes.<br>Check your Inbox and Junk folder. Use the email address saved on your SafeZone account.</p>
     ${demo}
     <form id="fp-code-form" style="width:100%" novalidate>
       <label class="flabel" for="fpc">6-digit code</label>

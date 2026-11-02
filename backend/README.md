@@ -58,7 +58,7 @@ Keep `.env` private. It is already in `.gitignore`, so it will not go to GitHub.
 
 - With `SMTP_HOST` empty in `.env`, the 6-digit code is **printed in this terminal** instead of emailed. Good for testing.
 - To send real email, fill in `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` from any email service
-  (Brevo, SendGrid, Mailgun, Resend... or a Gmail account with an "app password"). Then try forgot password with a real
+  (Brevo, SendGrid, Mailgun, or a Gmail account with an "app password"). Then try forgot password with a real
   PUP address and check the **Junk** folder too, because PUP's mail filter may not trust a new sender.
 - Codes work for 10 minutes, allow 5 wrong tries, and need a 30 second wait before a new one. Only a hash of the code is saved.
 - Asking for a code gives the same reply whether or not the web mail is registered, so nobody can find out who has an account.
@@ -108,3 +108,22 @@ A plain `http://` address also needs the Android app to allow it during developm
 
 MySQL keeps accounts, rooms, limits, the SMS list and alerts. Firebase will keep the live temperature, humidity
 and CO2 readings and the fan commands. A room's `device_id` in the `rooms` table is the link to its Firebase path.
+
+### Railway email setup
+
+Set the email variables in the **backend service → Variables**, not in MySQL or the frontend:
+
+```env
+NODE_ENV=production
+SMTP_HOST=YOUR_PROVIDER_SMTP_HOST
+SMTP_PORT=587
+SMTP_USER=YOUR_PROVIDER_SMTP_USERNAME
+SMTP_PASS=YOUR_PROVIDER_SMTP_PASSWORD
+MAIL_FROM=SafeZone <YOUR_VERIFIED_SENDER_EMAIL>
+```
+
+Use credentials issued by your email provider. For Gmail, use `smtp.gmail.com`, the sender's full Gmail address as `SMTP_USER`, and a Google app password as `SMTP_PASS` (requires 2-Step Verification). The sender may be a project Gmail address; the recipient must be the PUP address saved on the SafeZone account. Never commit these real values or put them in `www/js/config.js`.
+
+After Railway redeploys, request a reset for an existing account, check its Inbox/Junk folder, enter the six-digit code and choose a new password. Confirm the old password stops working. No SQL migration is required.
+
+The backend checks SMTP connectivity/authentication before accepting reset requests and reports a generic 503 error during an email outage without disclosing whether an account exists. Provider acceptance still does not guarantee inbox delivery; check the sender provider's logs and recipient spam filtering if a code is missing. Some Railway plans restrict outbound SMTP; check current plan support if connections time out, or use a transactional email provider through an HTTPS integration. Such an integration is not included here.
