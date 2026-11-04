@@ -1,6 +1,5 @@
 // A logged-in user verifies ownership before Gmail becomes their recovery address.
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { pool } = require('../db');
@@ -19,7 +18,6 @@ router.get('/',wrap(async(req,res)=>{
 router.post('/request',limit,wrap(async(req,res)=>{
   const email=normEmail(req.body?.email);
   if (!validRecoveryGmail(email)) throw new HttpError(400,'Enter a Gmail address ending in @gmail.com.');
-  if (!await bcrypt.compare(String(req.body?.currentPassword || ''),req.user.password_hash)) throw new HttpError(400,'Your current password is not correct.');
   try { await mail.ensureDeliveryAvailable(); } catch { throw new HttpError(503,'Email delivery is unavailable. Please try again later.'); }
   const code=String(crypto.randomInt(100000,1000000)), hash=hashCode(req.user.id,email,code);
   const conn=await pool.getConnection();

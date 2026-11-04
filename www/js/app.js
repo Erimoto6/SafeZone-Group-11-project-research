@@ -831,7 +831,7 @@ function fpCodeView() {
   return `<div class="splash auth">${authBack('fpEmail')}<div class="auth-in">
     ${circle('key')}
     <h2>Enter Code</h2>
-    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> has a verified recovery Gmail, a 6-digit code was requested for that Gmail. The code works for ${RESET_MINUTES} minutes.<br>Check your Inbox and Junk folder. Check the Gmail you verified in Account Settings. Accounts without a verified recovery Gmail must contact their administrator.</p>
+    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> has a verified recovery email, a verification code has been sent to that recovery email. The code works for ${RESET_MINUTES} minutes.<br>Enter the code from your recovery Gmail inbox below. Check Junk if it is missing. Accounts without a verified recovery Gmail must contact their administrator.</p>
     ${demo}
     <form id="fp-code-form" style="width:100%" novalidate>
       <label class="flabel" for="fpc">6-digit code</label>
@@ -1056,8 +1056,7 @@ function accountSheet() {
     <p class="section-label">Recovery Gmail</p>
     <p class="note">${S.recovery?.email ? 'Verified: '+esc(S.recovery.email) : 'No verified recovery Gmail yet.'} Verify a Gmail you own to receive password reset codes. Your PUP login stays the same.</p>
     <form id="recovery-request-form" class="stack" novalidate>
-      <label class="f">Recovery Gmail<input id="recovery-email" type="email" autocomplete="email" placeholder="yourname@gmail.com" value="${esc(S.recovery?.pendingEmail || S.recovery?.email || '')}"></label>
-      <label class="f">Current password<input id="recovery-password" type="password" autocomplete="current-password"></label>
+      <label class="f">Recovery Gmail<input id="recovery-email" type="email" autocomplete="email" placeholder="Enter your recovery Gmail" aria-label="Recovery Gmail" value="${esc(S.recovery?.pendingEmail || S.recovery?.email || '')}"></label>
       <button class="btn small" type="submit">Send verification code</button>
     </form>
     ${S.recovery?.pendingEmail ? `<p class="note">Enter the code sent to ${esc(S.recovery.pendingEmail)}. It expires in 10 minutes. An existing verified Gmail remains active until this change is verified.</p>
@@ -1256,7 +1255,7 @@ document.addEventListener('submit', async e => {
       await refreshData(); if(!roomId)S.roomId=String(result.room.id); else S.configRoomId=String(result.room.id); captureEnabled=false; closeSheet(); render();
       toast(roomId?'Room updated':'Room added');
     } else if (id === 'recovery-request-form') {
-      const result = await api('/auth/me/recovery/request', 'POST', { email: value('recovery-email'), currentPassword: value('recovery-password') });
+      const result = await api('/auth/me/recovery/request', 'POST', { email: value('recovery-email') });
       formDrafts.delete(formKey(form)); form.reset();
       S.recovery = { ...S.recovery, pendingEmail: result.pendingEmail };
       captureEnabled=false; accountSheet(); captureEnabled=true; toast('Verification code sent to your Gmail');

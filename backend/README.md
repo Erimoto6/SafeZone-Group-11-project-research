@@ -132,7 +132,7 @@ The backend checks SMTP connectivity/authentication before accepting reset reque
 
 Run `database/08-recovery-gmail.sql` after migration 07. It creates `account_recovery` and invalidates outstanding pre-upgrade password reset codes, preserving account/password data. Accounts start without a recovery Gmail.
 
-While logged in, open Account Settings, enter a personal recovery Gmail and the current SafeZone password, request a code, and verify the code. Codes expire in 10 minutes, allow five attempts and have a 30-second resend cooldown. A replacement address stays pending until verified; the previous verified address remains usable. Completing a change invalidates existing password reset codes. Login email remains the PUP address. The forgot-password form accepts the PUP account email and sends only to the verified Gmail saved for that account; it never accepts an arbitrary reset recipient. Accounts without verified recovery Gmail need administrator assistance.
+While logged in, open Account Settings, enter a personal recovery Gmail, request a code, and verify the code. Codes expire in 10 minutes, allow five attempts and have a 30-second resend cooldown. A replacement address stays pending until verified; the previous verified address remains usable. Completing a change invalidates existing password reset codes. Login email remains the PUP address. The forgot-password form accepts the PUP account email and sends only to the verified Gmail saved for that account; it never accepts an arbitrary reset recipient. Accounts without verified recovery Gmail need administrator assistance.
 
 The project sender `safezone.project0@gmail.com` is separate from users' recovery Gmail addresses. In the Railway backend service set:
 
