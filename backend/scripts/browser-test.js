@@ -166,9 +166,12 @@ let server,browser;
   assert(await page.locator('#current-pw').isVisible());
   await fill('current-pw',password);await submit('pw-form');
   await page.getByRole('dialog').waitFor({state:'hidden'});await page.reload();await dashboard();console.log('PASS: admin password change and refreshed token');
+  // Verified recovery fixture; endpoint tests cover proving Gmail ownership.
+  const recoveryMail=tag+'@gmail.com';
+  await pool.query('INSERT INTO account_recovery (user_id,email) SELECT id,? FROM users WHERE email=? ON DUPLICATE KEY UPDATE email=VALUES(email)',[recoveryMail,mail]);
   await logout();await act('role','student');await act('to','vLogin');await act('forgot','viewer');await fill('fpe',mail);await submit('fp-email-form');await page.locator('#fpc').waitFor();
-  for(let i=0;i<50&&!lastCodes.has(mail);i++)await new Promise(r=>setTimeout(r,20));assert(lastCodes.has(mail));
-  await fill('fpc',lastCodes.get(mail));await submit('fp-code-form');await fill('rp','Resetpass123');await fill('rc','Resetpass123');await submit('fp-new-form');
+  for(let i=0;i<50&&!lastCodes.has(recoveryMail);i++)await new Promise(r=>setTimeout(r,20));assert(lastCodes.has(recoveryMail));
+  await fill('fpc',lastCodes.get(recoveryMail));await submit('fp-code-form');await fill('rp','Resetpass123');await fill('rc','Resetpass123');await submit('fp-new-form');
   await page.getByRole('heading',{name:'Password Updated',exact:true}).waitFor();await page.getByRole('button',{name:'Go to Login',exact:true}).click();
   await fill('phone',phone);await fill('pw','Resetpass123');await submit('v-login-form');await dashboard();console.log('PASS: server-verified browser password reset');
   await page.route('**/api/rooms',r=>r.abort());await act('go','home');await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Cannot reach the SafeZone server'));

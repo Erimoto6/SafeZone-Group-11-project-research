@@ -26,4 +26,6 @@ const normUsername = x => String(x == null ? '' : x).trim().toLowerCase();
 const validUsername = x => /^[a-z0-9._-]{3,20}$/.test(x);
 const cleanName = x => String(x == null ? '' : x).trim().replace(/\s+/g, ' ');
 
-module.exports = { WEBMAIL, normPhone, validPhone, normEmail, emailKind, passwordProblem, normUsername, validUsername, cleanName };
+const validRecoveryGmail = x => /^[a-z0-9][a-z0-9._+\-]*@gmail\.com$/.test(normEmail(x)) && normEmail(x).length <= 254;
+
+module.exports = { validRecoveryGmail, WEBMAIL, normPhone, validPhone, normEmail, emailKind, passwordProblem, normUsername, validUsername, cleanName };

@@ -6,6 +6,7 @@ Shared simulated readings are stored here; physical sensor integration is not in
 | Table | What it holds |
 |---|---|
 | `users` | every account (admins and students/faculty), passwords as bcrypt hashes |
+| `account_recovery` | verified recovery Gmail and pending ownership challenges |
 | `password_resets` | forgot-password codes (hashed), expiry and tries |
 | `rooms` | 43 classrooms across four floors on the 1st floor, plus any rooms an admin adds (201..., 301..., 401...) |
 | `thresholds` | warning and limit for temperature, humidity, CO2 |
@@ -79,3 +80,7 @@ Run only `07-classroom-roster.sql` if migrations 01–06 are already installed. 
 The expected roster is 11 classrooms on floor 1, 10 on floor 2, 10 on floor 3 and 12 on floor 4 (43 total). Rooms 108, 205, 210, 307 and 309 are excluded by the API but remain stored with their historical data. Additional admin-created rooms are preserved, so existing databases may have more than 43 active classrooms.
 
 Lighting groups and past lighting kWh remain stored for history, but are hidden from configuration and excluded from new electricity estimates. The displayed total is accumulated fan kWh. Existing controller inventory is migrated from ESP32 to NodeMCU V3 ESP8266; this corrects inventory naming and does not implement physical sensor communication.
+
+## Recovery Gmail migration
+
+After 07, run `08-recovery-gmail.sql` once to add the `account_recovery` table. Existing users/passwords and PUP account emails stay unchanged. Outstanding password reset codes are invalidated during the upgrade. Users must log in and verify a recovery Gmail in Account Settings before using Forgot Password. No existing addresses are automatically trusted.

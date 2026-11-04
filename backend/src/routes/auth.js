@@ -126,25 +126,32 @@ router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
   lastRequest.set(email, Date.now());
   if (lastRequest.size > 5000) for (const [k, t] of lastRequest) if (Date.now() - t > 3600e3) lastRequest.delete(k);
 
-  // The answer is always the same, so nobody can use this to find out who is registered.
-  const reply = { ok: true, message: 'If that web mail is registered, we sent a 6-digit code to it.' };
-  const [rows] = await pool.query('SELECT id FROM users WHERE email = ? AND is_active = 1', [email]);
-  const u = rows[0];
+  // Always give the same response; never reveal an account or its recovery Gmail.
+  const reply = { ok: true, message: 'If this account has a verified recovery Gmail, a reset code has been requested for it.' };
+  let u;
+  const code = String(crypto.randomInt(100000, 1000000));
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(`SELECT u.id,r.email AS recovery_email FROM users u
+      JOIN account_recovery r ON r.user_id=u.id WHERE u.email=? AND u.is_active=1 AND r.email IS NOT NULL FOR UPDATE`,[email]);
+    u=rows[0];
+    if (u) {
+      await conn.query('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL',[u.id]);
+      await conn.query('INSERT INTO password_resets (user_id,code_hash,expires_at) VALUES (?,?,DATE_ADD(NOW(),INTERVAL ? MINUTE))',[u.id,hashCode(code),RESET_MINUTES]);
+    }
+    await conn.commit();
+  } catch(e) { await conn.rollback();throw e; } finally {conn.release();}
   if (!u) return res.json(reply);
 
-  const code = String(crypto.randomInt(100000, 1000000));
-  await pool.query('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL', [u.id]);   // older codes stop working
-  await pool.query('INSERT INTO password_resets (user_id, code_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
-    [u.id, hashCode(code), RESET_MINUTES]);
-
   // Send in the background so the reply is just as fast whether or not the account exists.
-  mail.sendResetCode(email, code, RESET_MINUTES)
+  mail.sendResetCode(u.recovery_email, code, RESET_MINUTES)
     .then(r => pool.query('INSERT INTO notification_log (purpose, channel, to_address, user_id, status) VALUES (?, ?, ?, ?, ?)',
-      ['password_reset', 'email', email, u.id, r.sent ? 'sent' : 'queued']))
+      ['password_reset', 'email', u.recovery_email, u.id, r.sent ? 'sent' : 'queued']))
     .catch(async e => {
       console.error('Could not send the reset email:', e.message);
       await pool.query('INSERT INTO notification_log (purpose, channel, to_address, user_id, status, error) VALUES (?, ?, ?, ?, ?, ?)',
-        ['password_reset', 'email', email, u.id, 'failed', String(e.message).slice(0, 255)]).catch(() => {});
+        ['password_reset', 'email', u.recovery_email, u.id, 'failed', String(e.message).slice(0, 255)]).catch(() => {});
     });
   res.json(reply);
 }));

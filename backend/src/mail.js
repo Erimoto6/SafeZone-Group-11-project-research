@@ -36,7 +36,7 @@ async function ensureDeliveryAvailable() {
 // Remembers the last code per address, only while testing. Not kept in production.
 const lastCodes = new Map();
 
-async function sendResetCode(to, code, minutes) {
+async function sendResetCode(to, code, minutes, purpose = 'reset') {
   await ensureDeliveryAvailable();
   if (process.env.NODE_ENV !== 'production') lastCodes.set(to, code);
 
@@ -46,11 +46,12 @@ async function sendResetCode(to, code, minutes) {
     return { sent: false, testMode: true };
   }
 
+  const title = purpose === 'recovery' ? 'Verify your SafeZone recovery Gmail' : 'Your SafeZone password reset code';
   await transport.sendMail({
     from: process.env.MAIL_FROM || process.env.SMTP_USER,
     to,
-    subject: 'Your SafeZone password reset code',
-    text: `Your SafeZone code is ${code}.\n\nIt works for ${minutes} minutes. If you did not ask to reset your password, you can ignore this email.`,
+    subject: title,
+    text: `${title}. Your SafeZone code is ${code}.\n\nIt works for ${minutes} minutes. If you did not ask to reset your password, you can ignore this email.`,
     html: `<div style="font-family:Arial,sans-serif;max-width:420px">
       <h2 style="color:#7A1235;margin:0 0 8px">SafeZone</h2>
       <p>Your password reset code is:</p>

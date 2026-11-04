@@ -41,6 +41,7 @@ app.get('/api/health', wrap(async (req, res) => {
   }
 }));
 
+app.use('/api/auth/me/recovery', require('./routes/recovery'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/rooms', require('./routes/rooms'));

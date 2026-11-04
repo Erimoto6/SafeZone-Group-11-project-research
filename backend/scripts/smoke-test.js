@@ -158,9 +158,11 @@ const MAIL = { student: k => `${E(k)}@iskolarngbayan.pup.edu.ph`, faculty: k => 
     r = await call('POST', '/api/auth/forgot', { email: MAIL.student('nobody') });
     ok(r.status === 200 && /If that web mail is registered/.test(r.body.message) && !mail.lastCodes.has(MAIL.student('nobody')), 'unknown web mail: same reply, no code made');
     const unknownReply = r.body.message;
+    // Verified recovery fixture for password-reset tests (proof tested separately).
+    await pool.query('INSERT INTO account_recovery (user_id,email) SELECT id,? FROM users WHERE email=? ON DUPLICATE KEY UPDATE email=VALUES(email)', ['s1.safezone.test@gmail.com',MAIL.student('s1')]);
     r = await call('POST', '/api/auth/forgot', { email: MAIL.student('s1') });
     ok(r.status === 200 && r.body.message === unknownReply, 'known web mail: exactly the same reply (nobody can tell who is registered)');
-    const codeA = mail.lastCodes.get(MAIL.student('s1'));
+    const codeA = mail.lastCodes.get('s1.safezone.test@gmail.com');
     ok(/^\d{6}$/.test(codeA || ''), 'a 6-digit code was created: ' + codeA);
     const [[cr]] = await pool.query('SELECT code_hash FROM password_resets pr JOIN users u ON u.id = pr.user_id WHERE u.email = ? ORDER BY pr.id DESC LIMIT 1', [MAIL.student('s1')]);
     ok(cr && cr.code_hash.length === 64 && !cr.code_hash.includes(codeA), 'only a hash of the code is stored');
@@ -182,15 +184,19 @@ const MAIL = { student: k => `${E(k)}@iskolarngbayan.pup.edu.ph`, faculty: k => 
 
     // five wrong guesses lock the code, even the right one is then refused
     r = await call('POST', '/api/auth/register', { email: MAIL.student('s3'), phone: P.s3, password: 'abc123' });
+    // Verified recovery fixture for password-reset tests (proof tested separately).
+    await pool.query('INSERT INTO account_recovery (user_id,email) SELECT id,? FROM users WHERE email=? ON DUPLICATE KEY UPDATE email=VALUES(email)', ['s3.safezone.test@gmail.com',MAIL.student('s3')]);
     await call('POST', '/api/auth/forgot', { email: MAIL.student('s3') });
-    const codeB = mail.lastCodes.get(MAIL.student('s3')); const wrongB = codeB === '000000' ? '111111' : '000000';
+    const codeB = mail.lastCodes.get('s3.safezone.test@gmail.com'); const wrongB = codeB === '000000' ? '111111' : '000000';
     for (let i = 0; i < 5; i++) await call('POST', '/api/auth/verify-code', { email: MAIL.student('s3'), code: wrongB });
     r = await call('POST', '/api/auth/verify-code', { email: MAIL.student('s3'), code: codeB }); ok(r.status === 400, 'after 5 wrong tries even the right code is refused');
 
     // an expired code is refused
     r = await call('POST', '/api/auth/register', { email: MAIL.student('s4'), phone: P.s4, password: 'abc123' });
+    // Verified recovery fixture for password-reset tests (proof tested separately).
+    await pool.query('INSERT INTO account_recovery (user_id,email) SELECT id,? FROM users WHERE email=? ON DUPLICATE KEY UPDATE email=VALUES(email)', ['s4.safezone.test@gmail.com',MAIL.student('s4')]);
     await call('POST', '/api/auth/forgot', { email: MAIL.student('s4') });
-    const codeC = mail.lastCodes.get(MAIL.student('s4'));
+    const codeC = mail.lastCodes.get('s4.safezone.test@gmail.com');
     await pool.query('UPDATE password_resets pr JOIN users u ON u.id = pr.user_id SET pr.expires_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE u.email = ?', [MAIL.student('s4')]);
     r = await call('POST', '/api/auth/verify-code', { email: MAIL.student('s4'), code: codeC }); ok(r.status === 400, 'an expired code is refused');
 

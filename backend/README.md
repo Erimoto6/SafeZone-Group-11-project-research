@@ -127,3 +127,22 @@ Use credentials issued by your email provider. For Gmail, use `smtp.gmail.com`, 
 After Railway redeploys, request a reset for an existing account, check its Inbox/Junk folder, enter the six-digit code and choose a new password. Confirm the old password stops working. No SQL migration is required.
 
 The backend checks SMTP connectivity/authentication before accepting reset requests and reports a generic 503 error during an email outage without disclosing whether an account exists. Provider acceptance still does not guarantee inbox delivery; check the sender provider's logs and recipient spam filtering if a code is missing. Some Railway plans restrict outbound SMTP; check current plan support if connections time out, or use a transactional email provider through an HTTPS integration. Such an integration is not included here.
+
+## Verified recovery Gmail
+
+Run `database/08-recovery-gmail.sql` after migration 07. It creates `account_recovery` and invalidates outstanding pre-upgrade password reset codes, preserving account/password data. Accounts start without a recovery Gmail.
+
+While logged in, open Account Settings, enter a personal recovery Gmail and the current SafeZone password, request a code, and verify the code. Codes expire in 10 minutes, allow five attempts and have a 30-second resend cooldown. A replacement address stays pending until verified; the previous verified address remains usable. Completing a change invalidates existing password reset codes. Login email remains the PUP address. The forgot-password form accepts the PUP account email and sends only to the verified Gmail saved for that account; it never accepts an arbitrary reset recipient. Accounts without verified recovery Gmail need administrator assistance.
+
+The project sender `safezone.project0@gmail.com` is separate from users' recovery Gmail addresses. In the Railway backend service set:
+
+```env
+NODE_ENV=production
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=safezone.project0@gmail.com
+SMTP_PASS=YOUR_GOOGLE_APP_PASSWORD
+MAIL_FROM=SafeZone <safezone.project0@gmail.com>
+```
+
+Enable 2-Step Verification on the sender Google account, then create an App Password. Store the actual value only in Railway/private `.env`. Outbound SMTP must be permitted on the Railway plan; these code changes do not establish mail delivery by themselves. No PUP/Outlook sender credentials are needed.
