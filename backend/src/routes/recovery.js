@@ -18,7 +18,15 @@ router.get('/',wrap(async(req,res)=>{
 router.post('/request',limit,wrap(async(req,res)=>{
   const email=normEmail(req.body?.email);
   if (!validRecoveryGmail(email)) throw new HttpError(400,'Enter a Gmail address ending in @gmail.com.');
-  try { await mail.ensureDeliveryAvailable(); } catch { throw new HttpError(503,'Email delivery is unavailable. Please try again later.'); }
+  try { await mail.ensureDeliveryAvailable(); } catch (e) {
+    // Only diagnostic codes and configuration presence; never log credentials/codes.
+    console.error('Recovery SMTP connection failed:', JSON.stringify({
+      code: e.code || 'UNKNOWN', command: e.command || null, responseCode: e.responseCode || null,
+      hostConfigured: Boolean(process.env.SMTP_HOST), userConfigured: Boolean(process.env.SMTP_USER),
+      passwordConfigured: Boolean(process.env.SMTP_PASS), senderConfigured: Boolean(process.env.MAIL_FROM)
+    }));
+    throw new HttpError(503,'Email delivery is unavailable. Please try again later.');
+  }
   const code=String(crypto.randomInt(100000,1000000)), hash=hashCode(req.user.id,email,code);
   const conn=await pool.getConnection();
   try {
