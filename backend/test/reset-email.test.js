@@ -106,3 +106,11 @@ test('relay authentication and connection errors are reported safely',async()=>{
   const timeout=loadMail(config,{}, {fetch:async()=>{throw new Error('private detail');}});
   await assert.rejects(timeout.ensureDeliveryAvailable(),e=>e.code==='RELAY_CONNECTION'&&!e.message.includes('private detail'));
 });
+
+test('Vercel setup failures preserve safe reason and HTTP status for diagnosis',async()=>{
+ const config={NODE_ENV:'production',EMAIL_RELAY_URL:'https://example.vercel.app/api/send-code',EMAIL_RELAY_SECRET:'x'.repeat(40)};
+ for(const code of ['RELAY_NOT_CONFIGURED','SENDER_NOT_CONFIGURED']){
+  const mail=loadMail(config,{}, {fetch:async()=>({ok:false,status:503,json:async()=>({code})})});
+  await assert.rejects(mail.ensureDeliveryAvailable(),e=>e.code===code&&e.relayStatus===503);
+ }
+});

@@ -10,3 +10,8 @@ test('relay refuses missing/wrong credentials before checking SMTP',async()=>{co
 test('authenticated readiness checks verify SMTP without sending',async()=>{const f=setup();assert.equal((await f.call({action:'check'})).statusCode,200);assert.equal(f.checks,1);assert.equal(f.messages.length,0);assert.equal(f.closed,1);});
 test('relay sends fixed recovery and reset templates, never caller content',async()=>{const f=setup();for(const purpose of ['recovery','reset']){const r=await f.call({action:'send',to:'user@gmail.com',code:'123456',minutes:10,purpose,subject:'CUSTOM',text:'INJECTED',from:'spoof@gmail.com'});assert.equal(r.statusCode,200);const m=f.messages.at(-1);assert.equal(m.from.address,env.GMAIL_USER);assert.match(m.text,/123456/);assert(!m.text.includes('INJECTED'));assert.notEqual(m.subject,'CUSTOM');assert.equal(m.to,'user@gmail.com');}assert.equal(f.closed,2);});
 test('malformed destinations, codes, durations and purposes cannot send mail',async()=>{const f=setup(),body={action:'send',to:'user@gmail.com',code:'123456',minutes:10,purpose:'reset'};for(const change of [{to:'a@gmail.com,b@gmail.com'},{to:'a@outlook.com'},{code:'<img>'},{code:123456},{purpose:'marketing'},{minutes:999},{action:'anything'}])assert.equal((await f.call({...body,...change})).statusCode,400);assert.equal(f.messages.length,0);});
+
+test('missing Vercel variables return distinct safe diagnostic codes',async()=>{
+ assert.equal((await setup({env:{...env,EMAIL_RELAY_SECRET:''}}).call({action:'check'})).body.code,'RELAY_NOT_CONFIGURED');
+ assert.equal((await setup({env:{...env,GMAIL_APP_PASSWORD:''}}).call({action:'check'})).body.code,'SENDER_NOT_CONFIGURED');
+});

@@ -7,7 +7,7 @@ function createHandler({env=process.env,createTransport=nodemailer.createTranspo
     res.setHeader('Cache-Control','no-store');
     if(req.method!=='POST'){res.setHeader('Allow','POST');return res.status(405).json({error:'Use POST.'});}
     const secret=env.EMAIL_RELAY_SECRET || '',authorization=req.headers.authorization;
-    if(secret.length<32)return res.status(503).json({error:'Relay configuration is incomplete.'});
+    if(secret.length<32)return res.status(503).json({error:'Relay configuration is incomplete.',code:'RELAY_NOT_CONFIGURED'});
     if(typeof authorization!=='string'||!authorization.startsWith('Bearer ')||!crypto.timingSafeEqual(hash(authorization.slice(7)),hash(secret)))return res.status(401).json({error:'Unauthorized.'});
     const body=req.body;
     if(!body||typeof body!=='object'||Array.isArray(body))return res.status(400).json({error:'Use a JSON object.'});
@@ -16,7 +16,7 @@ function createHandler({env=process.env,createTransport=nodemailer.createTranspo
     const gmail=/^[a-z0-9][a-z0-9._+\-]*@gmail\.com$/;
     if(!check&&(body.action!=='send'||!gmail.test(to)||to.length>254||typeof body.code!=='string'||!/^\d{6}$/.test(body.code)||!['reset','recovery'].includes(body.purpose)||body.minutes!==10))return res.status(400).json({error:'Invalid SafeZone verification request.'});
     const user=(env.GMAIL_USER||'').trim().toLowerCase(),pass=(env.GMAIL_APP_PASSWORD||'').replace(/\s/g,'');
-    if(!gmail.test(user)||!pass)return res.status(503).json({error:'Sender configuration is incomplete.'});
+    if(!gmail.test(user)||!pass)return res.status(503).json({error:'Sender configuration is incomplete.',code:'SENDER_NOT_CONFIGURED'});
     const transport=createTransport({host:'smtp.gmail.com',port:465,secure:true,auth:{user,pass},connectionTimeout:5000,greetingTimeout:5000,socketTimeout:8000});
     try{
       if(check){await transport.verify();return res.status(200).json({ok:true});}

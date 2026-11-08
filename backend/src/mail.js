@@ -31,8 +31,9 @@ async function relayRequest(body) {
   let result;
   try { result=await response.json(); } catch { throw Object.assign(new Error('Email relay did not return JSON; check deployment protection and URL.'),{code:'RELAY_RESPONSE'}); }
   if(!response.ok || result.ok!==true){
-    const code=response.status===401?'RELAY_AUTH':['EAUTH','ETIMEDOUT','EENVELOPE'].includes(result.code)?result.code:'RELAY_ERROR';
-    throw Object.assign(new Error('Email relay rejected the request.'),{code});
+    const allowed=['EAUTH','ETIMEDOUT','EENVELOPE','ECONNECTION','ECONNREFUSED','ENOTFOUND','ESOCKET','EMESSAGE','SMTP_ERROR','RELAY_NOT_CONFIGURED','SENDER_NOT_CONFIGURED'];
+    const code=response.status===401?'RELAY_AUTH':response.status===404?'RELAY_NOT_FOUND':response.status===403?'RELAY_FORBIDDEN':allowed.includes(result.code)?result.code:'RELAY_ERROR';
+    throw Object.assign(new Error('Email relay rejected the request.'),{code,relayStatus:response.status});
   }
 }
 const usesRelay=()=>Boolean(process.env.EMAIL_RELAY_URL || process.env.EMAIL_RELAY_SECRET);

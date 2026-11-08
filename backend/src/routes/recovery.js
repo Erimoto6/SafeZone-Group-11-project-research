@@ -21,7 +21,7 @@ router.post('/request',limit,wrap(async(req,res)=>{
   try { await mail.ensureDeliveryAvailable(); } catch (e) {
     // Only diagnostic codes and configuration presence; never log credentials/codes.
     console.error('Recovery email delivery failed:', JSON.stringify({
-      code: e.code || 'UNKNOWN', command: e.command || null, responseCode: e.responseCode || null,
+      code: e.code || 'UNKNOWN', relayStatus: e.relayStatus || null, command: e.command || null, responseCode: e.responseCode || null,
       relayConfigured: Boolean(process.env.EMAIL_RELAY_URL), relaySecretConfigured: Boolean(process.env.EMAIL_RELAY_SECRET),
       hostConfigured: Boolean(process.env.SMTP_HOST), userConfigured: Boolean(process.env.SMTP_USER),
       passwordConfigured: Boolean(process.env.SMTP_PASS), senderConfigured: Boolean(process.env.MAIL_FROM)
