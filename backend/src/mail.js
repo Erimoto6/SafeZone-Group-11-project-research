@@ -1,4 +1,5 @@
-// Sends the password reset code by email.
+// Sends reset/recovery codes through the Vercel HTTPS relay when configured.
+// Otherwise uses legacy SMTP or development-only terminal mode.
 //  - SMTP_HOST filled in .env  -> a real email is sent (Brevo, SendGrid, Gmail SMTP, ...).
 //  - SMTP_HOST empty           -> the code is printed in the terminal (for testing only).
 const nodemailer = require('nodemailer');
@@ -17,10 +18,35 @@ if (process.env.SMTP_HOST) {
   });
 }
 
+// HTTPS takes precedence over legacy SMTP; never fall back if relay configuration fails.
+async function relayRequest(body) {
+  const secret=process.env.EMAIL_RELAY_SECRET || '';
+  let url;
+  try { url=new URL(process.env.EMAIL_RELAY_URL); } catch { throw Object.assign(new Error('Configure EMAIL_RELAY_URL.'),{code:'RELAY_CONFIG'}); }
+  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/api/send-code'||secret.length<32)throw Object.assign(new Error('Invalid email relay configuration.'),{code:'RELAY_CONFIG'});
+  let response;
+  try {
+    response=await fetch(url.href,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',Authorization:'Bearer '+secret},body:JSON.stringify(body),signal:AbortSignal.timeout(12000)});
+  } catch { throw Object.assign(new Error('Email relay could not be reached.'),{code:'RELAY_CONNECTION'}); }
+  let result;
+  try { result=await response.json(); } catch { throw Object.assign(new Error('Email relay did not return JSON; check deployment protection and URL.'),{code:'RELAY_RESPONSE'}); }
+  if(!response.ok || result.ok!==true){
+    const code=response.status===401?'RELAY_AUTH':['EAUTH','ETIMEDOUT','EENVELOPE'].includes(result.code)?result.code:'RELAY_ERROR';
+    throw Object.assign(new Error('Email relay rejected the request.'),{code});
+  }
+}
+const usesRelay=()=>Boolean(process.env.EMAIL_RELAY_URL || process.env.EMAIL_RELAY_SECRET);
+
 // Check configuration/connectivity before looking up an account. This returns the
 // same outage response for registered and unregistered addresses.
 let verifiedUntil = 0, verification = null;
 async function ensureDeliveryAvailable() {
+  if (usesRelay()) {
+    if (Date.now() < verifiedUntil) return;
+    if (!verification) verification=relayRequest({action:'check'}).then(()=>{verifiedUntil=Date.now()+60000;}).finally(()=>{verification=null;});
+    await verification;
+    return;
+  }
   if (!transport) {
     if (process.env.NODE_ENV === 'production') throw new Error('SMTP is not configured.');
     return;
@@ -39,6 +65,11 @@ const lastCodes = new Map();
 async function sendResetCode(to, code, minutes, purpose = 'reset') {
   await ensureDeliveryAvailable();
   if (process.env.NODE_ENV !== 'production') lastCodes.set(to, code);
+
+  if (usesRelay()) {
+    try { await relayRequest({action:'send',to,code,minutes,purpose}); } catch(e) { verifiedUntil=0;throw e; }
+    return {sent:true,testMode:false};
+  }
 
   if (!transport) {
     if (process.env.NODE_ENV === 'production') throw new Error('SMTP is not set up, so email cannot be sent.');

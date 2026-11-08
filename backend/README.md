@@ -126,7 +126,7 @@ Use credentials issued by your email provider. For Gmail, use `smtp.gmail.com`, 
 
 After Railway redeploys, request a reset for an existing account, check its Inbox/Junk folder, enter the six-digit code and choose a new password. Confirm the old password stops working. No SQL migration is required.
 
-The backend checks SMTP connectivity/authentication before accepting reset requests and reports a generic 503 error during an email outage without disclosing whether an account exists. Provider acceptance still does not guarantee inbox delivery; check the sender provider's logs and recipient spam filtering if a code is missing. Some Railway plans restrict outbound SMTP; check current plan support if connections time out, or use a transactional email provider through an HTTPS integration. Such an integration is not included here.
+The backend checks SMTP connectivity/authentication before accepting reset requests and reports a generic 503 error during an email outage without disclosing whether an account exists. Provider acceptance still does not guarantee inbox delivery; check the sender provider's logs and recipient spam filtering if a code is missing. Some Railway plans restrict outbound SMTP; check current plan support if connections time out, or use a transactional email provider through an HTTPS integration. The Vercel HTTPS relay described below is supported.
 
 ## Verified recovery Gmail
 
@@ -146,3 +146,23 @@ MAIL_FROM=SafeZone <safezone.project0@gmail.com>
 ```
 
 Enable 2-Step Verification on the sender Google account, then create an App Password. Store the actual value only in Railway/private `.env`. Outbound SMTP must be permitted on the Railway plan; these code changes do not establish mail delivery by themselves. No PUP/Outlook sender credentials are needed.
+
+## Railway Trial: Vercel HTTPS email relay
+
+The Gmail App Password stays in Vercel. Railway calls Vercel over HTTPS; no SMTP connection from Railway is needed. Both recovery Gmail verification and password-reset emails use the same relay.
+
+1. In the existing Vercel email project, keep `GMAIL_USER` and `GMAIL_APP_PASSWORD`. Add `EMAIL_RELAY_SECRET` with a new random value of at least 32 characters. Use `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` locally if needed. Keep it private.
+2. Deploy the latest `Test-ni-eleyn` commit in Vercel so `/api/send-code` exists.
+3. In Railway's **SafeZone backend service → Variables**, add:
+
+```env
+EMAIL_RELAY_URL=https://safezone-group-11-project-research.vercel.app/api/send-code
+EMAIL_RELAY_SECRET=THE_EXACT_SAME_NEW_SECRET_AS_VERCEL
+```
+
+4. Deploy the latest backend with these variables. Old SMTP variables are ignored when relay configuration is present. Never put the relay secret or App Password in the public frontend.
+5. While logged in, open Account Settings, enter a recovery Gmail, request/enter the emailed code, then log out and test Forgot Password with the PUP account email. The new reset code arrives at the verified Gmail; after reset the old password should fail.
+
+No new database migration is required if migration 08 is installed. The relay accepts only an authenticated readiness check or a fixed six-digit reset/recovery template sent to one Gmail recipient. Railway remains responsible for authentication, rate limits, recipient ownership, generating/storing codes, verifying attempts/expiry and changing passwords. The public frontend calls Railway, not Vercel.
+
+For failures inspect Railway Deploy Logs for `Recovery email delivery failed:`. `RELAY_AUTH` means the shared secrets do not match (or deployment protection returned 401). `RELAY_RESPONSE` means the endpoint returned HTML/non-JSON, often a wrong deployment URL or deployment protection. `RELAY_CONFIG` means the URL/secret is invalid; use HTTPS and the exact `/api/send-code` path. `RELAY_CONNECTION` means Vercel could not be reached within the timeout. `EAUTH`/`ETIMEDOUT` refer to Gmail delivery from Vercel. Never post secrets or codes in logs/chat.

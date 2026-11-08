@@ -40,8 +40,16 @@ On `ok: true`, check the recipient Inbox and Spam folder for **SafeZone email de
 - `502` with `ETIMEDOUT`: SMTP connectivity failed from this deployment as well. Do not switch SafeZone's production delivery based on this result.
 - Other `502`: inspect the function runtime logs; only safe error codes are logged.
 
-Keep this as a temporary diagnostic endpoint. When testing is done, remove the Vercel project or disable the endpoint by removing `EMAIL_TEST_SECRET` and redeploying. Before implementing production delivery, add a backend-only authenticated relay with abuse controls and connect Railway to it. Never add these secrets or call the mail function directly from the public SafeZone frontend.
+Keep this as a temporary diagnostic endpoint. When testing is done, remove the Vercel project or disable the endpoint by removing `EMAIL_TEST_SECRET` and redeploying. Production code delivery is now available through the separate `/api/send-code` endpoint described below. Never add these secrets or call the mail function directly from the public SafeZone frontend.
 
 ## Local checks
 
 `npm ci` then `npm test` inside this folder runs mocked SMTP tests. No real emails are sent by the test suite.
+
+## Connect SafeZone after a successful delivery test
+
+This folder now also contains `/api/send-code`. In Vercel add a NEW random `EMAIL_RELAY_SECRET` of at least 32 characters, alongside the existing `GMAIL_USER` and `GMAIL_APP_PASSWORD`, and deploy the latest `Test-ni-eleyn` commit. Test-only variables are not used by this endpoint. You may remove `EMAIL_TEST_SECRET` and redeploy to disable the old test endpoint once testing is complete.
+
+In the Railway backend add `EMAIL_RELAY_URL=https://YOUR-PRODUCTION-PROJECT.vercel.app/api/send-code` and `EMAIL_RELAY_SECRET` with exactly the same new secret. Deploy Railway. The sender and App Password remain Vercel-only. See [Railway relay setup](../backend/README.md#railway-trial-vercel-https-email-relay).
+
+Only trusted server requests with the shared secret can use the relay. It permits an SMTP readiness check or fixed recovery/reset code templates, not arbitrary email content, senders or multiple recipients. Request payloads and codes are not logged or returned. The Railway API enforces the user/account verification and request limits. Never call this endpoint from the app or expose its secret in client code. Vercel deployment protection must allow the Railway request to reach the handler; a Vercel login page is not the handler's JSON response.

@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { createRequire } = require('node:module');
 const requireBackend = createRequire(require.resolve('../src/routes/auth'));
-function loadMail(env, smtp = {}) {
+function loadMail(env, smtp = {}, extra = {}) {
   const out = { exports: {} };
   vm.runInNewContext(fs.readFileSync(require.resolve('../src/mail'), 'utf8'), {
-    module:out, process:{env}, console:{log(){}},
+    module:out, process:{env}, console:{log(){}}, URL, AbortSignal, fetch:extra.fetch,
     require(name) { assert.equal(name,'nodemailer'); return {createTransport: options => { smtp.options = options; return smtp; }}; }
   });
   return out.exports;
@@ -73,4 +73,36 @@ test('email outages return the same 503 before account lookup for every address'
     }
     assert.equal(lookups,0);
   }finally{await new Promise(r=>server.close(r));}
+});
+
+
+test('Railway uses HTTPS relay for recovery and reset without opening SMTP',async()=>{
+  const {createHandler}=require('../../vercel-email-test/api/send-code');
+  const secret='relay-secret-at-least-32-characters-long',messages=[],requests=[];
+  const relay=createHandler({env:{EMAIL_RELAY_SECRET:secret,GMAIL_USER:'sender@gmail.com',GMAIL_APP_PASSWORD:'test'},createTransport:()=>({verify:async()=>{},sendMail:async m=>{messages.push(m);return {accepted:[m.to]};},close(){}})});
+  const fetch=async(url,options)=>{
+    assert.equal(url,'https://example.vercel.app/api/send-code');assert.equal(options.redirect,'error');
+    const body=JSON.parse(options.body);requests.push(body);
+    const res={setHeader(){},status(s){this.statusCode=s;return this;},json(body){this.body=body;}};
+    await relay({method:options.method,headers:{authorization:options.headers.Authorization},body},res);
+    return{ok:res.statusCode===200,status:res.statusCode,json:async()=>res.body};
+  };
+  const mail=loadMail({...env,EMAIL_RELAY_URL:'https://example.vercel.app/api/send-code',EMAIL_RELAY_SECRET:secret},{verify:async()=>{throw Error('Railway SMTP must not be used');}}, {fetch});
+  for(const purpose of ['recovery','reset'])assert.equal((await mail.sendResetCode('user@gmail.com','654321',10,purpose)).sent,true);
+  assert.equal(messages.length,2);assert(requests.some(r=>r.action==='check'));assert.equal(requests.filter(r=>r.action==='check').length,1);
+  assert.match(messages[0].subject,/recovery Gmail/);assert.match(messages[1].subject,/password reset/);
+  assert.equal(mail.lastCodes.size,0);
+});
+
+test('invalid relay configuration fails closed instead of falling back to SMTP',async()=>{
+  const mail=loadMail({...env,EMAIL_RELAY_URL:'http://example.com/api/send-code',EMAIL_RELAY_SECRET:'x'.repeat(40)});
+  await assert.rejects(mail.ensureDeliveryAvailable(),/Invalid email relay/);
+});
+
+test('relay authentication and connection errors are reported safely',async()=>{
+  const config={NODE_ENV:'production',EMAIL_RELAY_URL:'https://example.vercel.app/api/send-code',EMAIL_RELAY_SECRET:'x'.repeat(40)};
+  const denied=loadMail(config,{}, {fetch:async()=>({ok:false,status:401,json:async()=>({error:'Unauthorized'})})});
+  await assert.rejects(denied.ensureDeliveryAvailable(),e=>e.code==='RELAY_AUTH');
+  const timeout=loadMail(config,{}, {fetch:async()=>{throw new Error('private detail');}});
+  await assert.rejects(timeout.ensureDeliveryAvailable(),e=>e.code==='RELAY_CONNECTION'&&!e.message.includes('private detail'));
 });

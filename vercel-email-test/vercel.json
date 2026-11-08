@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/test-email.js": { "maxDuration": 30 }
+    "api/test-email.js": { "maxDuration": 30 },
+    "api/send-code.js": { "maxDuration": 30 }
   }
 }
