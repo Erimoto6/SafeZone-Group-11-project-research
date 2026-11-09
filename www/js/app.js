@@ -4,9 +4,8 @@
 /* =====================================================================
    CONFIG: edit these first
    ===================================================================== */
-// Put your logo here. In your own project use a normal path ('assets/logo.png').
-// In a published page it must be a data: URI. Leave '' to show an empty slot.
-const LOGO_SRC = 'images/logo.png';
+// Original supplied logo assets. Login screens always use the pink variant.
+const LOGOS = { red: 'images/light%20mode.png', pink: 'images/dark%20mode.png' };
 
 // Button names on the start screen. Change the wording here.
 const LABELS = { viewer: 'Student / Faculty', control: 'Admin' };
@@ -267,9 +266,9 @@ const P = {
 };
 const I = new Proxy({}, { get: (_, k) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[k] || ''}</svg>` });
 
-const logo = px => LOGO_SRC
-  ? `<img class="logo" src="${LOGO_SRC}" alt="SafeZone logo" style="width:${px}px;height:${px}px">`
-  : `<span class="logo logo-empty" role="img" aria-label="Logo placeholder" style="width:${px}px;height:${px}px"></span>`;
+const logo = (px, pinkOnly = false) => pinkOnly
+  ? `<img class="logo" src="${LOGOS.pink}" alt="SafeZone logo" style="width:${px}px;height:${px}px">`
+  : `<span class="logo logo-themed" style="width:${px}px;height:${px}px"><img class="logo-light" src="${LOGOS.red}" alt="SafeZone logo"><img class="logo-dark" src="${LOGOS.pink}" alt="SafeZone logo"></span>`;
 
 /* =====================================================================
    ALERTS & VENTILATION LOGIC
@@ -772,7 +771,7 @@ function vDoneView() {
 
 function vLoginView() {
   return `<div class="splash auth">${authBack('vWelcome')}<div class="auth-in">
-    ${circle('cap')}
+    ${logo(96, true)}
     <h2>Log in</h2>
     <p class="tag-line" style="margin-bottom:20px">Use your mobile number and password.</p>
     ${noteLine()}
@@ -792,7 +791,7 @@ function vLoginView() {
 /* ---------- Admin side: login and register ---------- */
 function loginView() {
   return `<div class="splash auth">${authBack('splash')}<div class="auth-in">
-    ${logo(96)}
+    ${logo(96, true)}
     <div class="wordmark" style="font-size:28px">SafeZone</div>
     <h2 style="margin-top:6px">Admin Login</h2>
     <p class="tag-line" style="margin-bottom:20px">Access the system to manage and control.</p>
