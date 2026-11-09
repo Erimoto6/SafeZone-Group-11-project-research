@@ -4,7 +4,7 @@
 /* =====================================================================
    CONFIG: edit these first
    ===================================================================== */
-// Original supplied logo assets. Login screens always use the pink variant.
+// Supplied artwork: theme-aware by default; student login uses fixed pink.
 const LOGOS = { red: 'images/light%20mode.png', pink: 'images/dark%20mode.png' };
 
 // Button names on the start screen. Change the wording here.
@@ -791,7 +791,7 @@ function vLoginView() {
 /* ---------- Admin side: login and register ---------- */
 function loginView() {
   return `<div class="splash auth">${authBack('splash')}<div class="auth-in">
-    ${logo(96, true)}
+    ${logo(96)}
     <div class="wordmark" style="font-size:28px">SafeZone</div>
     <h2 style="margin-top:6px">Admin Login</h2>
     <p class="tag-line" style="margin-bottom:20px">Access the system to manage and control.</p>
