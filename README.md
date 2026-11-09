@@ -169,3 +169,21 @@ Home only selects rooms for viewing. Admins add missing classrooms from Monitori
 ### Recovery Gmail
 
 After migration 07, run `database/08-recovery-gmail.sql` once. While logged in, each user can open Account Settings from the menu, enter their own recovery Gmail, and verify the emailed code. The PUP email remains their account/login address. Forgot Password takes that PUP address and sends only to the previously verified Gmail. Existing users must enroll before using this option; no address is automatically verified. Sender SMTP configuration is still required; see [backend email setup](backend/README.md#verified-recovery-gmail).
+
+## Repository layout and Vercel email delivery
+
+| Path | Purpose |
+|---|---|
+| `www/` | Active HTML, CSS, JavaScript and image assets; Capacitor bundles this directory |
+| `android/` | Native Android project, Gradle wrapper and app resources |
+| `backend/` | Railway Express API, simulation worker, email client and regression tests |
+| `database/` | Schema, seed data and upgrade migrations; keep these for setup/recovery |
+| `vercel-email-test/` | **Production** Vercel email relay despite its historical folder name; keep this path because it is the configured Vercel Root Directory |
+
+The temporary `/api/test-email` endpoint and its PowerShell test script have been removed now that email delivery works. Vercel only needs `GMAIL_USER`, `GMAIL_APP_PASSWORD` and `EMAIL_RELAY_SECRET`. Old `EMAIL_TEST_TO` and `EMAIL_TEST_SECRET` variables can be removed from Vercel; they are no longer used. Keep Railway's `EMAIL_RELAY_URL` and matching `EMAIL_RELAY_SECRET`.
+
+For Vercel deployment, use branch `Test-ni-eleyn`, Root Directory `vercel-email-test`, Application Preset **Other**, Node.js **22.x**, and no custom frontend build command. The root page returning 404 is normal for this API-only service. The authenticated `/api/send-code` route performs readiness checks or sends fixed reset/recovery code emails. See [backend relay configuration](backend/README.md#railway-trial-vercel-https-email-relay) for setup and troubleshooting. Never put relay secrets or Google App Passwords in the frontend.
+
+Local checks: `npm ci --prefix backend`, `npm ci --prefix vercel-email-test`, then `node --test backend/test/*.test.js` and `npm test --prefix vercel-email-test`. These use simulated email delivery; installed-APK and real-inbox verification remain separate checks. The database-backed test scripts in `backend/scripts` require an isolated test database.
+
+Dependencies, generated Android assets/build output, `.env` files, `.vercel` configuration and signing material are excluded from Git. Install dependencies locally rather than committing `node_modules`. Flutter development remains on the separate `flutter-version` branch.

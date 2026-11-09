@@ -21,3 +21,6 @@ local.properties
 *.log
 .DS_Store
 Thumbs.db
+
+# Vercel local project settings
+.vercel/
