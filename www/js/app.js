@@ -586,7 +586,7 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `${seg}<div class="monitor-room-context">${roomBar(true)}</div><div class="monitor-utilities">${ventCard(true)}${powerCard(false,true)}</div>${metricChips()}
+    return `<div class="monitor-room-context">${roomBar(true)}${seg}</div><div class="monitor-utilities">${ventCard(true)}${powerCard(false,true)}</div>${metricChips()}
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
   }
@@ -594,7 +594,7 @@ function monitorView() {
   const min = Math.min(...h.vals), max = Math.max(...h.vals), avg = h.vals.reduce((a, b) => a + b, 0) / h.vals.length;
   const over = h.vals.filter(v => v >= S.limits[k].limit).length;
   const rc = `<div class="mini-chips" role="group" aria-label="Time range">${[['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']].map(([id, l]) => `<button data-act="range" data-v="${id}" aria-pressed="${r === id}">${l}</button>`).join('')}</div>`;
-  return `${seg}${roomBar(true)}${metricChips()}${rc}
+  return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${metricChips()}${rc}
     <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${chartSVG(h.vals, h.labels, k, 'neutral', 'hist')}${legend(k)}</section>
     <div class="stats"><div class="stat"><span>Lowest</span><b>${fmt(k, min)}</b></div><div class="stat"><span>Average</span><b>${fmt(k, avg)}</b></div><div class="stat"><span>Highest</span><b>${fmt(k, max)}</b></div></div>
     <p class="note">${over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
