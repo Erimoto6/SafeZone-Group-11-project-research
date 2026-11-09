@@ -4,17 +4,11 @@
 /* =====================================================================
    CONFIG: edit these first
    ===================================================================== */
-// Put your logo here. In your own project use a normal path ('assets/logo.png').
-// In a published page it must be a data: URI. Leave '' to show an empty slot.
-const LOGO_SRC = 'images/logo.png';
+// Supplied artwork: theme-aware by default; student login uses fixed pink.
+const LOGOS = { red: 'images/light%20mode.png', pink: 'images/dark%20mode.png' };
 
 // Button names on the start screen. Change the wording here.
 const LABELS = { viewer: 'Student / Faculty', control: 'Admin' };
-
-// Prototype accounts. They are saved on this phone/browser only.
-// With the backend, registration and login become API calls and the server hashes passwords.
-const ADMIN_CODE = 'SAFEZONE-ADMIN';   // needed to register an admin account from the login page. Change it.
-const DEFAULT_ADMIN = { username: 'admin', password: 'safezone', name: 'Administrator', phone: '09170000001' };
 
 // PUP web mail (Outlook). Students use @iskolarngbayan.pup.edu.ph, faculty use @pup.edu.ph.
 // It is used to verify a person when they forget their password.
@@ -22,15 +16,6 @@ const WEBMAIL = { student: 'iskolarngbayan.pup.edu.ph', faculty: 'pup.edu.ph' };
 const RESET_MINUTES = 10;        // how long a reset code works
 const RESET_TRIES = 5;           // wrong guesses allowed per code
 const RESEND_SECONDS = 30;       // wait before asking for another code
-// The prototype cannot send email, so it shows the code on screen. Set to false when the backend sends real email.
-const SHOW_DEMO_CODE = true;
-
-// REAL EMAIL (optional). The app cannot send mail by itself, so it hands the message to an email service (EmailJS).
-// Create a free EmailJS account, connect a mailbox, make a template, then fill in these three values.
-// Leave them empty to stay in demo mode (the code is shown on screen instead of emailed).
-const EMAIL_SEND = { serviceId: '', templateId: '', publicKey: '' };
-const EMAIL_ON = !!(EMAIL_SEND.serviceId && EMAIL_SEND.templateId && EMAIL_SEND.publicKey);
-
 // Shown on the About screen.
 const CONTACT = { email: 'safezone@yourschool.edu' };
 
@@ -44,27 +29,45 @@ const DEFAULT_LIMITS = {
 
 // Rooms shown the first time the app opens. Admins add more with the + button.
 const FLOORS = 4;                                   // how many floors the building has
-// 1st floor starts with rooms 101 to 110. Floors 2, 3 and 4 start empty.
+// Classroom roster excludes the clinic, offices and campus library.
 // Rooms are numbered by floor: 1st = 101, 102...  2nd = 201, 202...  3rd = 301...  4th = 401...
-const DEFAULT_ROOMS = Array.from({ length: 10 }, (_, i) => ({ name: 'Room ' + (101 + i), floor: 1 }));
+const EXCLUDED_ROOMS = [108, 205, 210, 307, 309];
+const DEFAULT_ROOMS = Array.from({ length: 4 }, (_, i) => i + 1).flatMap(floor =>
+  Array.from({ length: 12 }, (_, i) => floor * 100 + i + 1).filter(n => !EXCLUDED_ROOMS.includes(n)).map(n => ({ name: 'Room ' + n, floor })));
 const ROOMS_V = 2;                                  // bump when the default rooms change (runs a one-time update)
 
 // A new room starts with these numbers. Admins can change them when adding a room.
 // (Used for the power display. With a real power meter the total comes from the meter.)
-const ROOM_DEFAULTS = { lights: 8, lightWatts: 18, fanWatts: 40 };
+const ROOM_DEFAULTS = { lights: 0, lightWatts: 18, fanWatts: 40 };
+
+const COURSES = {
+  BSA:'Bachelor of Science in Accountancy', BSIT:'Bachelor of Science in Information Technology',
+  'BSBA-MM':'Bachelor of Science in Business Administration major in Marketing Management',
+  'BSBA-HRM':'Bachelor of Science in Business Administration major in Human Resource Management',
+  BSP:'Bachelor of Science in Psychology', BSECE:'Bachelor of Science in Electronics Engineering',
+  BSIE:'Bachelor of Science in Industrial Engineering'
+};
+const courseName = code => COURSES[code] || 'Course not set';
+function profileFields(prefix,profile={}) {
+  return `<label class="f" for="${prefix}-course">Course</label><select id="${prefix}-course" aria-label="Course"><option value="">Choose your course</option>${Object.entries(COURSES).map(([code,name])=>`<option value="${code}" ${profile.courseCode===code?'selected':''}>${name} (${code})</option>`).join('')}</select>
+    <label class="f" for="${prefix}-section">Section</label><input type="text" id="${prefix}-section" aria-label="Section" maxlength="40" placeholder="Enter your section, e.g. 1-1" value="${esc(profile.section || '')}">`;
+}
+function readProfile(prefix) {
+  const courseCode=$('#'+prefix+'-course').value,section=$('#'+prefix+'-section').value.trim();
+  if(!Object.hasOwn(COURSES,courseCode))throw new Error('Choose your course.');
+  if(!section||section.length>40)throw new Error('Enter your section (up to 40 characters).');
+  return {courseCode,section};
+}
 
 // Choices in the SMS Alerts "role" list.
 const ROLES = ['Admin', 'Faculty', 'Student', 'Student / Faculty', 'Maintenance', 'Other'];
 
 /* =====================================================================
    DATA LAYER
-   Everything below "simulator" is fake data. To connect real hardware,
-   replace tick() with a fetch() to your backend (Blynk / MySQL API) that
-   returns { temp, hum, co2, fanOn } for a room, then call ingest(reading, roomId).
+   Readings come from the shared backend simulator. Real hardware integration
+   can later replace that source without running a simulator on each phone.
    ===================================================================== */
 const BASE = { temp: 27.4, hum: 58, co2: 827 };
-const COOLED = { temp: 26, hum: 54, co2: 600 };      // where readings settle while the fan runs
-const SCENARIOS = { co2: { co2: 1380 }, temp: { temp: 34.5 }, hum: { hum: 84 } };
 const KEYS = ['temp', 'hum', 'co2'];
 
 const METRICS = {
@@ -80,7 +83,7 @@ const RANK = { normal: 0, warning: 1, exceeded: 2 };
    ===================================================================== */
 const S = {
   role: null,                 // null | 'student' (Student / Faculty) | 'admin'
-  screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | fReg | home | alerts | monitor | status | settings | about
+  screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | home | alerts | monitor | status | settings | about
   mon: { view: 'live', metric: 'temp', range: '6h' },
   alertFilter: 'all',
   rooms: [],                  // every room has its own readings, levels and fan. Built in init().
@@ -89,6 +92,7 @@ const S = {
   draftTrigger: 'exceeded',
   limits: JSON.parse(JSON.stringify(DEFAULT_LIMITS)),
   alerts: [],
+  simScope: 'current', simSelected: [], syncError: '', editingRoomId: null, configRoomId: null,
   pendingDel: '',             // two-tap delete: remembers which Remove? button was tapped once
   addFloor: 2,                // floor chosen in the Add Room form
   reset: null,                // forgot-password progress: { side, email, code, exp, tries, ... }
@@ -118,21 +122,65 @@ function eachRoom(fn) { const keep = S.roomId; S.rooms.forEach(r => { S.roomId =
 
 /* ---------- storage (safe) ---------- */
 const store = {
-  load() { try { return JSON.parse(localStorage.getItem('safezone.v1') || 'null'); } catch (e) { return null; } },
-  save() {
-    try {
-      localStorage.setItem('safezone.v1', JSON.stringify({
-        limits: S.limits, users: S.users, accounts: S.accounts, session: S.session,
-        fanTrigger: S.fanTrigger, roomId: S.roomId, theme: S.theme, roomsV: ROOMS_V,
-        rooms: S.rooms.map(r => ({ id: r.id, name: r.name, floor: r.floor, lights: r.lights, lightWatts: r.lightWatts, fanWatts: r.fanWatts, mode: r.vent.mode }))
-      }));
-    } catch (e) { /* storage unavailable */ }
-  }
+  load() { try { return JSON.parse(localStorage.getItem('safezone.preferences') || 'null'); } catch { return null; } },
+  save() { try { localStorage.setItem('safezone.preferences', JSON.stringify({ theme: S.theme, roomId: S.roomId })); } catch { /* preferences are optional */ } }
 };
+let token = sessionStorage.getItem('safezone.token') || '';
+const API_BASE = (window.SAFEZONE_API_BASE || '/api').replace(/\/$/, '');
+async function api(path, method = 'GET', body) {
+  const requestToken = token;
+  let response;
+  try {
+    response = await fetch(API_BASE + path, {
+      method, headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(requestToken ? { Authorization: 'Bearer ' + requestToken } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)
+    });
+  } catch { throw new Error(navigator.onLine===false?'No network connection. Reconnect to Wi-Fi or mobile data and try again.':'Cannot reach the SafeZone server. Check the backend address and network connection, then try again.'); }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 && token === requestToken && token && path !== '/auth/change-password') {
+      signOut(); render();
+    }
+    throw new Error(data.error || 'The request failed. Please try again.');
+  }
+  return data;
+}
+function signOut() {
+  captureEnabled=false; formDrafts.clear(); settingsDraft=null; settingsDirty=false;
+  token = ''; sessionStorage.removeItem('safezone.token');
+  S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
+  alertWatermarks.clear(); S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
+  S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.recovery = null; S.studentProfile = null; closeSheet();
+}
+const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
+async function refreshData() {
+  const [rooms, settings, shared] = await Promise.all([api('/rooms'), api('/settings'), api('/simulation')]);
+  const previous = new Map(S.rooms.map(r => [r.id, r]));
+  S.rooms = rooms.rooms.slice().sort((a,b) => a.floor-b.floor || a.name.localeCompare(b.name, undefined, {numeric:true})).map(r => {
+    const room = previous.get(String(r.id)) || makeRoom({ ...r, id: String(r.id), lightWatts: r.wattsPerLight, mode: r.ventMode });
+    Object.assign(room, { name: r.name, floor: r.floor, lights: r.lights, lightWatts: r.wattsPerLight, fanWatts: r.fanWatts });
+    room.vent.mode = r.ventMode; return room;
+  });
+  if (!S.rooms.length) throw new Error('No rooms are configured. Ask an administrator to add one.');
+  if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
+  S.limits = settings.thresholds; S.fanTrigger = settings.fanTrigger; S.draftTrigger = S.fanTrigger;
+  S.draftAuto = settings.ventMode === 'auto';
+  const alerts=await api('/alerts?roomId='+encodeURIComponent(S.roomId)+'&limit=200');
+  applyShared(shared, alerts.alerts);
+  if (S.role === 'admin') {
+    const [people, sms] = await Promise.all([api('/admin/users'), api('/sms-recipients')]);
+    S.accounts = [...people.admins, ...people.viewers].map(mapUser);
+    S.users = sms.recipients.map(u => ({ ...u, sms: u.smsEnabled, phone: showPhone(u.phone) }));
+  } else { S.accounts = []; S.users = []; }
+}
+async function signedIn(data) {
+  token = data.token; sessionStorage.setItem('safezone.token', token);
+  S.me = mapUser(data.user); S.role = data.user.role === 'admin' ? 'admin' : 'student';
+  S.roomId = null; // Every login starts at the first configured room, normally Room 101.
+  try { await refreshData(); } catch (e) { signOut(); render(); throw e; }
+  S.authError = ''; S.notice = ''; S.reg = { phone: '' }; S.screen = 'home'; render();
+}
 
-/* =====================================================================
-   HELPERS
-   ===================================================================== */
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = n => String(n).padStart(2, '0');
@@ -151,7 +199,7 @@ const levelOf = (k, v) => { const t = S.limits[k]; return v >= t.limit ? 'exceed
 const worst = () => Math.max(...KEYS.map(k => RANK[S.levels[k]]));
 const worstName = () => ['normal', 'warning', 'exceeded'][worst()];
 const hashStr = x => { let h = 7; for (const c of String(x)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
-const wattsText = w => Math.round(w).toLocaleString('en-US') + ' W';
+const energyText = value => Number(value || 0).toFixed(4) + ' kWh';
 const ord = n => { const v = n % 100; return n + ((v >= 11 && v <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] || 'th'); };
 const floorName = f => ord(f) + ' Floor';
 const floorList = () => Array.from({ length: Math.max(FLOORS, ...S.rooms.map(r => r.floor || 1)) }, (_, i) => i + 1);
@@ -160,8 +208,19 @@ const guessFloor = name => { const m = String(name).match(/(\d)\d\d/); const f =
 const roomNo = r => { const m = String(r.name).match(/\d+/); return m ? parseInt(m[0], 10) : 0; };
 const roomsOn = f => S.rooms.filter(r => r.floor === f).sort((a, b) => roomNo(a) - roomNo(b) || a.name.localeCompare(b.name));
 // Next free number on a floor: 1st -> 101, 102...  2nd -> 201, 202...
-const nextRoomNumber = f => { for (let n = f * 100 + 1; n <= f * 100 + 99; n++) if (!S.rooms.some(r => r.name.toLowerCase() === 'room ' + n)) return n; return null; };
-const floorHint = f => `${ord(f)} floor rooms are ${f}01, ${f}02, ${f}03 and so on, up to ${f}99.`;
+const nextRoomNumber = f => { for (let n = f * 100 + 1; n <= f * 100 + 12; n++) if (!EXCLUDED_ROOMS.includes(n) && !S.rooms.some(r => r.name.toLowerCase() === 'room ' + n)) return n; return null; };
+const floorHint = f => {
+  const excluded = EXCLUDED_ROOMS.filter(n => Math.floor(n / 100) === f);
+  return `${ord(f)} floor classrooms: ${f}01–${f}12.${excluded.length ? ' Excludes ' + excluded.join(', ') + '.' : ''}`;
+};
+function updateRoomAvailability() {
+  const form = $('#room-form'); if (!form) return;
+  const edit = S.rooms.find(r => r.id === form.dataset.roomId);
+  const full = nextRoomNumber(S.addFloor) === null && (!edit || edit.floor !== S.addFloor);
+  $('#rnhint').textContent = floorHint(S.addFloor);
+  $('#rn').disabled = full;
+  form.querySelector('[type="submit"]').disabled = full;
+}
 const effectiveDark = () => S.theme ? S.theme === 'dark' : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
 const applyTheme = () => { const h = document.documentElement; if (S.theme) h.setAttribute('data-theme', S.theme); else h.removeAttribute('data-theme'); };
 
@@ -182,24 +241,7 @@ const emailKind = x => {
 };
 const emailHint = `Students: @${WEBMAIL.student}. Faculty: @${WEBMAIL.faculty}.`;                 // plain text, for messages
 const emailHintHtml = `Students: @${WEBMAIL.student}<br>Faculty: @${WEBMAIL.faculty}`;           // two lines, for hints under a field
-const emailTaken = (e, except) => S.accounts.some(a => a !== except && a.email && a.email === normEmail(e));
 const maskEmail = e => { const [u, d] = normEmail(e).split('@'); return (u.length > 2 ? u.slice(0, 2) + '*'.repeat(Math.min(u.length - 2, 6)) : u[0] + '*') + '@' + d; };
-// Real system: the server makes the code with a secure random generator and stores only a hash of it.
-const newCode = () => {
-  const a = (window.crypto && crypto.getRandomValues) ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296);
-  return String(100000 + a % 900000);
-};
-// Prototype only. The backend will hash passwords on the server (bcrypt).
-async function hashPw(id, pw) {
-  const data = new TextEncoder().encode('safezone:' + id + ':' + pw);
-  if (window.crypto && crypto.subtle) {
-    const b = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(b)).map(n => n.toString(16).padStart(2, '0')).join('');
-  }
-  let h = 5381; data.forEach(c => { h = ((h << 5) + h + c) >>> 0; });
-  return 'x' + h.toString(16);
-}
-
 /* ---------- icons ---------- */
 const P = {
   thermo: '<path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>',
@@ -244,68 +286,65 @@ const P = {
 };
 const I = new Proxy({}, { get: (_, k) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[k] || ''}</svg>` });
 
-const logo = px => LOGO_SRC
-  ? `<img class="logo" src="${LOGO_SRC}" alt="SafeZone logo" style="width:${px}px;height:${px}px">`
-  : `<span class="logo logo-empty" role="img" aria-label="Logo placeholder" style="width:${px}px;height:${px}px"></span>`;
+const logo = (px, pinkOnly = false) => pinkOnly
+  ? `<img class="logo" src="${LOGOS.pink}" alt="SafeZone logo" style="width:${px}px;height:${px}px">`
+  : `<span class="logo logo-themed" style="width:${px}px;height:${px}px"><img class="logo-light" src="${LOGOS.red}" alt="SafeZone logo"><img class="logo-dark" src="${LOGOS.pink}" alt="SafeZone logo"></span>`;
 
 /* =====================================================================
    ALERTS & VENTILATION LOGIC
    ===================================================================== */
-function pushAlert(a, quiet) {
-  const room = cur() ? cur().name : '';
-  S.alerts.unshift({ id: Date.now() + Math.random(), ts: Date.now(), cats: ['system'], sms: false, room, ...a });
-  if (S.alerts.length > 80) S.alerts.pop();
-  if (!quiet && S.role) {
-    if (S.screen !== 'alerts') S.unread++;
-    if (a.type === 'exceeded' || a.type === 'warning') toast(room ? `${room}: ${a.title}` : a.title);
-  }
-}
-
-function seedAlerts() {
-  const now = Date.now(); const y = new Date(); y.setDate(y.getDate() - 1); y.setHours(16, 20, 0, 0);
-  const room = S.rooms[0].name;
-  S.alerts = [
-    { id: 1, ts: now - 12 * 60e3, type: 'normal', cats: ['system'], title: 'System Normal', body: 'All readings are within the set limits.' },
-    { id: 2, ts: now - 83 * 60e3, type: 'ventilation', cats: ['system'], title: 'Ventilation Activated', body: 'Automated ventilation is now ON.' },
-    { id: 3, ts: now - 84 * 60e3, type: 'exceeded', cats: ['exceeded', 'message'], sms: true, title: 'High CO₂ Level', body: 'CO₂ level reached 1,200 ppm.' },
-    { id: 4, ts: y.getTime(), type: 'normal', cats: ['system'], title: 'System Normal', body: 'All readings are within the set limits.' }
-  ].map(a => ({ room, ...a }));
-}
-
-const smsLine = () => {
-  const n = S.users.filter(u => u.sms).length;
-  return { n, text: n ? `SMS sent to ${n} recipient${n === 1 ? '' : 's'}.` : 'No SMS recipients are switched on.' };
-};
-
-// Runs after every new reading or settings change, for the room being processed.
-// Green = normal, yellow = warning, red = danger. Ventilation starts at the level set in Settings (red by default).
-function evaluate() {
-  KEYS.forEach(k => {
-    const next = levelOf(k, S.reading[k]); const prev = S.levels[k]; const m = METRICS[k];
-    if (RANK[next] > RANK[prev]) {
-      const sms = smsLine();
-      if (next === 'warning') {
-        pushAlert({ type: 'warning', cats: ['message'], sms: sms.n > 0, title: `${m.label} Near Limit`, body: `${m.label} is at ${withUnit(k, S.reading[k])}. ${sms.text}` });
-      } else {
-        pushAlert({ type: 'exceeded', cats: ['exceeded', 'message'], sms: sms.n > 0, title: `High ${m.label} Level`, body: `${m.label} reached ${withUnit(k, S.reading[k])}. Limit is ${withUnit(k, S.limits[k].limit)}. ${sms.text}` });
-      }
+const alertWatermarks = new Map();
+function applyShared(shared, alerts) {
+  S.limits = shared.thresholds; S.fanTrigger = shared.fanTrigger;
+  const available = new Set(shared.rooms.map(r => String(r.id)));
+  S.rooms = S.rooms.filter(r => available.has(r.id));
+  for (const state of shared.rooms) {
+    let room = S.rooms.find(r => r.id === String(state.id));
+    if (!room) {
+      room = makeRoom({ ...state, id: String(state.id), lightWatts: state.wattsPerLight });
+      S.rooms.push(room);
     }
-    S.levels[k] = next;
-  });
-  const w = worst(); const need = S.fanTrigger === 'warning' ? 1 : 2;
-  if (S.vent.mode === 'auto') {
-    if (w >= need && !S.vent.on) {
-      S.vent.on = true;
-      pushAlert({ type: 'ventilation', cats: ['system'], title: 'Ventilation Activated', body: 'Automated ventilation is now ON.' });
-    } else if (w === 0 && S.vent.on) {
-      S.vent.on = false; S.scenario = null;
-      pushAlert({ type: 'ventilation', cats: ['system'], title: 'Ventilation Stopped', body: 'Readings are back to normal. Automated ventilation is now OFF.' });
+    Object.assign(room, { name: state.name, floor: state.floor, lights: state.lights, lightWatts: state.wattsPerLight, fanWatts: state.fanWatts });
+    room.reading = state.reading; room.levels = state.levels; room.electricity = state.electricity;
+    room.devices = state.devices || []; room.lightsOn = state.lightsOn;
+    room.vent = { mode: state.ventMode, on: state.fanOn }; room.scenario = state.scenario;
+    if (room.buf.t[room.buf.t.length - 1] !== state.updatedAt) {
+      room.buf.t.push(state.updatedAt);
+      KEYS.forEach(k => room.buf[k].push(state.reading[k]));
+      if (room.buf.t.length > 40) { room.buf.t.shift(); KEYS.forEach(k => room.buf[k].shift()); }
     }
   }
-  if (w === 0 && S.prevWorst > 0) {
-    pushAlert({ type: 'normal', cats: ['system'], title: 'System Normal', body: 'All readings are within the set limits.' });
+  if (S.rooms.length && !available.has(S.roomId)) S.roomId = S.rooms[0].id;
+  if (shared.rooms.length) S.lastUpdate = Math.max(...shared.rooms.map(r => r.updatedAt));
+  const scoped=alerts.filter(a=>String(a.roomId)===S.roomId);
+  const latest=Math.max(0,...scoped.map(a=>a.id));
+  const previous=alertWatermarks.get(S.roomId);
+  const fresh=previous===undefined?[]:scoped.filter(a=>a.id>previous && ['warning','exceeded'].includes(a.type));
+  if (S.screen!=='alerts' && fresh.length) {
+    S.unread+=fresh.length;
+    toast(`${cur().name}: ${fresh.length===1?fresh[0].title.replace(/^Demo:\s*/, ''):fresh.length+' new condition alerts'}`);
   }
-  S.prevWorst = w;
+  alertWatermarks.set(S.roomId,latest);
+  S.alerts=scoped;
+}
+let polling = false;
+async function pollShared() {
+  if (!token || !S.role || polling) return;
+  polling = true;
+  const session = token; const requestedRoom=S.roomId;
+  try {
+    const [shared, alerts] = await Promise.all([api('/simulation'), api('/alerts?roomId='+encodeURIComponent(requestedRoom)+'&limit=200')]);
+    if (token !== session || !S.role || requestedRoom!==S.roomId) return;
+    applyShared(shared, alerts.alerts); S.syncError = '';
+    if (LIVE.has(S.screen)) render();
+    else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
+  } catch (err) {
+    if (token === session && S.role) {
+      if (!S.syncError) toast('Shared readings could not refresh. Reconnecting…');
+      S.syncError = err.message;
+      if (LIVE.has(S.screen)) render();
+    }
+  } finally { polling = false; }
 }
 
 /* =====================================================================
@@ -324,7 +363,7 @@ function makeRoom(cfg) {
     lights: num(cfg.lights, ROOM_DEFAULTS.lights), lightWatts: num(cfg.lightWatts, ROOM_DEFAULTS.lightWatts), fanWatts: num(cfg.fanWatts, ROOM_DEFAULTS.fanWatts),
     off: { temp: (rnd() - 0.5) * 1.6, hum: (rnd() - 0.5) * 6, co2: (rnd() - 0.5) * 160 },   // makes each room look a bit different
     other: 50 + rnd() * 90,
-    vent: { mode: cfg.mode === 'manual' ? 'manual' : 'auto', on: false }, scenario: null,
+    vent: { mode: cfg.mode === 'manual' ? 'manual' : 'auto', on: false }, scenario: null, simStart: null,
     levels: { temp: 'normal', hum: 'normal', co2: 'normal' }, prevWorst: 0,
     buf: { t: [], temp: [], hum: [], co2: [] }
   };
@@ -336,37 +375,6 @@ function makeRoom(cfg) {
     KEYS.forEach(k => r.buf[k].push(r.reading[k] + (rnd() - 0.5) * ({ temp: 0.3, hum: 1.2, co2: 24 })[k]));
   }
   return r;
-}
-
-// Watts in use. With a real power meter, "total" comes from the meter.
-function power(r) {
-  const lights = r.lightsOn * r.lightWatts, fan = r.vent.on ? r.fanWatts : 0, other = r.other;
-  return { lights, fan, other, total: lights + fan + other };
-}
-
-function tick() {
-  eachRoom(r => {
-    const target = r.vent.on ? { ...COOLED } : { ...roomBase(r), ...(SCENARIOS[r.scenario] || {}) };
-    const noise = { temp: 0.12, hum: 0.5, co2: 10 };
-    KEYS.forEach(k => { r.reading[k] += (target[k] - r.reading[k]) * 0.18 + (Math.random() - 0.5) * noise[k]; });
-    if (Math.random() < 0.02) r.lightsOn = Math.max(0, Math.min(r.lights, r.lightsOn + (Math.random() < 0.5 ? -1 : 1)));
-    r.other = Math.max(30, Math.min(160, r.other + (Math.random() - 0.5) * 3));
-    ingest(r.reading, null, true);
-  });
-  if (LIVE.has(S.screen) && S.role) render();
-}
-
-// Call this with real data: ingest({ temp, hum, co2 }, roomId)
-function ingest(r, roomId, quiet) {
-  const keep = S.roomId; if (roomId) S.roomId = roomId;
-  S.reading = { temp: r.temp, hum: r.hum, co2: r.co2 };
-  S.lastUpdate = Date.now();
-  S.buf.t.push(S.lastUpdate);
-  KEYS.forEach(k => S.buf[k].push(S.reading[k]));
-  if (S.buf.t.length > 40) { S.buf.t.shift(); KEYS.forEach(k => S.buf[k].shift()); }
-  evaluate();
-  S.roomId = keep;
-  if (!quiet && LIVE.has(S.screen) && S.role) render();
 }
 
 /* ---------- history (synthetic; replace with an API call) ---------- */
@@ -419,18 +427,18 @@ const legend = k => `<div class="legend"><span><i style="color:#E5B800"></i>Warn
    VIEWS
    ===================================================================== */
 const LIVE = new Set(['home', 'alerts', 'monitor', 'status']);
-const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About' };
+const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users', students: 'Student Accounts' };
 
 function nav() {
   const items = S.role === 'admin'
     ? [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['status', 'Devices', 'device'], ['settings', 'Settings', 'sliders']]
     : [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['about', 'About', 'info']];
   return `<nav class="nav" style="--n:${items.length}" aria-label="Main">${items.map(([id, label, ic]) =>
-    `<button data-act="go" data-v="${id}" ${S.screen === id ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
+    `<button data-act="go" data-v="${id}" ${(S.screen === id || (['users','students'].includes(S.screen) && id === 'settings')) ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
 }
 
 function topbar() {
-  const home = S.screen === 'home'; const back = S.screen === 'about' && S.role === 'admin' ? 'settings' : 'home';
+  const home = S.screen === 'home'; const back = S.screen==='students'?'users': ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
   return `<header class="topbar">${home
     ? `${logo(34)}<h1>SafeZone</h1>`
     : `<button data-act="go" data-v="${back}" aria-label="Back to ${back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
@@ -447,12 +455,11 @@ function sensorCard(k) {
 function ventCard(control) {
   const on = S.vent.on; const auto = S.vent.mode === 'auto'; const admin = S.role === 'admin';
   const foot = control && admin
-    ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Ventilation fan" data-act="toggleVent"><span></span></button>
+    ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Exhaust fan" data-act="toggleVent"><span></span></button>
        ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
-    : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>
-       ${admin ? '<button class="linkbtn" data-act="toMonitor">Control in Monitoring</button>' : ''}`;
-  return `<article class="card sensor"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Ventilation</div>
-    <div class="s-val">${on ? 'ON' : 'OFF'}</div>${foot}</article>`;
+    : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>`;
+  return `<article class="card sensor"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Exhaust fan</div>
+    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p>${foot}</article>`;
 }
 
 function cards(control = false) { return `<div class="grid2">${sensorCard('temp')}${sensorCard('hum')}${sensorCard('co2')}${ventCard(control)}</div>`; }
@@ -462,7 +469,7 @@ function banner() {
   const map = {
     normal: ['leaf', 'Environment Healthy', 'Good air quality and safe conditions.'],
     warning: ['alert', 'Readings Rising', 'One or more readings are near the set limit.'],
-    exceeded: ['alert', 'Danger: Limit Exceeded', S.vent.on ? 'Ventilation is on and clearing the air.' : 'Ventilation is off. Turn it on or open a window.']
+    exceeded: ['alert', 'Danger: Limit Exceeded', S.vent.on ? 'The exhaust fan is on and clearing the air.' : 'The exhaust fan is off. Turn it on or open a window.']
   }[w];
   return `<div class="banner ${w}" role="status">${I[map[0]]}<div><b>${map[1]}</b><span>${map[2]}</span></div></div>`;
 }
@@ -470,7 +477,7 @@ function banner() {
 const liveLine = () => `<div class="live"><i></i>Live, updated ${tSec(new Date(S.lastUpdate))}</div>`;
 
 // "Select Room" dropdown. Admins also get the Add Room button.
-function roomBar() {
+function roomBar(allowAdd = false) {
   const admin = S.role === 'admin'; const r = cur();
   if (S.rooms.length < 2 && !admin) return '';
   return `<div class="roombar">
@@ -478,22 +485,22 @@ function roomBar() {
       <span class="rp-ico">${I.building}</span>
       <span class="rp-txt"><small>Select Room, ${floorName(r.floor)}</small><b>${esc(r.name)}</b></span>
       <i class="rdot ${roomLevel(r)}"></i><span class="rp-chev">${I.chevd}</span></button>
-    ${admin ? `<button class="addroom" data-act="addRoom" aria-label="Add room"><span class="plus">${I.plus}</span><small>Add Room</small></button>` : ''}
+    ${admin && allowAdd && S.screen === 'monitor' ? `<button class="addroom" data-act="addRoom" aria-label="Add room"><span class="plus">${I.plus}</span><small>Add Room</small></button>` : ''}
   </div>`;
 }
 
-function powerCard(compact) {
-  const r = cur(); const p = power(r);
+function powerCard(compact, monitor = false) {
+  const r = cur(); const e = r.electricity || { totalKwh: 0, lightsKwh: 0, fanKwh: 0 };
+  if (monitor) return `<article class="card power monitor-energy"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Electricity</div><div class="s-val">${Number(e.fanKwh).toFixed(4)}<small>kWh</small></div><p class="s-note">Estimated fan usage</p></article>`;
   if (compact) {
-    return `<button class="card power compact" data-act="toMonitor" aria-label="Power in use, open monitoring"><span class="ico ico-pow">${I.bolt}</span>
-      <div><b>${wattsText(p.total)}</b><span>Power in use. ${r.lightsOn} of ${r.lights} lights on.</span></div><span class="chev" style="margin-left:auto">${I.chev}</span></button>`;
+    return `<button class="card power compact" data-act="toMonitor" aria-label="Electricity, open monitoring"><span class="ico ico-pow">${I.bolt}</span>
+      <div><b>${energyText(e.fanKwh)}</b><span>Estimated fan electricity</span></div><span class="chev" style="margin-left:auto">${I.chev}</span></button>`;
   }
-  return `<article class="card power"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Power usage</div>
-    <div class="s-val">${Math.round(p.total).toLocaleString('en-US')}<small>W</small></div>
+  return `<article class="card power"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Estimated electricity usage</div>
+    <div class="s-val">${Number(e.fanKwh).toFixed(4)}<small>kWh</small></div>
+    <p class="note">Exhaust fan estimate from configured ratings and simulated operating time.</p>
     <div class="plist">
-      <div>${I.bulb}<span>Lights<small>${r.lightsOn} of ${r.lights} on</small></span><b>${wattsText(p.lights)}</b></div>
-      <div>${I.fan}<span>Ventilation fan<small>${r.vent.on ? 'Running' : 'Off'}</small></span><b>${wattsText(p.fan)}</b></div>
-      <div>${I.device}<span>Other devices<small>Outlets and equipment</small></span><b>${wattsText(p.other)}</b></div>
+      <div>${I.fan}<span>Exhaust fan<small>${r.vent.on ? 'Running' : 'Off'}</small></span><b>${energyText(e.fanKwh)}</b></div>
     </div></article>`;
 }
 
@@ -501,9 +508,9 @@ function legendCard() {
   const warnFan = S.fanTrigger === 'warning';
   return `<section class="card legend-card"><h3>Status colors</h3>
     <div class="lg"><i class="dot normal"></i><div><b>Green: Normal</b><span>Readings are within the set limits.</span></div></div>
-    <div class="lg"><i class="dot warning"></i><div><b>Yellow: Warning</b><span>Near the limit. SMS alert sent.${warnFan ? ' Ventilation turns ON.' : ''}</span></div></div>
-    <div class="lg"><i class="dot exceeded"></i><div><b>Red: Danger</b><span>Limit exceeded. SMS alert sent.${warnFan ? ' Ventilation stays ON.' : ' Ventilation turns ON.'}</span></div></div>
-    <p class="legend-foot">In automatic mode, ventilation turns OFF again when every reading is green.</p></section>`;
+    <div class="lg"><i class="dot warning"></i><div><b>Yellow: Warning</b><span>Near the limit. SMS delivery is not connected.${warnFan ? ' The exhaust fan turns ON.' : ''}</span></div></div>
+    <div class="lg"><i class="dot exceeded"></i><div><b>Red: Danger</b><span>Limit exceeded. SMS delivery is not connected.${warnFan ? ' The exhaust fan stays ON.' : ' The exhaust fan turns ON.'}</span></div></div>
+    <p class="legend-foot">In automatic mode, the exhaust fan turns OFF again when every reading is green.</p></section>`;
 }
 
 function homeView() {
@@ -514,13 +521,59 @@ function homeView() {
   return `${head}${roomBar()}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
 }
 
+function groupRoomAlerts(alerts, roomId) {
+  const days=new Map();
+  const eventKey=a=>{
+    const metric=a.metric || (/temperature/i.test(a.title)?'temp':/humidity/i.test(a.title)?'hum':/co[₂2]/i.test(a.title)?'co2':null);
+    return metric && ['warning','exceeded'].includes(a.type)?'threshold:'+metric:a.type+':'+a.title;
+  };
+  const severity=a=>a.type==='exceeded'?2:a.type==='warning'?1:0;
+  for(const alert of alerts.filter(a=>String(a.roomId)===String(roomId)).slice().sort((a,b)=>b.ts-a.ts || b.id-a.id)) {
+    const date=new Date(alert.ts);
+    const key=[date.getFullYear(),date.getMonth()+1,date.getDate()].join('-');
+    if(!days.has(key))days.set(key,{key,ts:alert.ts,times:new Map()});
+    const minute=Math.floor(alert.ts/60000),day=days.get(key);
+    if(!day.times.has(minute))day.times.set(minute,{ts:alert.ts,items:[]});
+    const time=day.times.get(minute);
+    const index=time.items.findIndex(item=>eventKey(item)===eventKey(alert));
+    if(index<0)time.items.push(alert);
+    else if(severity(alert)>severity(time.items[index]))time.items[index]=alert;
+  }
+  return [...days.values()].map(day=>({...day,times:[...day.times.values()]}));
+}
+function alertDescription(alert) {
+  const metric=alert.metric || (/temperature/i.test(alert.title)?'temp':/humidity/i.test(alert.title)?'hum':/co[₂2]/i.test(alert.title)?'co2':null);
+  const label={temp:'temperature',hum:'relative humidity',co2:'carbon dioxide (CO₂) concentration'}[metric];
+  if(label && ['warning','exceeded'].includes(alert.type)) {
+    const danger=alert.type==='exceeded';
+    const recorded=alert.value!=null && Number.isFinite(Number(alert.value))?withUnit(metric,Number(alert.value)):null;
+    // Use thresholds saved in this event's body, never today's possibly changed settings.
+    const match=String(alert.body || '').match(danger?/limit:\s*(-?\d+(?:\.\d+)?)/i:/warning:\s*(-?\d+(?:\.\d+)?)/i);
+    const threshold=match?withUnit(metric,Number(match[1])):null;
+    const status=danger?'Threshold alert':'Caution';
+    const reading=recorded?`The recorded ${label} was ${recorded}. `:`The ${label} reading `;
+    return `${status}: ${reading}${recorded?'This reading ':''}reached or exceeded the configured ${danger?'limit':'warning threshold'}${threshold?' of '+threshold:''}.`;
+  }
+  if(alert.type==='normal')return 'Room conditions returned to normal. Temperature, relative humidity, and carbon dioxide readings were within their configured normal ranges.';
+  if(alert.type==='ventilation') {
+    const off=/stopped|off/i.test(alert.title);
+    return `The exhaust fan was ${off?'deactivated':'activated'}.${/no hardware command/i.test(alert.body || '')?' This was a simulated status change; no physical hardware command was issued.':''}`;
+  }
+  return alert.title.replace(/^Demo:\s*/,'').replace(/[.!?]+$/,'')+'.';
+}
+function alertTimeline(alerts) {
+  return groupRoomAlerts(alerts,S.roomId).map(day=>`<section class="alert-day"><h3>${esc(new Date(day.ts).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</h3>
+    ${day.times.map(time=>`<article class="alert-time-block"><h4><time datetime="${new Date(time.ts).toISOString()}">${esc(new Date(time.ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}).replace(/\s/g,'').toLowerCase())}</time></h4>
+      <div class="alert-time-events">${time.items.map(a=>`<div class="alert ${a.type}"><div class="alert-content"><p>${esc(alertDescription(a))}</p></div></div>`).join('')}</div>
+    </article>`).join('')}</section>`).join('');
+}
 function alertsView() {
-  const admin = S.role === 'admin';
-  const filters = admin ? [['all', 'All'], ['message', 'Message'], ['exceeded', 'Danger'], ['system', 'System']] : [['all', 'All'], ['exceeded', 'Danger'], ['system', 'System']];
-  const list = S.alerts.filter(a => S.alertFilter === 'all' || a.cats.includes(S.alertFilter));
-  return `<div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id, l]) => `<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter === id}">${l}</button>`).join('')}</div>
-    ${list.length ? list.map(a => `<article class="alert ${a.type}"><span class="dot ${a.type}"></span><div><b>${esc(a.title)}</b><p>${esc(a.body)}</p><time>${when(a.ts)}</time>${a.room ? `<span class="tag room">${esc(a.room)}</span>` : ''}${admin && a.sms ? '<span class="tag">SMS sent</span>' : ''}</div></article>`).join('')
-      : '<p class="empty">No alerts in this group yet.</p>'}`;
+  const scoped=S.alerts.filter(a=>String(a.roomId)===S.roomId);
+  const filters=[['all','All alerts'],['warning','Caution'],['exceeded','Danger'],['system','Updates']];
+  const list=scoped.filter(a=>S.alertFilter==='all'||(S.alertFilter==='system'?!['warning','exceeded'].includes(a.type):a.type===S.alertFilter));
+  return `<div class="alerts-context"><p class="section-label">Alerts for ${esc(cur().name)}</p>${roomBar()}<div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id,label])=>`<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter===id}">${label}</button>`).join('')}</div></div>
+    <p class="note">Simulated readings · SMS delivery is not connected.</p>
+    ${alertTimeline(list) || '<p class="empty">No alerts in this group for this room.</p>'}`;
 }
 
 function metricChips() {
@@ -532,34 +585,28 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `${seg}${roomBar()}${cards(true)}${powerCard(false)}${metricChips()}
-      <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label} (${m.unit})</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
+    return `<div class="monitor-room-context">${roomBar(true)}${seg}</div><div class="monitor-utilities">${ventCard(true)}${powerCard(false,true)}</div>${metricChips()}
+      <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
   }
   const r = S.mon.range; const h = history(k, r); h.vals = h.vals.map(v => v + cur().off[k]);
   const min = Math.min(...h.vals), max = Math.max(...h.vals), avg = h.vals.reduce((a, b) => a + b, 0) / h.vals.length;
   const over = h.vals.filter(v => v >= S.limits[k].limit).length;
   const rc = `<div class="mini-chips" role="group" aria-label="Time range">${[['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']].map(([id, l]) => `<button data-act="range" data-v="${id}" aria-pressed="${r === id}">${l}</button>`).join('')}</div>`;
-  return `${seg}${roomBar()}${metricChips()}${rc}
+  return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${metricChips()}${rc}
     <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${chartSVG(h.vals, h.labels, k, 'neutral', 'hist')}${legend(k)}</section>
     <div class="stats"><div class="stat"><span>Lowest</span><b>${fmt(k, min)}</b></div><div class="stat"><span>Average</span><b>${fmt(k, avg)}</b></div><div class="stat"><span>Highest</span><b>${fmt(k, max)}</b></div></div>
     <p class="note">${over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
 }
 
+const DEVICE_NAMES = {exhaust_fan:'Exhaust fan',esp8266:'NodeMCU V3 ESP8266',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
+const FAN_NAMES = {unspecified:'Not specified',wall:'Wall-mounted',window:'Window-mounted',ceiling:'Ceiling-mounted',inline:'Inline duct'};
 function statusView() {
-  const r = S.reading;
-  const row = (ic, name, sub, st = 'Online') => `<div class="row"><span class="r-ico">${I[ic]}</span><div class="r-txt"><b>${name}</b><span>${sub}</span></div><span class="pill">${st}</span></div>`;
-  return `<h2>All devices online</h2><p class="sub">Connection and sensor health for ${esc(cur().name)}.</p>${roomBar()}${liveLine()}
-    <div class="list">
-      ${row('cpu', 'ESP32 Controller', 'Sending readings every 2 seconds')}
-      ${row('thermo', 'Temperature Sensor', withUnit('temp', r.temp))}
-      ${row('drop', 'Humidity Sensor', withUnit('hum', r.hum))}
-      ${row('cloud', 'CO₂ Sensor', withUnit('co2', r.co2))}
-      ${row('fan', 'Exhaust Fan', S.vent.on ? 'Running' : 'Standing by', S.vent.on ? 'Active' : 'Idle')}
-      ${row('wifi', 'Wi-Fi Connection', 'SafeZone_Network', 'Connected')}
-      ${row('sms', 'SMS Module', 'Ready to send alerts', 'Ready')}
-      ${row('bolt', 'Power Meter', wattsText(power(cur()).total), 'Online')}
-    </div>`;
+  const devices = (cur().devices || []).filter(d => d.type !== 'light');
+  return `<h2>Room devices</h2><p class="sub">Configured devices for ${esc(cur().name)}.</p>${roomBar()}
+    <div class="list">${devices.map(d => `<div class="row"><span class="r-ico">${I[d.type === 'light' ? 'bulb' : d.type === 'exhaust_fan' ? 'fan' : 'device']}</span>
+      <div class="r-txt"><b>${esc(d.label)}</b><span>${d.quantity} × ${esc(DEVICE_NAMES[d.type])}${d.type === 'exhaust_fan' ? ' · ' + esc(FAN_NAMES[d.fanType] || 'Not specified') : ''}${d.wattsPerDevice ? ' · ' + d.wattsPerDevice + ' W each' : ''}</span></div>
+      <span class="pill">${d.type === 'exhaust_fan' ? (S.vent.on ? 'Running' : 'Off') : d.type === 'light' ? d.activeQuantity + ' on' : 'Configured'}</span></div>`).join('') || '<p class="empty">No devices configured.</p>'}</div>`;
 }
 
 function limitBlock(k, hint) {
@@ -570,6 +617,19 @@ function limitBlock(k, hint) {
     <label class="f">Limit at (${m.unit})<input type="number" id="${k}-limit" value="${t.limit}" step="any" inputmode="decimal"></label></div></details>`;
 }
 
+function roomConfiguration() {
+  const room = S.rooms.find(r => r.id === S.configRoomId) || S.rooms[0];
+  S.configRoomId = room.id;
+  return `<section class="room-configuration" aria-label="Room configuration">
+    <label class="f" for="config-floor">Floor</label>
+    <select id="config-floor" aria-label="Floor to configure">${floorList().filter(f=>roomsOn(f).length).map(f=>`<option value="${f}" ${f===room.floor?'selected':''}>${floorName(f)}</option>`).join('')}</select>
+    <label class="f" for="config-room">Room</label>
+    <select id="config-room" aria-label="Room to configure">${roomsOn(room.floor).map(r => `<option value="${esc(r.id)}" ${r.id === room.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+    <div class="room-config-actions"><button class="btn soft small" id="config-room-edit" data-act="editRoom" data-v="${room.id}">${I.edit} Edit room</button>
+      <button class="btn soft small" id="config-room-delete" data-act="roomDel" data-v="${room.id}">${I.trash} Delete room</button></div>
+  </section>`;
+}
+
 function settingsView() {
   const trig = S.draftTrigger;
   return `<p class="section-label" style="margin-top:0">Admin account</p>
@@ -577,9 +637,9 @@ function settingsView() {
       <button class="row" data-act="users"><span class="r-ico">${I.users}</span><div class="r-txt"><b>Manage Users</b><span>Admins and registered accounts</span></div><span class="chev">${I.chev}</span></button>
       <button class="row" data-act="account"><span class="r-ico">${I.user}</span><div class="r-txt"><b>Account Settings</b><span>Username and password</span></div><span class="chev">${I.chev}</span></button>
     </div>
-    <p class="section-label">Rooms and alerts</p>
+    ${roomConfiguration()}
+    <p class="section-label">Alerts</p>
     <div class="list">
-      <button class="row" data-act="addRoom"><span class="r-ico">${I.home}</span><div class="r-txt"><b>Rooms</b><span>Add or remove rooms to monitor</span></div><span class="chev">${I.chev}</span></button>
       <button class="row" data-act="sms"><span class="r-ico">${I.sms}</span><div class="r-txt"><b>SMS Alerts</b><span>Name, role and mobile number of each recipient</span></div><span class="chev">${I.chev}</span></button>
     </div>
     <p class="section-label">Help</p>
@@ -591,7 +651,7 @@ function settingsView() {
       ${limitBlock('temp', 'Set the warning and limit')}
       ${limitBlock('hum', 'Set the warning and limit')}
       ${limitBlock('co2', 'Set the warning and limit')}
-      <div class="row"><span class="r-ico">${I.fan}</span><div class="r-txt"><b>Ventilation Control</b><span>Automatic or manual, for all rooms</span></div>
+      <div class="row"><span class="r-ico">${I.fan}</span><div class="r-txt"><b>Exhaust fan control</b><span>Automatic or manual, for all rooms</span></div>
         <button class="switch" role="switch" id="draft-auto" aria-checked="${S.draftAuto}" aria-label="Automatic ventilation" data-act="draftAuto"><span></span></button></div>
       <div class="row" style="flex-wrap:wrap"><span class="r-ico">${I.fan}</span><div class="r-txt"><b>Turn fan on at</b><span>When automatic ventilation starts</span></div>
         <div class="mini-chips opt2" role="group" aria-label="Turn fan on at" style="flex-basis:100%;margin:0">
@@ -599,7 +659,19 @@ function settingsView() {
           <button data-act="trigger" data-v="exceeded" aria-pressed="${trig === 'exceeded'}">Red (Danger)</button></div></div>
     </div>
     <div style="margin-top:16px"><button class="btn" data-act="save">Save changes</button></div>
-    <p class="section-label">Demo tools</p>
+    <p class="section-label">Shared demo tools</p>
+    <p class="note">Everyone connected to this server can see the selected rooms change. Hardware and SMS are not connected.</p>
+    <label class="f">Rooms to affect<select id="sim-scope" aria-label="Rooms to affect">
+      ${S.rooms.map(r => `<option value="${r.id === S.roomId ? 'current' : 'room:'+r.id}" ${(S.simScope === 'current' && r.id === S.roomId) || S.simScope === 'room:'+r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+      <option value="selected" ${S.simScope === 'selected' ? 'selected' : ''}>Select multiple rooms</option>
+      <option value="all" ${S.simScope === 'all' ? 'selected' : ''}>All rooms</option>
+    </select></label>
+    <details id="sim-room-options" ${S.simScope !== 'selected' ? 'hidden' : ''} class="room-multiselect">
+      <summary>Select rooms <span id="sim-room-count">(${S.simSelected.length} selected)</span></summary>
+      <div class="room-checkboxes">
+        ${S.rooms.map(r => `<label><input type="checkbox" class="sim-room" value="${esc(r.id)}" ${S.simSelected.includes(String(r.id)) ? 'checked' : ''}> <span>${esc(r.name)}</span></label>`).join('')}
+      </div>
+    </details>
     <div class="stack">
       <button class="btn soft small" data-act="sim" data-v="co2">Simulate high CO₂</button>
       <button class="btn soft small" data-act="sim" data-v="temp">Simulate high temperature</button>
@@ -647,7 +719,7 @@ function aboutView() {
   const features = admin ? `<ul>
       <li><b>Admin dashboard:</b> readings, status and power use for each room, with the system status.</li>
       <li><b>Rooms:</b> add a room with the + button. The number follows the floor, such as 101, 201, 301 or 401. Remove rooms in Settings.</li>
-      <li><b>Ventilation control:</b> turn the fan on or off in Monitoring, or leave it in Automatic mode. Choose whether it starts at yellow or red.</li>
+      <li><b>Exhaust fan control:</b> turn the fan on or off in Monitoring, or leave it in Automatic mode. Choose whether it starts at yellow or red.</li>
       <li><b>Thresholds:</b> set the warning and limit for temperature, humidity and CO₂.</li>
       <li><b>SMS Alerts:</b> choose who receives texts, with name, role and mobile number. Switch people on or off, edit or remove them.</li>
       <li><b>Manage Users:</b> see admin and registered accounts, and add other admins.</li>
@@ -657,9 +729,9 @@ function aboutView() {
   : `<ul>
       <li><b>Real-time readings:</b> temperature, humidity and CO₂ for the room you choose.</li>
       <li><b>Room status:</b> green, yellow and red indicators show the room's condition.</li>
-      <li><b>Ventilation status:</b> see whether the exhaust fan is running, and whether it is in Automatic or Manual mode.</li>
+      <li><b>Exhaust fan status:</b> see whether the exhaust fan is running, and whether it is in Automatic or Manual mode.</li>
       <li><b>Room selection:</b> pick a room by floor.</li>
-      <li><b>Power usage:</b> watts in use and how many lights are on.</li>
+      <li><b>Electricity:</b> accumulated estimated energy in kWh for exhaust fans.</li>
       <li><b>History:</b> charts for the last 6 hours, 24 hours or 7 days.</li>
       <li><b>Alerts:</b> warnings, danger alerts and system messages, tagged by room.</li>
       <li><b>SMS alerts:</b> your registered mobile number gets a text at Warning or Danger.</li>
@@ -675,8 +747,8 @@ function aboutView() {
 }
 
 function shell() {
-  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView };
-  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${bodies[S.screen]()}</main>${nav()}`;
+  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView, students: studentsView };
+  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
 }
 
 function splashView() {
@@ -733,6 +805,7 @@ function vReg1View() {
       <label class="flabel" for="phone">Mobile Number</label>
       ${phoneInput()}
       <p class="hint">Enter a valid Philippine mobile number (e.g. 09XXXXXXXXX)</p>
+      <div id="registration-profile" class="stack" ${emailKind(S.reg.email)==='faculty'?'hidden':''}>${profileFields('reg',S.reg)}</div>
       ${errLine()}
       <button class="btn" type="submit">Next</button>
     </form>
@@ -767,7 +840,7 @@ function vDoneView() {
 
 function vLoginView() {
   return `<div class="splash auth">${authBack('vWelcome')}<div class="auth-in">
-    ${circle('cap')}
+    ${logo(96, true)}
     <h2>Log in</h2>
     <p class="tag-line" style="margin-bottom:20px">Use your mobile number and password.</p>
     ${noteLine()}
@@ -799,67 +872,21 @@ function loginView() {
       <button class="btn" type="submit">Log in</button>
     </form>
     <button class="linkbtn" style="margin-top:14px;font-size:13px" data-act="forgot" data-v="admin">Forgot password?</button>
-    <button class="linkbtn" style="margin-top:10px;font-size:13px" data-act="to" data-v="fReg">Create an admin account</button>
-    <p class="note" style="margin-top:14px">Prototype login: admin / safezone</p>
-  </div></div>`;
-}
-
-function fRegView() {
-  return `<div class="splash auth">${authBack('login')}<div class="auth-in">
-    ${circle('sliders')}
-    <h2>Admin Account</h2>
-    <p class="tag-line" style="margin-bottom:18px">Create an account to manage and control SafeZone.</p>
-    <form id="f-reg-form" style="width:100%" autocomplete="off" novalidate>
-      ${textField('user', 'fname', 'Full name', 'text', 'autocomplete="name"')}
-      ${textField('user', 'fuser', 'Username', 'text', 'autocapitalize="none" autocomplete="username"')}
-      ${textField('mail', 'femail', 'PUP web mail', 'email', 'inputmode="email" autocapitalize="none" autocomplete="email"')}
-      <p class="hint">${emailHintHtml}</p>
-      ${textField('phone', 'fphone', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="tel"')}
-      ${pwField('rp', 'Password', 'new-password')}
-      ${rulesList()}
-      ${pwField('rc', 'Confirm password', 'new-password')}
-      ${textField('key', 'fcode', 'Admin access code', 'text', 'autocapitalize="characters" autocomplete="off"')}
-      <p class="hint">Ask your system administrator for the admin access code.</p>
-      ${errLine()}
-      <button class="btn" type="submit">Create Account</button>
-    </form>
+    <p class="note" style="margin-top:14px">Use an account created on your SafeZone server.</p>
   </div></div>`;
 }
 
 /* ---------- Forgot password: web mail, code, new password ---------- */
-function resetAccount(r) { return S.accounts.find(a => a.role === (r.side === 'admin' ? 'admin' : 'viewer') && a.email && a.email === r.email); }
-function sendResetCode() {
-  const r = S.reset; const acc = resetAccount(r);
-  r.code = acc ? newCode() : null;      // the real system answers the same either way and only emails when the account exists
-  r.exp = Date.now() + RESET_MINUTES * 60e3; r.tries = 0; r.sentAt = Date.now(); r.ok = false; r.demo = SHOW_DEMO_CODE && !EMAIL_ON;
-}
-
-// Emails the code when EMAIL_SEND is filled in. Returns true (sent), false (failed) or null (demo mode, or no account to email).
-async function deliverCode() {
-  const r = S.reset;
-  if (!EMAIL_ON || !r || !r.code) return null;
-  try {
-    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        service_id: EMAIL_SEND.serviceId, template_id: EMAIL_SEND.templateId, user_id: EMAIL_SEND.publicKey,
-        template_params: { to_email: r.email, code: r.code, minutes: RESET_MINUTES, app_name: 'SafeZone' }
-      })
-    });
-    return !!res.ok;
-  } catch (e) { return false; }
-}
-
 function fpEmailView() {
   const admin = S.reset && S.reset.side === 'admin';
   return `<div class="splash auth">${authBack(admin ? 'login' : 'vLogin')}<div class="auth-in">
     ${circle('mail')}
     <h2>Forgot Password</h2>
-    <p class="tag-line" style="margin-bottom:20px">Enter your PUP web mail. We will send a 6-digit code to it.</p>
+    <p class="tag-line" style="margin-bottom:20px">Enter your registered PUP web mail. We will send a code to your verified recovery Gmail.</p>
     <form id="fp-email-form" style="width:100%" novalidate>
       <label class="flabel" for="fpe">PUP Web Mail</label>
       ${emailInput('fpe', S.reset ? S.reset.email : '')}
-      <p class="hint">${emailHintHtml}</p>
+      <p class="hint">${emailHintHtml} Set up a recovery Gmail in Account Settings while logged in before using this feature.</p>
       ${errLine()}
       <button class="btn" type="submit">Send code</button>
     </form>
@@ -868,11 +895,11 @@ function fpEmailView() {
 
 function fpCodeView() {
   const r = S.reset;
-  const demo = r.demo ? `<div class="demo-note" role="note"><b>Demo only</b><span>${r.code ? 'The prototype cannot send real email, so your code is shown here. The real system sends it to your web mail inbox.' : 'No account uses this web mail, so no code was sent. The real system shows the same message either way.'}</span>${r.code ? `<strong class="demo-code" id="demo-code">${r.code}</strong>` : ''}</div>` : '';
+  const demo = '';
   return `<div class="splash auth">${authBack('fpEmail')}<div class="auth-in">
     ${circle('key')}
     <h2>Enter Code</h2>
-    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> is registered, we sent a 6-digit code to it. The code works for ${RESET_MINUTES} minutes.${EMAIL_ON ? '<br>Check your Junk folder if you do not see it.' : ''}</p>
+    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> has a verified recovery email, a verification code has been sent to that recovery email. The code works for ${RESET_MINUTES} minutes.<br>Enter the code from your recovery Gmail inbox below. Check Junk if it is missing. Accounts without a verified recovery Gmail must contact their administrator.</p>
     ${demo}
     <form id="fp-code-form" style="width:100%" novalidate>
       <label class="flabel" for="fpc">6-digit code</label>
@@ -910,11 +937,61 @@ function fpDoneView() {
   </div></div>`;
 }
 
+const formDrafts = new Map();
+let captureEnabled = true, settingsDirty = false, settingsDraft = null;
+const formKey = form => form.dataset.draftKey || form.id;
+function readDeviceRows() {
+  return Array.from(document.querySelectorAll('.device-editor'), row => ({
+    type:row.querySelector('[data-device="type"]').value,
+    label:row.querySelector('[data-device="label"]').value,
+    quantity:Number(row.querySelector('[data-device="quantity"]').value),
+    activeQuantity:0,
+    wattsPerDevice:Number(row.querySelector('[data-device="wattsPerDevice"]').value),
+    fanType:row.querySelector('[data-device="fanType"]').value
+  }));
+}
+function captureDrafts() {
+  if (!captureEnabled) return;
+  document.querySelectorAll('form[id]').forEach(form => {
+    if(form.dataset.dirty!=='1' && !formDrafts.has(formKey(form)))return;
+    const values=Array.from(form.querySelectorAll('input,select,textarea'),(el,index)=>({key:el.id || el.name || String(index),value:el.value,checked:el.checked}));
+    formDrafts.set(formKey(form),{values,devices:form.id==='room-form'?readDeviceRows():undefined,floor:form.id==='room-form'?S.addFloor:undefined});
+  });
+  if (settingsDirty && $('#temp-warn')) settingsDraft={
+    values:KEYS.flatMap(k=>['warn','limit'].map(part=>({id:k+'-'+part,value:$('#'+k+'-'+part).value}))),
+    trigger:S.draftTrigger,auto:S.draftAuto
+  };
+}
+function restoreDrafts() {
+  document.querySelectorAll('form[id]').forEach(form => {
+    const draft=formDrafts.get(formKey(form)); if(!draft)return;
+    form.dataset.dirty='1';
+    Array.from(form.querySelectorAll('input,select,textarea')).forEach((el,index)=>{
+      const value=draft.values.find(v=>v.key===(el.id || el.name || String(index)));
+      if(value){el.value=value.value;if(el.type==='checkbox')el.checked=value.checked;}
+    });
+  });
+  if($('#rp') && $('#rules')){
+    const checks=pwRules($('#rp').value);
+    $('#rules').querySelectorAll('li').forEach((el,index)=>el.classList.toggle('ok',checks[index][1]));
+  }
+  if(settingsDraft && $('#temp-warn')){
+    settingsDraft.values.forEach(v=>{$('#'+v.id).value=v.value;});
+    S.draftTrigger=settingsDraft.trigger;S.draftAuto=settingsDraft.auto;
+    document.querySelectorAll('[data-act="trigger"]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.v===S.draftTrigger)));
+    $('#draft-auto').setAttribute('aria-checked',String(S.draftAuto));
+  }
+}
+
 function render() {
+  captureDrafts();
   const view = $('#view'); const prev = $('#screen');
   const top = prev && prev.dataset.s === S.screen ? prev.scrollTop : 0;
-  const AUTH = { splash: splashView, login: loginView, fReg: fRegView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpEmail: fpEmailView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
+  const expanded=new Map(Array.from(document.querySelectorAll('#screen details[data-keep-open]'),d=>[d.dataset.keepOpen,d.open]));
+  const AUTH = { splash: splashView, login: loginView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpEmail: fpEmailView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
   view.innerHTML = AUTH[S.screen] ? AUTH[S.screen]() : shell();
+  document.querySelectorAll('#screen details[data-keep-open]').forEach(d=>{if(expanded.has(d.dataset.keepOpen))d.open=expanded.get(d.dataset.keepOpen);});
+  restoreDrafts(); captureEnabled=true;
   const sc = $('#screen'); if (sc) sc.scrollTop = top;
 }
 
@@ -927,23 +1004,49 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 function openSheet(title, html) {
-  const prev = $('#sheet-root .sheet'); const keep = prev && prev.getAttribute('aria-label') === title ? prev.scrollTop : 0;
-  $('#sheet-root').innerHTML = `<div class="overlay" data-act="closeSheet" data-overlay="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="grab"></div>
-    <div class="sheet-head"><h2>${esc(title)}</h2><button class="x" data-act="closeSheet" aria-label="Close">${I.x}</button></div>${html}</div></div>`;
-  const sh = $('#sheet-root .sheet'); if (sh) { sh.setAttribute('tabindex', '-1'); sh.focus({ preventScroll: true }); sh.scrollTop = keep; }
+  captureDrafts();
+  const prev = $('#sheet-root .sheet'); const keep = prev && prev.getAttribute('aria-label') === title ? prev.querySelector('.sheet-content').scrollTop : 0;
+  $('#sheet-root').innerHTML = `<div class="overlay" data-act="closeSheet" data-overlay="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-top"><div class="grab"></div>
+    <div class="sheet-head"><h2>${esc(title)}</h2><button class="x" data-act="closeSheet" aria-label="Close">${I.x}</button></div></div><div class="sheet-content">${html}</div></div></div>`;
+  restoreDrafts();
+  const sh = $('#sheet-root .sheet'); if (sh) { sh.setAttribute('tabindex', '-1'); sh.focus({ preventScroll: true }); sh.querySelector('.sheet-content').scrollTop = keep; }
 }
-const closeSheet = () => { $('#sheet-root').innerHTML = ''; };
+const closeSheet = () => { captureDrafts(); $('#sheet-root').innerHTML = ''; };
 
-function usersSheet() {
-  const admins = S.accounts.filter(a => a.role === 'admin'); const viewers = S.accounts.filter(a => a.role === 'viewer');
-  const mine = S.me ? S.me.username : '';
-  openSheet('Manage Users', `<p class="section-label" style="margin-top:0">Admins (${admins.length})</p>
-    <div class="list">${admins.map(a => `<div class="user-row"><div><b>${esc(a.name)}</b><span>@${esc(a.username)}, ${esc(showPhone(a.phone))}</span>${a.email ? `<span style="display:block">${esc(a.email)}</span>` : ''}</div>${a.username === mine ? '<span class="pill">You</span>' : ''}</div>`).join('')}</div>
-    <p class="section-label">Student / Faculty accounts (${viewers.length})</p>
-    <div class="list">${viewers.length ? viewers.map(v => `<div class="user-row"><div><b>${esc(showPhone(v.phone))}</b><span>${esc(v.email || 'No web mail yet')}</span></div></div>`).join('') : '<p class="empty">No one has registered yet.</p>'}</div>
+function userTable(title, people, admin = false, removable = false) {
+    const headers = admin ? ['Name', 'Username', 'Email', 'Mobile number'] : ['Email', 'Mobile number'];
+    if (removable) headers.push('Status', 'Actions');
+    const rows = people.map(a => {
+      const cells = admin ? [a.name, a.username, a.email, showPhone(a.phone)] : [a.email, showPhone(a.phone)];
+      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}${removable ? `<td>${a.active === false ? 'Inactive' : 'Active'}</td><td><button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button></td>` : ''}</tr>`;
+    }).join('');
+    return `<section class="users-group"><div class="users-table-scroll" role="region" aria-label="${esc(title)} table" tabindex="0">
+      <table class="users-table"><caption>${esc(title)} (${people.length})</caption>
+        <thead><tr>${headers.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">No ${esc(title.toLowerCase())} accounts yet.</td></tr>`}</tbody>
+      </table></div></section>`;
+}
+function studentsView() {
+  if(S.role!=='admin')return '<p class="empty">Admin access is required.</p>';
+  const students=S.accounts.filter(a=>a.role==='viewer' && a.kind==='student');
+  const courseCodes=[...new Set(students.map(a=>a.courseCode || ''))].sort((a,b)=>courseName(a).localeCompare(courseName(b)));
+  return `<div class="student-page-context"><p class="note">${students.length} students · grouped by course and section</p></div>${courseCodes.map(code=>{
+    const people=students.filter(a=>(a.courseCode||'')===code);
+    const sections=[...new Set(people.map(a=>a.section||'Section not set'))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    return `<details class="student-course" data-keep-open="course-${esc(code)}" open><summary><span>${esc(courseName(code))}${code?' ('+esc(code)+')':''}</span><small>${people.length} students</small>${I.chevd}</summary>${sections.map(section=>userTable(section,people.filter(a=>(a.section||'Section not set')===section).sort((a,b)=>a.email.localeCompare(b.email)),false,true)).join('')}</details>`;
+  }).join('') || '<p class="empty">No student accounts yet.</p>'}`;
+}
+
+function usersView() {
+  if (S.role !== 'admin') return '<p class="empty">Admin access is required.</p>';
+  const admins = S.accounts.filter(a => a.role === 'admin');
+  const students = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'student');
+  const faculty = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'faculty');
+  return `<p class="sub">Manage admin and faculty accounts, or open Student Accounts to browse by course and section.</p>
+    <button class="card student-accounts-link" data-act="students">${I.users}<span><b>Student Accounts</b><small>${students.length} students · organized by course and section</small></span>${I.chev}</button>${userTable('Admins', admins, true)}${userTable('Faculty', faculty)}
     <p class="note">Who gets SMS alerts is set in Settings, under SMS Alerts.</p>
     <p class="section-label">Add another admin</p>
-    <p class="note" style="margin:0 4px 10px">Give someone else admin access. They log in with the username and password you set here, and can change the password later in Account Settings.</p>
+    <p class="note">Create an account for another administrator. They can change their password in Account Settings.</p>
     <form id="admin-form" class="stack" autocomplete="off" novalidate>
       ${textField('user', 'an', 'Full name', 'text', 'autocomplete="off"')}
       ${textField('user', 'au', 'Username', 'text', 'autocapitalize="none" autocomplete="off"')}
@@ -952,7 +1055,7 @@ function usersSheet() {
       ${pwField('rp', 'Password for the new admin', 'new-password')}
       ${rulesList()}
       <button class="btn small" type="submit">Add admin</button>
-    </form>`);
+    </form>`;
 }
 
 // SMS Alerts: who gets a text. Each person has a name, a role and a mobile number.
@@ -982,40 +1085,45 @@ function smsSheet(edit) {
 
 // Pick a room. Rooms are grouped by floor.
 function pickSheet() {
-  const admin = S.role === 'admin'; const now = cur().id;
-  openSheet('Select Room', floorList().map(f => {
+  const now = cur().id;
+  openSheet('Select Room', `<div class="floor-picker">${floorList().map(f => {
     const rooms = roomsOn(f);
-    return `<div class="floor"><div class="floor-head"><b>${floorName(f)}</b>${admin ? `<button class="linkbtn" data-act="addRoom" data-v="${f}">+ Add room</button>` : ''}</div>
-      ${rooms.length ? rooms.map(r => `<button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>`).join('') : '<p class="floor-empty">No rooms yet</p>'}</div>`;
-  }).join(''));
+    return `<details class="floor-section" name="room-floor" ${cur().floor===f?'open':''}>
+      <summary><span>${floorName(f)}</span><small>${rooms.length} rooms</small>${I.chevd}</summary>
+      <div class="floor-rooms">${rooms.length ? rooms.map(r => `<button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>`).join('') : '<p class="floor-empty">No classrooms on this floor.</p>'}</div></details>`;
+  }).join('')}</div>`);
 }
 
-// Rooms: add a room to any floor, or remove one.
+// Home and Monitoring add rooms; Settings configures existing rooms.
+function defaultDevices() { return [
+  {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
+]; }
+function deviceRows(devices) {
+  return devices.map((d,i)=>`<section class="device-editor" data-index="${i}" aria-labelledby="device-title-${i}"><h3 class="device-editor-title" id="device-title-${i}">Device ${i+1}</h3><div class="device-editor-body">
+    <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
+    <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(d.label)}" maxlength="100"></label>
+    <div class="fields3"><label class="f">Quantity<input data-device="quantity" name="device-${i}-quantity" type="number" min="1" max="100" value="${d.quantity}"></label>
+    <label class="f" data-powered ${d.type!=='exhaust_fan'?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
+    </div>
+    <label class="f" data-fan ${d.type!=='exhaust_fan'?'hidden':''}>Exhaust fan type<select data-device="fanType" name="device-${i}-fan">${Object.entries(FAN_NAMES).map(([key,name])=>`<option value="${key}" ${key===(d.fanType||'unspecified')?'selected':''}>${name}</option>`).join('')}</select></label>
+    <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device</button></div></section>`).join('');
+}
 function roomsSheet() {
-  const f0 = S.addFloor || 1; const sug = nextRoomNumber(f0);
-  const groups = floorList().map(f => {
-    const rooms = roomsOn(f); if (!rooms.length) return '';
-    return `<p class="section-label" style="margin:14px 4px 6px">${floorName(f)}</p><div class="list">${rooms.map(r => {
-      const armed = S.pendingDel === 'room:' + r.id;
-      return `<div class="user-row"><div><b>${esc(r.name)}</b><span>${r.lights} lights at ${r.lightWatts} W, fan ${r.fanWatts} W</span></div>
-        <button class="x del ${armed ? 'armed' : ''}" data-act="roomDel" data-v="${r.id}" aria-label="Remove ${esc(r.name)}">${armed ? 'Remove?' : I.trash}</button></div>`;
-    }).join('')}</div>`;
-  }).join('');
-  openSheet('Rooms', `<p class="section-label" style="margin-top:0">Add a room</p>
-    <form id="room-form" class="stack" autocomplete="off" novalidate>
-      <p class="flabel" style="margin:0">Floor</p>
-      <div class="mini-chips" role="group" aria-label="Floor" style="margin:0">${floorList().map(f => `<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f === f0}">${ord(f)}</button>`).join('')}</div>
-      <div class="field roomno">${I.home}<span class="rpre">Room</span><input type="number" id="rn" value="${sug || ''}" min="${f0 * 100 + 1}" max="${f0 * 100 + 99}" inputmode="numeric" aria-label="Room number"></div>
-      <p class="hint" id="rnhint" style="margin:-4px 2px 0">${floorHint(f0)}</p>
-      <div class="fields3">
-        <label class="f">Lights<input type="number" id="rl" value="${ROOM_DEFAULTS.lights}" min="0" max="100" inputmode="numeric"></label>
-        <label class="f">Watts per light<input type="number" id="rw" value="${ROOM_DEFAULTS.lightWatts}" min="1" step="any" inputmode="decimal"></label>
-        <label class="f">Fan watts<input type="number" id="rf" value="${ROOM_DEFAULTS.fanWatts}" min="0" step="any" inputmode="decimal"></label>
-      </div>
-      <p class="note" style="margin:0">The lights and fan numbers are used for the power display.</p>
-      <button class="btn small" type="submit">Add room</button>
-    </form>
-    <p class="section-label">Current rooms</p>${groups}`);
+  const edit=S.rooms.find(r=>r.id===S.editingRoomId), key='room:'+(edit?edit.id:'new');
+  const draft=formDrafts.get(key), devices=draft?.devices || (edit?(edit.devices || []).filter(d => d.type !== 'light'):defaultDevices());
+  const floor=draft?.floor ?? (edit?edit.floor:S.addFloor||1);
+  openSheet('Rooms',`<h2>${edit?'Edit '+esc(edit.name):'Add a room'}</h2>
+    <form id="room-form" data-draft-key="${key}" data-room-id="${edit?edit.id:''}" class="stack" novalidate>
+      <p class="flabel">Floor</p><div class="mini-chips" role="group" aria-label="Floor">${floorList().map(f=>`<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f===floor}">${ord(f)}</button>`).join('')}</div>
+      <label class="f">Room number<input type="number" id="rn" aria-label="Room number" value="${edit?roomNo(edit):nextRoomNumber(floor)||''}" min="${floor*100+1}" max="${floor*100+12}"></label>
+      <p class="hint" id="rnhint">${floorHint(floor)}</p>
+      <div class="room-device-heading"><p class="section-label">Devices</p><p class="note">Configure exhaust fans and the NodeMCU V3 ESP8266 with its sensors.</p></div>
+      <div id="device-groups" class="stack">${deviceRows(devices||[])}</div>
+      <button type="button" class="btn soft small" data-act="addDevice">+ Add device</button>
+      <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
+    </form>`);
+  S.addFloor=floor;
+  updateRoomAvailability();
 }
 
 function accountSheet() {
@@ -1025,22 +1133,29 @@ function accountSheet() {
     <p class="section-label">PUP web mail</p>
     <form id="email-form" class="stack" novalidate>
       ${emailInput('ae', me.email || '')}
-      <p class="note" style="margin:0">Used to verify you if you forget your password.<br>${emailHintHtml}</p>
+      <p class="note" style="margin:0">Your account and login email. Password reset codes go to your verified recovery Gmail.<br>${emailHintHtml}</p>
       <button class="btn small" type="submit">Save web mail</button>
     </form>
+    ${me.role==='viewer' && me.kind==='student'?`<p class="section-label">Course and section</p><form id="student-profile-form" class="stack" novalidate>${profileFields('account',S.studentProfile || {})}<button class="btn small" type="submit">Save course and section</button></form>`:''}
+    <p class="section-label">Recovery Gmail</p>
+    <p class="note">${S.recovery?.email ? 'Verified: '+esc(S.recovery.email) : 'No verified recovery Gmail yet.'} Verify a Gmail you own to receive password reset codes. Your PUP login stays the same.</p>
+    <form id="recovery-request-form" class="stack" novalidate>
+      <label class="f">Recovery Gmail<input id="recovery-email" type="email" autocomplete="email" placeholder="Enter your recovery Gmail" aria-label="Recovery Gmail" value="${esc(S.recovery?.pendingEmail || S.recovery?.email || '')}"></label>
+      <button class="btn small" type="submit">Send verification code</button>
+    </form>
+    ${S.recovery?.pendingEmail ? `<p class="note">Enter the code sent to ${esc(S.recovery.pendingEmail)}. It expires in 10 minutes. An existing verified Gmail remains active until this change is verified.</p>
+    <form id="recovery-verify-form" class="stack" novalidate>
+      <label class="f">Verification code<input id="recovery-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+      <button class="btn small" type="submit">Verify recovery Gmail</button>
+    </form>` : ''}
     <p class="section-label">Change password</p>
-    <form id="pw-form" class="stack" novalidate><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><p class="note" style="margin:0">At least 6 characters, with a letter and a number, and no spaces.</p><button class="btn small" type="submit">Update password</button></form>`);
+    <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><p class="note" style="margin:0">At least 6 characters, with a letter and a number, and no spaces.</p><button class="btn small" type="submit">Update password</button></form>`);
 }
 
 /* =====================================================================
    ACTIONS
    ===================================================================== */
 const ACTS = {
-  go(v) {
-    S.screen = v; if (v === 'alerts') S.unread = 0;
-    if (v === 'settings') { S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto'); S.draftTrigger = S.fanTrigger; }
-    render();
-  },
   role(v) {
     S.authError = ''; S.notice = ''; S.reg = { phone: '' };
     S.screen = v === 'student' ? 'vWelcome' : 'login'; render();
@@ -1053,15 +1168,9 @@ const ACTS = {
     openSheet(admin ? 'Signed in as Admin' : 'Signed in', `<div class="stack"><p class="sub" style="margin:0 0 6px">${who ? `<b>${who}</b><br>` : ''}${admin ? 'You can change settings and control ventilation.' : 'You can view conditions and alerts. Only admins can change settings.'}</p>
       <div class="list"><div class="row"><span class="r-ico">${dark ? I.moon : I.sun}</span><div class="r-txt"><b>Dark mode</b><span>${dark ? 'On' : 'Off'}</span></div>
         <button class="switch" role="switch" aria-checked="${dark}" aria-label="Dark mode" data-act="theme"><span></span></button></div></div>
+      <button class="btn soft" data-act="account">Account Settings</button>
       <button class="btn soft" data-act="logout">Log out</button></div>`);
   },
-  logout() { S.role = null; S.me = null; S.session = null; S.reg = { phone: '' }; S.screen = 'splash'; S.unread = 0; store.save(); closeSheet(); render(); },
-  toggleVent() {
-    S.vent.mode = 'manual'; S.vent.on = !S.vent.on; S.draftAuto = false; store.save();
-    pushAlert({ type: 'ventilation', cats: ['system'], title: `Ventilation turned ${S.vent.on ? 'ON' : 'OFF'}`, body: 'Switched manually by an admin.' }, true);
-    render(); toast(`Ventilation ${S.vent.on ? 'on' : 'off'}. Manual mode.`);
-  },
-  auto() { S.vent.mode = 'auto'; S.draftAuto = true; store.save(); evaluate(); render(); toast('Automatic ventilation is on'); },
   metric(v) { S.mon.metric = v; render(); },
   view(v) { S.mon.view = v; render(); },
   range(v) { S.mon.range = v; render(); },
@@ -1075,229 +1184,246 @@ const ACTS = {
     S.reset = { side: v === 'admin' ? 'admin' : 'viewer', email: '', code: null, exp: 0, tries: 0, sentAt: 0, ok: false, okExp: 0, demo: false };
     S.authError = ''; S.notice = ''; S.screen = 'fpEmail'; render();
   },
-  async fpResend() {
-    const r = S.reset; if (!r) return;
-    const wait = Math.ceil((r.sentAt + RESEND_SECONDS * 1000 - Date.now()) / 1000);
-    if (wait > 0) { toast(`Please wait ${wait} seconds before asking for a new code.`); return; }
-    sendResetCode();
-    const sent = await deliverCode();
-    if (sent === false) { r.code = null; r.sentAt = 0; toast('We could not send the email. Try again.'); return; }
-    S.authError = ''; render(); toast(sent ? 'A new code was sent to your web mail.' : 'A new code was sent.');
-  },
   closeSheet(v, el, e) { if (el.dataset.overlay && e.target !== el) return; closeSheet(); },
-  users: usersSheet, account: accountSheet,
-  sms() { S.pendingDel = ''; smsSheet(); },
+  async account() { const [recovery,profile]=await Promise.all([api('/auth/me/recovery'),api('/auth/me/student-profile')]);S.recovery=recovery;S.studentProfile=profile.profile;accountSheet(); },
   smsEdit(v) { S.pendingDel = ''; smsSheet(+v); },
   smsCancel() { S.pendingDel = ''; smsSheet(); },
-  smsDel(v) {
-    const key = 'sms:' + v;
-    if (S.pendingDel !== key) { S.pendingDel = key; smsSheet(); return; }       // first tap asks "Remove?"
-    S.users.splice(+v, 1); S.pendingDel = ''; store.save(); smsSheet(); toast('Recipient removed');
-  },
-  userSms(v) { const u = S.users[+v]; u.sms = !u.sms; store.save(); smsSheet(); },
   pickRoom() { pickSheet(); },
-  room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId = v; store.save(); closeSheet(); render(); } },
-  addRoom(v) { if (S.role !== 'admin') return; S.addFloor = v ? +v : cur().floor; S.pendingDel = ''; roomsSheet(); },
+  async room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId=v;S.alerts=[];S.unread=0;store.save();closeSheet();render();const selected=v,session=token;const result=await api('/alerts?roomId='+encodeURIComponent(v)+'&limit=200');if(S.roomId===selected && token===session && S.role){S.alerts=result.alerts;render();} } },
+  addRoom(v) { if(S.role!=='admin'||S.screen!=='monitor')return; S.editingRoomId=null; S.addFloor=v?+v:cur().floor; roomsSheet(); },
+  editRoom(v) { if(S.role!=='admin'||S.screen!=='settings')return; captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
+  addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
+  removeDevice(v) { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.splice(Number(v),1);$('#device-groups').innerHTML=deviceRows(devices); },
   floor(v) {
+    if($('#room-form'))$('#room-form').dataset.dirty='1';
     S.addFloor = +v;
     document.querySelectorAll('[data-act="floor"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
-    const rn = $('#rn'); if (rn) { rn.value = nextRoomNumber(S.addFloor) || ''; rn.min = S.addFloor * 100 + 1; rn.max = S.addFloor * 100 + 99; }
-    const hint = $('#rnhint'); if (hint) hint.textContent = floorHint(S.addFloor);
-  },
-  roomDel(v) {
-    if (S.role !== 'admin') return;
-    if (S.rooms.length <= 1) { toast('Keep at least one room.'); return; }
-    const key = 'room:' + v;
-    if (S.pendingDel !== key) { S.pendingDel = key; roomsSheet(); return; }
-    S.rooms = S.rooms.filter(r => r.id !== v); if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
-    S.pendingDel = ''; store.save(); roomsSheet(); render(); toast('Room removed');
+    const rn = $('#rn'); if (rn) { const edit = S.rooms.find(r => r.id === $('#room-form').dataset.roomId); rn.value = edit && edit.floor === S.addFloor ? roomNo(edit) : nextRoomNumber(S.addFloor) || ''; rn.min = S.addFloor * 100 + 1; rn.max = S.addFloor * 100 + 12; }
+    updateRoomAvailability();
   },
   theme() {
     S.theme = effectiveDark() ? 'light' : 'dark'; applyTheme(); store.save();
     if ($('#sheet-root .sheet')) ACTS.menu(); else render();
   },
-  trigger(v) { S.draftTrigger = v; document.querySelectorAll('[data-act="trigger"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); },
-  draftAuto(v, el) { S.draftAuto = !S.draftAuto; el.setAttribute('aria-checked', S.draftAuto); },
-  save() {
-    const next = {};
-    for (const k of KEYS) {
-      const w = parseFloat($(`#${k}-warn`).value), l = parseFloat($(`#${k}-limit`).value);
-      if (!isFinite(w) || !isFinite(l)) { toast(`Enter numbers for ${METRICS[k].label}.`); return; }
-      if (w >= l) { toast(`${METRICS[k].label}: the warning must be lower than the limit.`); return; }
-      next[k] = { warn: w, limit: l };
-    }
-    S.limits = next; S.fanTrigger = S.draftTrigger;
-    S.rooms.forEach(r => { r.vent.mode = S.draftAuto ? 'auto' : 'manual'; });
-    store.save();
-    eachRoom(r => { KEYS.forEach(k => { r.levels[k] = levelOf(k, r.reading[k]); }); r.prevWorst = worst(); evaluate(); });
-    render(); toast('Changes saved');
-  },
-  sim(v) {
-    const name = cur().name;
-    if (v === 'reset') {
-      S.scenario = null; S.reading = roomBase(cur()); S.vent = { mode: 'auto', on: false }; S.draftAuto = true;
-      KEYS.forEach(k => { S.levels[k] = 'normal'; }); S.prevWorst = 0; render(); toast(`${name} reset`); return;
-    }
-    S.scenario = v; S.vent.mode = 'auto'; S.draftAuto = true;
-    toast(`Simulating high ${v === 'co2' ? 'CO₂' : v === 'temp' ? 'temperature' : 'humidity'} in ${name}. Watch the Alerts tab.`);
+  trigger(v) { settingsDirty=true; S.draftTrigger = v; document.querySelectorAll('[data-act="trigger"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); },
+  draftAuto(v, el) { settingsDirty=true; S.draftAuto = !S.draftAuto; el.setAttribute('aria-checked', S.draftAuto); },
+  async sim(v) {
+    const selected = S.simScope === 'all' ? { allRooms: true } : {
+      roomIds: S.simScope === 'selected' ? S.simSelected.map(Number) : [Number(S.simScope.startsWith('room:') ? S.simScope.slice(5) : S.roomId)]
+    };
+    const result = await api('/simulation', 'POST', { metric: v, ...selected });
+    await refreshData(); render();
+    toast(v === 'reset' ? `Shared readings reset for ${result.affectedRoomIds.length} room(s).` :
+      `Shared simulation started for ${result.affectedRoomIds.length} room(s). Readings will rise gradually.`);
   }
 };
 
+Object.assign(ACTS, {
+  async go(v) {
+    if (['settings', 'alerts', 'home'].includes(v)) await refreshData();
+    S.screen = v; if (v === 'alerts') S.unread = 0;
+    if (v === 'settings') { S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto'); S.draftTrigger = S.fanTrigger; }
+    render();
+  },
+  logout() { signOut(); render(); },
+  async users() {
+    if (S.role !== 'admin') return;
+    await refreshData(); closeSheet(); S.screen = 'users'; render();
+  },
+  async students() {if(S.role!=='admin')return;await refreshData();closeSheet();S.screen='students';render();},
+  studentRemove(v) {
+    if(S.role!=='admin')return;
+    const student=S.accounts.find(a=>String(a.id)===v && a.role==='viewer' && a.kind==='student');
+    if(!student)return;
+    openSheet('Delete student permanently?',`<p>Permanently delete the account for <b>${esc(student.email)}</b>?</p><p class="note">This cannot be undone. The account, recovery Gmail, reset codes and linked SMS contact will be deleted. Existing sessions will stop working. The email and phone number can be registered again.</p><div class="stack"><button class="btn" data-act="confirmStudentRemove" data-v="${student.id}">Delete permanently</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
+  },
+  async confirmStudentRemove(v,el) {
+    if(S.role!=='admin'||el.disabled)return;
+    el.disabled=true;
+    try {
+      await api('/admin/users/'+v,'DELETE');
+      await refreshData();closeSheet();S.screen='students';render();toast('Student account deleted');
+    } finally {if(el.isConnected)el.disabled=false;}
+  },
+  async sms() { await refreshData(); S.pendingDel = ''; smsSheet(); },
+  async smsDel(v) {
+    const key = 'sms:' + v;
+    if (S.pendingDel !== key) { S.pendingDel = key; smsSheet(); return; }
+    await api('/sms-recipients/' + S.users[+v].id, 'DELETE');
+    await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient removed');
+  },
+  async userSms(v) {
+    const u = S.users[+v]; await api('/sms-recipients/' + u.id, 'PATCH', { smsEnabled: !u.sms });
+    await refreshData(); smsSheet();
+  },
+  async roomDel(v) {
+    if(S.role!=='admin'||S.screen!=='settings')return;
+    const room=S.rooms.find(r=>r.id===v);if(!room)return;
+    captureDrafts();
+    openSheet('Remove '+room.name+'?',`<p>This will remove ${esc(room.name)}, its devices and accumulated electricity estimate. Alert history will remain without a room link.</p><div class="stack"><button class="btn" data-act="confirmRoomDel" data-v="${v}">Remove ${esc(room.name)}</button><button class="btn soft" data-act="cancelRoomDel">Cancel</button></div>`);
+  },
+  async confirmRoomDel(v) {
+    await api('/rooms/'+encodeURIComponent(v),'DELETE');formDrafts.delete('room:'+v);
+    if(S.editingRoomId===v)S.editingRoomId=null;await refreshData();closeSheet();S.screen='settings';render();toast('Room removed');
+  },
+  cancelRoomDel() {closeSheet();S.screen='settings';render();},
+  async save() {
+    const thresholds = {};
+    for (const k of KEYS) {
+      const warn = Number($(`#${k}-warn`).value), limit = Number($(`#${k}-limit`).value);
+      if (!Number.isFinite(warn) || !Number.isFinite(limit) || warn >= limit) throw new Error('Enter valid limits: warning must be lower than limit.');
+      thresholds[k] = { warn, limit };
+    }
+    await api('/settings', 'PUT', { thresholds, fanTrigger: S.draftTrigger, ventMode: S.draftAuto ? 'auto' : 'manual' });
+    settingsDirty=false;settingsDraft=null;
+    await refreshData(); render(); toast('Changes saved to the server');
+  },
+  async toggleVent() {
+    await api('/simulation', 'POST', { metric: 'fan', roomIds: [Number(S.roomId)], fanOn: !S.vent.on });
+    await refreshData(); render(); toast('Shared demo fan updated; hardware is not connected');
+  },
+  async auto() {
+    await api('/rooms/' + cur().id, 'PATCH', { ventMode: 'auto' });
+    await refreshData(); render(); toast('Automatic mode saved; hardware is not connected');
+  },
+  async fpResend() {
+    if (!S.reset) return;
+    await api('/auth/forgot', 'POST', { email: S.reset.email });
+    S.reset.sentAt = Date.now(); S.authError = ''; render(); toast('If registered, a new code was requested');
+  }
+});
+
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
-  const fn = ACTS[el.dataset.act]; if (fn) fn(el.dataset.v, el, e);
+  const fn = ACTS[el.dataset.act]; if (fn) Promise.resolve().then(() => fn(el.dataset.v, el, e)).catch(err => toast(err.message));
 });
 
 document.addEventListener('submit', async e => {
   e.preventDefault();
-  const id = e.target.id;
-  const fail = msg => { S.authError = msg; const el = $('#err'); if (el) el.textContent = msg; };
-  const ready = () => { S.authError = ''; S.notice = ''; S.reg = { phone: '' }; S.screen = 'home'; render(); };
-
-  if (id === 'login-form') {                                   // Admin login
-    const u = $('#u').value.trim().toLowerCase(), p = $('#pw').value;
-    const acc = S.accounts.find(a => a.role === 'admin' && a.username === u);
-    if (acc && acc.hash === await hashPw(acc.username, p)) { S.me = acc; S.role = 'admin'; ready(); }
-    else fail('Wrong username or password. Check both and try again.');
-
-  } else if (id === 'f-reg-form') {                            // Admin registration
-    const name = $('#fname').value.trim(), user = $('#fuser').value.trim().toLowerCase(), raw = $('#fphone').value, mail = normEmail($('#femail').value);
-    const p = $('#rp').value, c = $('#rc').value, code = $('#fcode').value.trim();
-    if (!name || !user) return fail('Enter your full name and a username.');
-    if (!/^[a-z0-9._-]{3,20}$/.test(user)) return fail('Username: 3 to 20 letters, numbers, dots, dashes or underscores.');
-    if (S.accounts.some(a => a.role === 'admin' && a.username === user)) return fail('That username is taken. Try another.');
-    if (!emailKind(mail)) return fail('Use your PUP web mail. ' + emailHint);
-    if (emailTaken(mail)) return fail('That web mail is already used by another account.');
-    if (!validPhone(raw)) return fail('Enter a valid Philippine mobile number, like 09XXXXXXXXX.');
-    if (!pwRules(p).every(r => r[1])) return fail('Your password does not meet all the rules above.');
-    if (p !== c) return fail('The two passwords do not match.');
-    if (code.toUpperCase() !== ADMIN_CODE.toUpperCase()) return fail('Wrong admin access code.');
-    const phone = normPhone(raw);
-    S.accounts.push({ role: 'admin', username: user, name, phone, email: mail, hash: await hashPw(user, p) });
-    if (!S.users.some(u => normPhone(u.phone) === phone)) S.users.push({ name, role: 'Admin', phone: showPhone(phone), sms: true });
-    store.save(); S.authError = ''; S.notice = 'Account created. You can log in now.'; S.screen = 'login'; render();
-
-  } else if (id === 'v-reg1-form') {                           // Student / Faculty: step 1, web mail + mobile number
-    const email = normEmail($('#email').value), raw = $('#phone').value, phone = normPhone(raw);
-    if (!emailKind(email)) return fail('Use your PUP web mail. ' + emailHint);
-    if (!validPhone(raw)) return fail('Enter a valid Philippine mobile number, like 09XXXXXXXXX.');
-    if (emailTaken(email)) return fail('This web mail is already registered. Go back and log in.');
-    if (S.accounts.some(a => a.role === 'viewer' && a.phone === phone)) return fail('This number is already registered. Go back and log in.');
-    S.reg.email = email; S.reg.phone = phone; S.authError = ''; S.screen = 'vReg2'; render();
-
-  } else if (id === 'v-reg2-form') {                           // Student / Faculty: step 2, password
-    const p = $('#rp').value, c = $('#rc').value, phone = S.reg.phone, email = S.reg.email;
-    if (!phone || !email) { S.screen = 'vReg1'; render(); return; }
-    if (!pwRules(p).every(r => r[1])) return fail('Your password does not meet all the rules above.');
-    if (p !== c) return fail('The two passwords do not match.');
-    const kind = emailKind(email) || 'student';
-    S.accounts.push({ role: 'viewer', phone, email, kind, hash: await hashPw(phone, p) });
-    if (!S.users.some(u => normPhone(u.phone) === phone)) S.users.push({ name: 'Unnamed user', role: kind === 'faculty' ? 'Faculty' : 'Student', phone: showPhone(phone), sms: true });
-    store.save(); S.authError = ''; S.screen = 'vDone'; render();
-
-  } else if (id === 'fp-email-form') {                         // forgot password: step 1, web mail
-    const email = normEmail($('#fpe').value);
-    if (!emailKind(email)) return fail('Enter your PUP web mail. ' + emailHint);
-    const btn = e.target.querySelector('button[type="submit"]'); if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
-    S.reset.email = email; sendResetCode();
-    const sent = await deliverCode();
-    if (sent === false) {
-      S.reset.code = null; S.reset.sentAt = 0;
-      if (btn) { btn.disabled = false; btn.textContent = 'Send code'; }
-      return fail('We could not send the email. Check your internet connection and try again.');
+  const form = e.target, id = form.id;
+  const button = form.querySelector('button[type="submit"]');
+  if (button && button.disabled) return;
+  if (button) button.disabled = true;
+  const value = id => $('#' + id).value;
+  const passwords = () => {
+    const password = value('rp');
+    if (!pwRules(password).every(r => r[1])) throw new Error('Password must meet all the listed rules.');
+    if ($('#rc') && password !== value('rc')) throw new Error('The two passwords do not match.');
+    return password;
+  };
+  try {
+    if (id === 'login-form' || id === 'v-login-form') {
+      await signedIn(await api('/auth/login', 'POST', {
+        identifier: value(id === 'login-form' ? 'u' : 'phone').trim(), password: value('pw'), as: id === 'login-form' ? 'admin' : 'viewer'
+      }));
+    } else if (id === 'v-reg1-form') {
+      const email = normEmail(value('email')), phone = normPhone(value('phone'));
+      if (!emailKind(email)) throw new Error('Use your PUP web mail. ' + emailHint);
+      if (!validPhone(phone)) throw new Error('Enter a valid Philippine mobile number.');
+      S.reg = { email, phone, ...(emailKind(email)==='student'?readProfile('reg'):{}) }; S.authError = ''; S.screen = 'vReg2'; render();
+    } else if (id === 'v-reg2-form') {
+      await api('/auth/register', 'POST', { ...S.reg, password: passwords() });
+      S.authError = ''; S.screen = 'vDone'; render();
+    } else if (id === 'fp-email-form') {
+      const email = normEmail(value('fpe'));
+      await api('/auth/forgot', 'POST', { email });
+      S.reset = { ...S.reset, email, sentAt: Date.now(), demo: false };
+      S.authError = ''; S.screen = 'fpCode'; render();
+    } else if (id === 'fp-code-form') {
+      const result = await api('/auth/verify-code', 'POST', { email: S.reset.email, code: value('fpc').trim() });
+      S.reset.resetToken = result.resetToken; S.authError = ''; S.screen = 'fpNew'; render();
+    } else if (id === 'fp-new-form') {
+      await api('/auth/reset', 'POST', { resetToken: S.reset.resetToken, newPassword: passwords() });
+      S.resetSide = S.reset.side; S.reset = null; S.authError = ''; S.screen = 'fpDone'; render();
+    } else if (id === 'admin-form') {
+      await api('/admin/users', 'POST', { fullName: value('an'), username: value('au'), email: value('aem'), phone: value('ap'), password: passwords() });
+      await refreshData(); S.screen = 'users'; render(); toast('Admin account created');
+    } else if (id === 'sms-form') {
+      const edit = Number(form.dataset.edit), person = S.users[edit];
+      await api('/sms-recipients' + (person ? '/' + person.id : ''), person ? 'PATCH' : 'POST', { name: value('sn'), role: value('sr'), phone: value('sp') });
+      await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient saved');
+    } else if (id === 'room-form') {
+      const roomId=form.dataset.roomId;
+      const no=Number(value('rn'));
+      if (!Number.isInteger(no) || no < S.addFloor*100+1 || no > S.addFloor*100+12 || EXCLUDED_ROOMS.includes(no)) throw new Error('Choose a valid classroom. ' + floorHint(S.addFloor));
+      if (S.rooms.some(r => r.id !== roomId && roomNo(r) === no)) throw new Error('That classroom is already added.');
+      const result=await api('/rooms'+(roomId?'/'+roomId:''),roomId?'PATCH':'POST',{
+        floor:S.addFloor,roomNo:Number(value('rn')),devices:readDeviceRows()
+      });
+      formDrafts.delete(formKey(form));
+      await refreshData(); if(!roomId)S.roomId=String(result.room.id); else S.configRoomId=String(result.room.id); captureEnabled=false; closeSheet(); render();
+      toast(roomId?'Room updated':'Room added');
+    } else if (id === 'student-profile-form') {
+      const result=await api('/auth/me/student-profile','PUT',readProfile('account'));S.studentProfile=result.profile;toast('Course and section saved');
+    } else if (id === 'recovery-request-form') {
+      const result = await api('/auth/me/recovery/request', 'POST', { email: value('recovery-email') });
+      formDrafts.delete(formKey(form)); form.reset();
+      S.recovery = { ...S.recovery, pendingEmail: result.pendingEmail };
+      captureEnabled=false; accountSheet(); captureEnabled=true; toast('Verification code sent to your Gmail');
+    } else if (id === 'recovery-verify-form') {
+      const result = await api('/auth/me/recovery/verify', 'POST', { code: value('recovery-code') });
+      formDrafts.delete(formKey(form)); form.reset();
+      S.recovery = { email: result.email, pendingEmail: null };
+      captureEnabled=false; accountSheet(); captureEnabled=true; toast('Recovery Gmail verified');
+    } else if (id === 'email-form') {
+      const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
+      S.me = mapUser(data.user); toast('Web mail saved');
+    } else if (id === 'pw-form') {
+      if (value('np') !== value('cp')) throw new Error('The two passwords do not match.');
+      const data = await api('/auth/change-password', 'POST', { currentPassword: value('current-pw'), newPassword: value('np') });
+      token = data.token; sessionStorage.setItem('safezone.token', token); closeSheet(); toast('Password updated');
     }
-    S.authError = ''; S.screen = 'fpCode'; render();
-
-  } else if (id === 'fp-code-form') {                          // forgot password: step 2, 6-digit code
-    const r = S.reset; if (!r) { S.screen = 'fpEmail'; render(); return; }
-    const code = $('#fpc').value.trim();
-    if (!/^\d{6}$/.test(code)) return fail('Enter the 6-digit code.');
-    if (r.tries >= RESET_TRIES) return fail('Too many wrong tries. Send a new code.');
-    if (Date.now() > r.exp) return fail('This code has expired. Send a new code.');
-    if (!r.code || code !== r.code) {
-      r.tries++; const left = RESET_TRIES - r.tries;
-      return fail(left <= 0 ? 'Too many wrong tries. Send a new code.' : `That code is not correct. ${left} ${left === 1 ? 'try' : 'tries'} left.`);
-    }
-    r.ok = true; r.okExp = Date.now() + RESET_MINUTES * 60e3; r.code = null; S.authError = ''; S.screen = 'fpNew'; render();
-
-  } else if (id === 'fp-new-form') {                           // forgot password: step 3, new password
-    const r = S.reset; const p = $('#rp').value, c = $('#rc').value;
-    if (!r || !r.ok || Date.now() > r.okExp) { S.authError = ''; S.screen = 'fpEmail'; render(); toast('Please verify your web mail again.'); return; }
-    if (!pwRules(p).every(x => x[1])) return fail('Your password does not meet all the rules above.');
-    if (p !== c) return fail('The two passwords do not match.');
-    const acc = resetAccount(r); if (!acc) { S.screen = 'fpEmail'; render(); return; }
-    acc.hash = await hashPw(acc.role === 'admin' ? acc.username : acc.phone, p);
-    if (S.session === acc.phone) S.session = null;
-    S.resetSide = r.side; S.reg = { phone: acc.role === 'viewer' ? acc.phone : '' }; S.reset = null; store.save(); S.authError = ''; S.screen = 'fpDone'; render();
-
-  } else if (id === 'v-login-form') {                          // Student login
-    const phone = normPhone($('#phone').value), p = $('#pw').value;
-    const acc = S.accounts.find(a => a.role === 'viewer' && a.phone === phone);
-    if (acc && acc.hash === await hashPw(acc.phone, p)) { S.me = acc; S.role = 'student'; S.session = acc.phone; store.save(); ready(); }
-    else fail('Wrong mobile number or password. Check both and try again.');
-
-  } else if (id === 'admin-form') {                            // an admin gives another person admin access
-    const name = $('#an').value.trim(), user = $('#au').value.trim().toLowerCase(), raw = $('#ap').value, p = $('#rp').value, mail = normEmail($('#aem').value);
-    if (!name || !user) { toast('Enter the new admin\'s full name and a username.'); return; }
-    if (!/^[a-z0-9._-]{3,20}$/.test(user)) { toast('Username: 3 to 20 letters, numbers, dots, dashes or underscores.'); return; }
-    if (S.accounts.some(a => a.role === 'admin' && a.username === user)) { toast('That username is taken. Try another.'); return; }
-    if (!emailKind(mail)) { toast('Use a PUP web mail. ' + emailHint); return; }
-    if (emailTaken(mail)) { toast('That web mail is already used by another account.'); return; }
-    if (!validPhone(raw)) { toast('Enter a valid Philippine mobile number, like 09XXXXXXXXX.'); return; }
-    if (!pwRules(p).every(r => r[1])) { toast('Password needs 6+ characters with a letter and a number, no spaces.'); return; }
-    const phone = normPhone(raw);
-    S.accounts.push({ role: 'admin', username: user, name, phone, email: mail, hash: await hashPw(user, p) });
-    const known = S.users.find(u => normPhone(u.phone) === phone);
-    if (known) { known.role = 'Admin'; known.name = name; known.sms = true; }
-    else S.users.push({ name, role: 'Admin', phone: showPhone(phone), sms: true });
-    store.save(); usersSheet(); toast(name + ' is now an admin');
-
-  } else if (id === 'sms-form') {                              // SMS recipient: name, role, mobile number
-    const edit = parseInt(e.target.dataset.edit, 10);
-    const name = $('#sn').value.trim(), role = $('#sr').value, raw = $('#sp').value;
-    if (!name) { toast('Enter the person\'s name.'); return; }
-    if (!role) { toast('Choose their role.'); return; }
-    if (!validPhone(raw)) { toast('Enter a valid Philippine mobile number, like 09XXXXXXXXX.'); return; }
-    const phone = normPhone(raw);
-    if (S.users.some((u, i) => i !== edit && normPhone(u.phone) === phone)) { toast('That number is already in the list.'); return; }
-    if (edit >= 0 && S.users[edit]) Object.assign(S.users[edit], { name, role, phone: showPhone(phone) });
-    else S.users.push({ name, role, phone: showPhone(phone), sms: true });
-    S.pendingDel = ''; store.save(); smsSheet(); toast(edit >= 0 ? 'Recipient updated' : 'Recipient added');
-
-  } else if (id === 'room-form') {                             // add a room to a floor
-    const floor = S.addFloor || 1; const lo = floor * 100 + 1, hi = floor * 100 + 99;
-    const no = parseInt($('#rn').value, 10); const name = 'Room ' + no;
-    const lights = parseInt($('#rl').value, 10), lw = parseFloat($('#rw').value), fw = parseFloat($('#rf').value);
-    if (!(no >= lo && no <= hi)) { toast(`${ord(floor)} floor rooms are numbered ${lo}, ${lo + 1}, ${lo + 2} and so on, up to ${hi}.`); return; }
-    if (S.rooms.some(r => r.name.toLowerCase() === name.toLowerCase())) { toast(`${name} already exists.`); return; }
-    if (!(lights >= 0 && lights <= 100)) { toast('Lights: enter a number from 0 to 100.'); return; }
-    if (!(lw > 0 && lw <= 500)) { toast('Watts per light: enter a number from 1 to 500.'); return; }
-    if (!(fw >= 0 && fw <= 2000)) { toast('Fan watts: enter a number from 0 to 2000.'); return; }
-    const room = makeRoom({ name, floor, lights, lightWatts: lw, fanWatts: fw });
-    KEYS.forEach(k => { room.levels[k] = levelOf(k, room.reading[k]); });
-    S.rooms.push(room); S.roomId = room.id; S.pendingDel = ''; store.save(); closeSheet(); render(); toast(`${name} added to the ${floorName(floor)}`);
-
-  } else if (id === 'email-form') {                            // admin saves their own web mail
-    const mail = normEmail($('#ae').value);
-    if (!emailKind(mail)) { toast('Use your PUP web mail. ' + emailHint); return; }
-    if (emailTaken(mail, S.me)) { toast('That web mail is already used by another account.'); return; }
-    S.me.email = mail; store.save(); toast('Web mail saved');
-
-  } else if (id === 'pw-form') {
-    const a = $('#np').value, b = $('#cp').value;
-    if (!pwRules(a).every(r => r[1])) { toast('Use 6+ characters with a letter and a number, no spaces.'); return; }
-    if (a !== b) { toast('The two passwords do not match.'); return; }
-    S.me.hash = await hashPw(S.me.username, a); store.save(); closeSheet(); toast('Password updated');
-  }
+    formDrafts.delete(formKey(form));
+    const freshForm=document.getElementById(id);if(freshForm && id==='admin-form')freshForm.reset();
+  } catch (err) {
+    S.authError = err.message; const error = $('#err');
+    if (error) error.textContent = err.message; else toast(err.message);
+  } finally { if (button && button.isConnected) button.disabled = false; }
 });
 
 // Live tick marks on the password rules while typing.
 document.addEventListener('input', e => {
+  if(e.target.form)e.target.form.dataset.dirty='1';
+  if(/^(temp|hum|co2)-(warn|limit)$/.test(e.target.id))settingsDirty=true;
+  if(e.target.id==='email' && $('#registration-profile'))$('#registration-profile').hidden=emailKind(e.target.value)==='faculty';
   if (e.target.id !== 'rp') return;
   const ul = $('#rules'); if (!ul) return;
   const res = pwRules(e.target.value);
   ul.querySelectorAll('li').forEach((li, i) => li.classList.toggle('ok', res[i][1]));
 });
+
+document.addEventListener('change', e => {
+  if(e.target.form)e.target.form.dataset.dirty='1';
+  if(e.target.matches('[data-device="type"]')){
+    const row=e.target.closest('.device-editor'), type=e.target.value;
+    row.querySelector('[data-fan]').hidden=type!=='exhaust_fan';
+    row.querySelector('[data-powered]').hidden=type!=='exhaust_fan';
+    row.querySelector('[data-device="label"]').value=DEVICE_NAMES[type];
+    if(type==='exhaust_fan')row.querySelector('[data-device="wattsPerDevice"]').value=40;
+  }
+  if (e.target.id === 'config-floor') {
+    const room=roomsOn(Number(e.target.value))[0];
+    if(room){S.configRoomId=room.id;$('.room-configuration').outerHTML=roomConfiguration();}
+  }
+  if (e.target.id === 'config-room') {
+    S.configRoomId = e.target.value;
+    $('#config-room-edit').dataset.v = S.configRoomId;
+    $('#config-room-delete').dataset.v = S.configRoomId;
+  }
+  if (e.target.id === 'sim-scope') {
+    S.simScope = e.target.value;
+    $('#sim-room-options').hidden = S.simScope !== 'selected';
+    $('#sim-room-options').open = S.simScope === 'selected';
+  }
+  if (e.target.matches('.sim-room')) {
+    S.simSelected = Array.from(document.querySelectorAll('.sim-room:checked'), el => el.value);
+    $('#sim-room-count').textContent = '('+S.simSelected.length+' selected)';
+  }
+});
+
+document.addEventListener('toggle',e=>{
+  if(e.target.matches('.floor-section') && e.target.open)document.querySelectorAll('.floor-section').forEach(section=>{if(section!==e.target)section.open=false;});
+},true);
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 
@@ -1306,47 +1432,19 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
    ===================================================================== */
 (async function init() {
   const saved = store.load();
-  if (saved) {
-    if (saved.limits) S.limits = saved.limits;
-    if (saved.users) S.users = saved.users;
-    if (saved.accounts) S.accounts = saved.accounts;
-    if (saved.session) S.session = saved.session;
-    if (saved.fanTrigger) S.fanTrigger = saved.fanTrigger;
-    if (saved.theme === 'light' || saved.theme === 'dark') S.theme = saved.theme;
+  if (saved && ['light', 'dark'].includes(saved.theme)) S.theme = saved.theme;
+  S.rooms = DEFAULT_ROOMS.map(makeRoom); S.roomId = saved && saved.roomId || S.rooms[0].id;
+  S.accounts = []; S.users = []; S.alerts = [];
+  applyTheme(); render();
+  if (token) {
+    try {
+      const data = await api('/auth/me');
+      await signedIn({ token, user: data.user });
+    } catch (err) {
+      // A network outage keeps the token for retry; an invalid token is cleared by api().
+      S.screen = 'splash'; render(); toast(err.message);
+    }
   }
-  S.draftTrigger = S.fanTrigger;
-  let roomCfg = saved && saved.rooms && saved.rooms.length ? saved.rooms : DEFAULT_ROOMS.map(r => ({ ...r, mode: saved && saved.mode }));
-  const updateRooms = !!(saved && saved.rooms && saved.roomsV !== ROOMS_V);
-  if (updateRooms) {
-    // One-time update: remove the old demo room (Room 201, never edited) and add rooms 101 to 110. Rooms an admin added stay.
-    roomCfg = roomCfg.filter(r => !(r.name === 'Room 201' && num(r.lights, 8) === 8 && num(r.lightWatts, 18) === 18 && num(r.fanWatts, 40) === 40));
-    DEFAULT_ROOMS.forEach(d => { if (!roomCfg.some(r => r.name.toLowerCase() === d.name.toLowerCase())) roomCfg.push({ ...d }); });
-  }
-  S.rooms = roomCfg.map(makeRoom).sort((a, b) => a.floor - b.floor || roomNo(a) - roomNo(b));
-  S.roomId = saved && S.rooms.some(r => r.id === saved.roomId) ? saved.roomId : S.rooms[0].id;
-  S.rooms.forEach(r => KEYS.forEach(k => { r.levels[k] = levelOf(k, r.reading[k]); }));
-  if (updateRooms) store.save();
-  // Older saved data used 'faculty' for admin accounts. Convert it.
-  S.accounts.forEach(a => { if (a.role === 'faculty') a.role = 'admin'; });
-  const adminNames = new Set(S.accounts.filter(a => a.role === 'admin').map(a => a.name));
-  S.users.forEach(u => { if (u.role === 'Faculty' && adminNames.has(u.name)) u.role = 'Admin'; });
-  // The demo admin account always exists, so you can log in on a fresh install.
-  if (!S.accounts.some(a => a.role === 'admin' && a.username === DEFAULT_ADMIN.username)) {
-    S.accounts.push({ role: 'admin', username: DEFAULT_ADMIN.username, name: DEFAULT_ADMIN.name, phone: DEFAULT_ADMIN.phone,
-      hash: await hashPw(DEFAULT_ADMIN.username, DEFAULT_ADMIN.password) });
-    store.save();
-  }
-  // Keep students logged in on this phone until they log out.
-  const me = S.session && S.accounts.find(a => a.role === 'viewer' && a.phone === S.session);
-  if (me) { S.me = me; S.role = 'student'; S.screen = 'home'; }
-  S.users.forEach(u => {
-    if (u.role === 'Registered') { u.role = 'Student / Faculty'; if (u.name === 'Student / Faculty user') u.name = 'Unnamed user'; }
-    if (u.role === 'Recipient') u.role = 'Other';
-  });
-  S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto');
-  seedAlerts();
-  applyTheme();
-  render();
-  setInterval(tick, 2000);
+  setInterval(pollShared, 2000);
 })();
 })();

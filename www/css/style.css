@@ -53,6 +53,20 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 }
 #view{display:flex;flex-direction:column;flex:1;min-height:0}
 
+/* ---------- Manage Users: spreadsheet-style tables ---------- */
+.users-group{margin:18px 0;min-width:0}
+.users-table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);-webkit-overflow-scrolling:touch}
+.users-table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}
+.users-table caption{text-align:left;padding:12px;font-size:15px;font-weight:700;color:var(--ink);background:var(--surface)}
+.users-table th,.users-table td{padding:10px 12px;border-top:1px solid var(--line);border-right:1px solid var(--line);white-space:nowrap}
+.users-table th:last-child,.users-table td:last-child{border-right:0}
+.users-table th{background:var(--surface-2);font-weight:700}
+.users-table tbody tr:nth-child(even){background:var(--surface-2)}
+.users-table tbody tr:hover{background:var(--brand-soft)}
+.device-editor{margin:0;padding:12px;border:1px solid var(--line);border-radius:12px;min-width:0;width:100%;background:var(--surface)}
+.device-editor legend{font-weight:700;padding:0 5px;font-size:13px}
+[hidden]{display:none!important}
+
 /* ---------- Logo slot ---------- */
 .logo{display:inline-block;flex:none;object-fit:contain}
 .logo-empty{border:1.5px dashed var(--muted);border-radius:14px;opacity:.7}
@@ -321,3 +335,121 @@ select{background:var(--surface);border:1px solid var(--line);border-radius:12px
 .user-row span{overflow-wrap:anywhere}
 
 .tag-line b{overflow-wrap:anywhere}
+
+/* Keep device forms and simulation choices within narrow phone sheets. */
+.device-editor-body{display:grid;gap:12px;min-width:0}
+.device-editor .f{display:block;min-width:0;max-width:100%}
+.device-editor input,.device-editor select{min-width:0;max-width:100%;width:100%}
+.device-editor .fields3{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.device-editor legend{max-width:100%;white-space:normal}
+.device-editor .linkbtn{justify-self:start;text-align:left}
+.room-multiselect{border:1px solid var(--line);border-radius:12px;background:var(--surface);margin:0 0 14px;min-width:0}
+.room-multiselect summary{padding:14px;cursor:pointer;font-weight:600}
+.room-checkboxes{max-height:240px;overflow-y:auto;padding:0 12px 12px}
+.room-checkboxes label{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px;border-top:1px solid var(--line)}
+.room-checkboxes input{width:18px;height:18px;flex:none;margin:0;accent-color:var(--brand)}
+
+/* Use a consistent dropdown arrow instead of the Windows/WebView native box. */
+select{appearance:none;-webkit-appearance:none;min-width:0;max-width:100%;padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23a98693' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px}
+select option{background:var(--surface);color:var(--ink)}
+#room-form,#device-groups{grid-template-columns:minmax(0,1fr);min-width:0;width:100%}
+#room-form>*{min-width:0;max-width:100%}
+#room-form>.flabel,#room-form>.hint,#room-form>.mini-chips{margin:0}
+.room-device-heading{margin-top:8px}
+.room-device-heading .section-label{margin:0 0 6px}
+.room-device-heading .note{margin:0}
+.device-editor .f{font-size:13px}
+.device-editor .f input,.device-editor .f select{margin-top:6px;font-size:14px;min-height:48px}
+.device-editor .fields3{row-gap:12px}
+
+/* Device cards use ordinary blocks so native fieldset sizing cannot widen the sheet. */
+.device-editor{padding:16px;border-radius:16px;overflow-wrap:anywhere}
+.device-editor-title{margin:0 0 14px;font-size:14px;line-height:1.4;color:var(--ink)}
+.device-editor-body{gap:14px}
+.device-editor [data-light]{grid-column:1/-1}
+.device-editor .f select{display:block;line-height:1.4;border-radius:12px}
+#device-groups{gap:16px}
+#room-form{gap:14px}
+#room-form .room-device-heading{margin-top:4px}
+#room-form .mini-chips{gap:8px}
+#room-form .mini-chips button{min-height:40px;min-width:52px}
+
+.room-configuration{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:14px;margin:16px 0;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.room-configuration>.f{font-size:14px;font-weight:700;color:var(--ink)}
+.room-config-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.room-config-actions .btn{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;white-space:normal}
+#config-room-delete{color:var(--bad)}
+.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.card,.roombar,.rp-txt,.chart-head h3{min-width:0}
+.s-val{overflow-wrap:anywhere}
+.chart-head{flex-wrap:wrap;gap:8px}
+@media(max-width:360px){.card{padding:12px}.s-val{font-size:25px}.s-val small{font-size:12px}.s-head{font-size:12px;gap:6px}.roombar{gap:8px}}
+
+/* Theme-specific artwork; login logos use a single pink image. */
+.logo-themed img{width:100%;height:100%;object-fit:contain}
+.logo-themed .logo-light{display:block}
+.logo-themed .logo-dark{display:none}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .logo-themed .logo-light{display:none}
+  :root:not([data-theme="light"]) .logo-themed .logo-dark{display:block}
+}
+:root[data-theme="dark"] .logo-themed .logo-light{display:none}
+:root[data-theme="dark"] .logo-themed .logo-dark{display:block}
+
+/* Persistent navigation and scrollable panels. */
+.topbar{flex-shrink:0;position:relative;z-index:5}
+.sheet{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+.sheet-top{flex:none;background:var(--bg);z-index:3}
+.sheet-content{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:24px;scrollbar-gutter:stable}
+.sheet-head{flex:none}
+.floor-section{border:1px solid var(--line);border-radius:16px;margin:0 0 12px;background:var(--surface)}
+.floor-section>summary,.student-course>summary{display:flex;align-items:center;gap:10px;list-style:none;padding:14px;font-weight:700;cursor:pointer;background:var(--surface);position:sticky;top:0;z-index:2;border-radius:15px}
+.floor-section>summary::-webkit-details-marker,.student-course>summary::-webkit-details-marker{display:none}
+.floor-section>summary span,.student-course>summary span{flex:1;min-width:0;overflow-wrap:anywhere}
+.floor-section>summary small,.student-course>summary small{font-weight:500;color:var(--muted);white-space:nowrap}
+.floor-section[open]>summary svg,.student-course[open]>summary svg{transform:rotate(180deg)}
+.floor-rooms{padding:0 10px 4px}
+.room-configuration>select{margin:6px 0 14px}
+.alerts-context{position:sticky;top:-18px;background:var(--bg);z-index:3;padding-top:8px;padding-bottom:1px}
+.alerts-context .section-label{margin:0}
+.alerts-context .chips{margin-bottom:10px}
+.alert-content{min-width:0;flex:1;overflow-wrap:anywhere}
+.monitor-utilities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px;align-items:stretch}
+.monitor-utilities>.card{margin:0;padding:14px;min-width:0}
+.monitor-utilities .s-val{font-size:26px;display:flex;align-items:baseline;flex-wrap:wrap;gap:3px;margin-top:12px}
+.monitor-utilities .s-val small{font-size:12px;margin-left:0}
+.monitor-utilities .s-head{font-size:12px;align-items:center}
+.monitor-utilities .s-note{font-size:11px;line-height:1.5;margin-bottom:10px}
+.monitor-utilities .linkbtn{font-size:11px;line-height:1.5;text-align:left}
+.monitor-room-context{position:sticky;top:-18px;background:var(--bg);z-index:3;padding-top:1px;padding-bottom:1px}
+.student-accounts-link{width:100%;display:flex;align-items:center;gap:12px;text-align:left}
+.student-accounts-link span{flex:1;min-width:0}
+.student-accounts-link small{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.student-course{margin:12px 0;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.student-course>summary{font-size:13px;line-height:1.5;align-items:flex-start}
+.student-course .users-group{margin:0 10px 12px}
+.users-table-scroll{max-height:55vh;overflow:auto}
+.users-table thead{position:sticky;top:0;z-index:1}
+.student-delete{min-width:44px;min-height:44px;color:var(--bad)}
+#v-reg1-form select{max-width:100%;white-space:normal;font-size:13px}
+#registration-profile{margin-bottom:14px;text-align:left}
+#registration-profile[hidden]{display:none}
+
+/* Date-first alert log: day, indented time, then indented event descriptions. */
+.alert-day{margin:20px 0 28px}
+.alert-day>h3{margin:0 0 6px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:18px;font-weight:750;letter-spacing:-.2px;color:var(--ink);line-height:1.45}
+.alert-time-block{display:block;margin:0 0 22px 16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.alert-time-block>h4{font-size:14px;font-weight:700;color:#fff;margin:0 0 12px;padding:0;line-height:1.5}
+.alert-time-block>h4 time{display:inline-block;position:relative;top:-3px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-variant-numeric:tabular-nums;padding:0;background:none;border-radius:0}
+.alert-time-events{margin-left:12px;min-width:0}
+.alert-time-events .alert{display:block;margin:0 0 12px;padding:14px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:14px;box-shadow:var(--shadow)}
+.alert-time-events .alert.exceeded{border-left-color:var(--bad)}
+.alert-time-events .alert.warning{border-left-color:var(--warn)}
+.alert-time-events .alert.normal{border-left-color:var(--ok)}
+.alert-time-events .alert:last-child{margin-bottom:0}
+.alert-time-events .alert p{margin:0;font-size:14px;color:var(--ink);line-height:1.65;font-weight:400}
+@media(max-width:360px){.alert-time-block{margin-left:8px}.alert-time-events{margin-left:8px}.alert-time-events .alert{padding:12px}}
+
+/* Use more of the Monitoring screen width without leaving a wide right gutter. */
+.screen[data-s="monitor"]{padding-right:8px}
+.monitor-utilities{width:100%}

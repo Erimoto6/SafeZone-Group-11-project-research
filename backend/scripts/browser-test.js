@@ -1,0 +1,194 @@
+// Run against a disposable local database only.
+require('dotenv').config({quiet:true});
+if(process.env.SAFEZONE_TEST_DB!=='1')throw Error('Set SAFEZONE_TEST_DB=1 with a disposable database.');
+process.env.RATE_LIMIT='off';process.env.EMAIL_RELAY_URL='';process.env.EMAIL_RELAY_SECRET='';
+process.env.SMTP_HOST='';process.env.NODE_ENV='test';
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright');
+const {pool}=require('../src/db');const {lastCodes}=require('../src/mail');const app=require('../src/app');
+const tag='browser'+Date.now().toString(36),mail=tag+'@iskolarngbayan.pup.edu.ph',adminMail=tag+'@pup.edu.ph';
+const facultyMail=tag+'.faculty@pup.edu.ph',facultyPhone='094'+String(Date.now()).slice(-8);
+const phone='091'+String(Date.now()).slice(-8),adminPhone='092'+String(Date.now()).slice(-8),smsPhone='093'+String(Date.now()).slice(-8),password='Testonly123';
+let server,browser;
+(async()=>{
+ const [thresholds]=await pool.query('SELECT * FROM thresholds');
+ const [settings]=await pool.query("SELECT * FROM settings WHERE setting_key='fan_trigger'");
+ const [modes]=await pool.query('SELECT id,vent_mode FROM rooms');
+ const [rooms]=await pool.query('SELECT room_no FROM rooms');
+ const roomNo=Array.from({length:99},(_,i)=>401+i).find(n=>!rooms.some(r=>r.room_no===n));
+ const editedRoomNo=Array.from({length:99},(_,i)=>401+i).find(n=>n!==roomNo&&!rooms.some(r=>r.room_no===n));
+ try{
+  server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+  browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();await page.addInitScript(()=>window.SAFEZONE_API_BASE='/api');page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const fill=async(id,v)=>page.locator('#'+id).fill(String(v));
+  const submit=async id=>page.locator('#'+id+' button[type="submit"]').click();
+  const act=async(name,v)=>page.locator(`[data-act="${name}"]${v===undefined?'':`[data-v="${v}"]`}`).first().click();
+  const close=async()=>page.getByRole('button',{name:'Close',exact:true}).click();
+  const dashboard=async()=>page.getByRole('button',{name:/Select room/}).waitFor();
+  const navigate=async screen=>{await act('go',screen);await page.locator('[data-s="'+screen+'"]').waitFor();};
+  const fits=async label=>{
+    const overflow=await page.locator('#screen,.sheet').evaluateAll(els=>els.filter(el=>el.getClientRects().length).filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>({screen:el.dataset.s||'dialog',width:el.clientWidth,content:el.scrollWidth})));
+    assert.deepEqual(overflow,[],label+' must fit horizontally');
+  };
+
+  const logout=async()=>{await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'Log out',exact:true}).click();};
+  await page.clock.install();
+  await page.goto('http://127.0.0.1:'+server.address().port);
+  await act('role','student');await act('to','vReg1');await fill('email',mail);await fill('phone',phone);await page.locator('#reg-course').selectOption('BSIT');await fill('reg-section','1-1');await submit('v-reg1-form');
+  await fill('rp',password);await fill('rc',password);await submit('v-reg2-form');await page.getByRole('heading',{name:'Account Created!',exact:true}).waitFor();
+  const [[user]]=await pool.query('SELECT password_hash FROM users WHERE email=?',[mail]);assert(user.password_hash.startsWith('$2'));
+  console.log('PASS: browser registration stores bcrypt account in MySQL');
+  const facultyResponse=await fetch('http://127.0.0.1:'+server.address().port+'/api/auth/register',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:facultyMail,phone:facultyPhone,password})
+  });
+  assert.equal(facultyResponse.status,201);
+
+  await page.getByRole('button',{name:'Go to Login',exact:true}).click();await fill('phone',phone);await fill('pw',password);await submit('v-login-form');await dashboard();
+  assert.equal(await page.locator('[data-v="settings"]').count(),0);await page.reload();await dashboard();
+  assert.equal(await page.evaluate(()=>localStorage.getItem('safezone.v1')),null);
+  console.log('PASS: student login, permissions and session reload');
+  await logout();await act('role','admin');
+  assert.equal(await page.getByText('Create an admin account',{exact:true}).count(),0);
+  assert.equal(await page.locator('[data-v="fReg"]').count(),0);
+  // Bootstrap a fixture directly; users no longer register admins on the login screen.
+  const adminResponse=await fetch('http://127.0.0.1:'+server.address().port+'/api/auth/register-admin',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName:'Browser Admin',username:tag,email:adminMail,phone:adminPhone,password,accessCode:process.env.ADMIN_ACCESS_CODE})
+  });
+  assert.equal(adminResponse.status,201);
+  await fill('u',tag);await fill('pw',password);await submit('login-form');await dashboard();console.log('PASS: existing admin login without a public admin registration option');
+  assert((await page.getByRole('button',{name:'Electricity, open monitoring'}).innerText()).includes('kWh'));
+  for(const width of [320,390,768,1280]){
+    await page.setViewportSize({width,height:844});
+    for(const colorScheme of ['light','dark']){
+      await page.emulateMedia({colorScheme});
+      for(const screen of ['home','alerts','monitor','status','settings','about']){
+        await navigate(screen);await fits(screen+' '+width+' '+colorScheme);
+        if(screen==='monitor'){await act('view','history');await fits('history '+width+' '+colorScheme);await act('view','live');}
+      }
+      await navigate('settings');
+      assert.equal(await page.getByText('Current rooms',{exact:true}).count(),0);
+      assert.equal(await page.locator('[data-act="pickRoom"]').count(),0,'Settings configures rooms without changing the viewing selection');
+      const labels=await page.locator('#config-room option').allTextContents();assert(labels.includes('Room 101'),JSON.stringify(labels));
+      for(const dialog of ['account','sms']){await act(dialog);await fits(dialog+' '+width+' '+colorScheme);await close();}
+      await act('users');await page.locator('[data-s="users"]').waitFor();await fits('users '+width+' '+colorScheme);
+      await navigate('home');await act('pickRoom');await fits('room picker '+width+' '+colorScheme);
+      assert.equal(await page.locator('[data-act="editRoom"],[data-act="roomDel"]').count(),0);await close();
+      await act('addRoom');await fits('add room '+width+' '+colorScheme);await close();
+      if(width===390){await navigate('settings');await page.screenshot({path:'/tmp/safezone-room-config-'+colorScheme+'.png'});}
+    }
+  }
+  await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'light'});await navigate('home');
+  const viewingRoom=await page.getByRole('button',{name:/Select room/}).getAttribute('aria-label');
+  await navigate('settings');await page.locator('#config-room').selectOption(await page.locator('#config-room option').last().getAttribute('value'));
+  await navigate('home');assert.equal(await page.getByRole('button',{name:/Select room/}).getAttribute('aria-label'),viewingRoom,'configuring a room must not change the room being viewed');
+  console.log('PASS: main screens, users and dialogs fit 320/390/768/1280 widths in light and dark themes; Settings has configuration only');
+
+  await page.screenshot({path:'/tmp/safezone-home-kwh.png'});
+  assert.equal(await page.locator('[data-act="addRoom"]').count(),1);
+  for(const screen of ['monitor','status','settings']){
+    await act('go',screen);await page.locator(`[data-s="${screen}"]`).waitFor();
+    assert.equal(await page.locator('[data-act="addRoom"]').count(),screen==='monitor'?1:0,'only Home and Monitoring add rooms');
+  }
+  await page.locator('details').filter({has:page.locator('#temp-warn')}).locator('summary').click();
+  await fill('temp-warn',31);await act('go','home');await dashboard();await act('go','settings');
+  await page.locator('#temp-warn').waitFor({state:'attached'});
+  assert.equal(await page.locator('#temp-warn').inputValue(),'31','unsaved settings survive navigation');
+  await act('go','settings');await page.locator('details').filter({has:page.locator('#temp-warn')}).locator('summary').click();await fill('temp-warn',28);await fill('temp-limit',33);await act('trigger','warning');await act('save');
+  await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Changes saved to the server');
+  const [[threshold]]=await pool.query("SELECT warn_value FROM thresholds WHERE metric='temp'");assert.equal(threshold.warn_value,28);console.log('PASS: settings persist in MySQL');
+  await act('go','home');await dashboard();await act('addRoom');assert.equal(await page.getByText('Current rooms',{exact:true}).count(),0);await act('floor','4');await fill('rn',roomNo);await submit('room-form');await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Room added');await act('go','home');
+  await page.getByRole('button',{name:new RegExp('Select room. Now showing Room '+roomNo)}).waitFor();
+  const [[room]]=await pool.query('SELECT id FROM rooms WHERE room_no=?',[roomNo]);assert(room);
+  await act('pickRoom');assert.equal(await page.locator('[data-act="editRoom"]').count(),0);await close();
+  await act('go','settings');await page.locator('#config-room').selectOption(String(room.id));await act('editRoom',String(room.id));
+  const groups=page.locator('.device-editor');
+  await groups.nth(0).locator('[data-device="label"]').fill('LED A');
+  await groups.nth(0).locator('[data-device="quantity"]').fill('2');
+  await groups.nth(0).locator('[data-device="activeQuantity"]').fill('2');
+  await groups.nth(0).locator('[data-device="wattsPerDevice"]').fill('10');
+  await groups.nth(1).locator('[data-device="quantity"]').fill('2');
+  await groups.nth(1).locator('[data-device="wattsPerDevice"]').fill('60');
+  await groups.nth(1).locator('[data-device="fanType"]').selectOption('window');
+  await act('addDevice');
+  await groups.nth(2).locator('[data-device="label"]').fill('LED B');
+  await groups.nth(2).locator('[data-device="quantity"]').fill('3');
+  await groups.nth(2).locator('[data-device="activeQuantity"]').fill('1');
+  await groups.nth(2).locator('[data-device="wattsPerDevice"]').fill('20');
+  await page.evaluate(()=>{document.activeElement?.blur();document.querySelector('#sheet-root .sheet-content').scrollTop=0;});
+  await page.setViewportSize({width:360,height:800});
+  assert(await page.locator('.sheet').evaluate(el=>el.scrollWidth<=el.clientWidth), 'device form must fit a narrow phone sheet');
+  assert(await page.locator('.device-editor input,.device-editor select').evaluateAll(els=>els.filter(el=>el.getClientRects().length).every(el=>{const a=el.getBoundingClientRect(),b=el.closest('.device-editor').getBoundingClientRect();return a.left>=b.left && a.right<=b.right+1;})), 'device fields must stay inside their group');
+  await page.screenshot({path:'/tmp/safezone-room-devices.png'});
+  await page.locator('.device-editor').nth(1).screenshot({path:'/tmp/safezone-exhaust-fan-editor.png'});
+  await fill('rn',editedRoomNo);await close();
+  await act('go','settings');await page.getByRole('region',{name:'Room configuration',exact:true}).waitFor();await page.locator('#config-room').selectOption(String(room.id));await act('editRoom',String(room.id));
+  assert.equal(await page.locator('.device-editor').count(),3);
+  assert.equal(await page.locator('#rn').inputValue(),String(editedRoomNo));
+  await submit('room-form');await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Room updated');
+  const [savedDevices]=await pool.query('SELECT * FROM room_devices WHERE room_id=? ORDER BY id',[room.id]);
+  assert.equal(savedDevices.length,3);assert.equal(savedDevices[1].quantity,2);assert.equal(savedDevices[1].fan_type,'window');
+  assert.equal(savedDevices[0].watts_per_device,10);assert.equal(savedDevices[2].watts_per_device,20);
+  await act('go','settings');await act('roomDel',String(room.id));
+  await page.getByRole('dialog',{name:'Remove Room '+editedRoomNo+'?',exact:true}).waitFor();
+  await act('cancelRoomDel');
+  const [[kept]]=await pool.query('SELECT COUNT(*) AS n FROM rooms WHERE id=?',[room.id]);assert.equal(kept.n,1);
+  await act('roomDel',String(room.id));await act('confirmRoomDel',String(room.id));
+  await page.locator(`[data-act="roomDel"][data-v="${room.id}"]`).waitFor({state:'hidden'});console.log('PASS: room creation/editing, mixed-wattage device groups, fan quantities/types, draft retention, and named deletion cancel/confirm');
+  await act('go','settings');await act('sms');await fill('sn',tag);await page.locator('#sr').selectOption('Maintenance');await fill('sp',smsPhone);await submit('sms-form');
+  await page.getByText(tag,{exact:true}).waitFor();
+  const [[recipient]]=await pool.query('SELECT id FROM sms_recipients WHERE phone=?',[smsPhone]);assert(recipient);
+  await page.getByRole('switch',{name:'SMS alerts for '+tag,exact:true}).click();
+  await page.waitForFunction(n=>document.querySelector(`[aria-label="SMS alerts for ${n}"]`)?.getAttribute('aria-checked')==='false',tag);
+  const [[off]]=await pool.query('SELECT sms_enabled FROM sms_recipients WHERE id=?',[recipient.id]);assert.equal(off.sms_enabled,0);
+  await page.getByRole('button',{name:'Remove '+tag,exact:true}).click();await page.getByRole('button',{name:'Remove '+tag,exact:true}).click();
+  await page.getByText(tag,{exact:true}).waitFor({state:'hidden'});await close();console.log('PASS: SMS recipient creation, toggle and deletion');
+  await act('users');await page.getByRole('heading',{name:'Manage Users',exact:true}).waitFor();
+  assert.equal(await page.getByRole('dialog').count(),0,'Manage Users is a full page');
+  assert.equal(await page.locator('#admin-form').count(),1,'appointed admin creation remains in Manage Users');
+  const studentTable=page.getByRole('region',{name:'Students table',exact:true});
+  const facultyTable=page.getByRole('region',{name:'Faculty table',exact:true});
+  await studentTable.getByText(mail,{exact:true}).waitFor();
+  await facultyTable.getByText(facultyMail,{exact:true}).waitFor();
+  assert.equal(await facultyTable.getByText(mail,{exact:true}).count(),0);
+  assert.equal(await studentTable.getByText(facultyMail,{exact:true}).count(),0);
+  await page.getByRole('region',{name:'Admins table',exact:true}).getByText(adminMail,{exact:true}).waitFor();
+  await page.setViewportSize({width:390,height:844});
+  await page.clock.fastForward(3000);
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'tables must not overflow the phone layout');
+  await page.screenshot({path:'/tmp/safezone-users-light.png'});
+  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));
+  await page.screenshot({path:'/tmp/safezone-users-dark.png'});
+  await page.getByRole('button',{name:'Back to settings',exact:true}).click();
+  await page.locator('[data-act="users"]').waitFor();
+  console.log('PASS: dedicated Manage Users page separates admins/faculty/students in phone-sized tables and returns to Settings');
+  await act('account');await fill('current-pw','Wrong123');await fill('np','Changed123');await fill('cp','Changed123');await close();await act('account');assert.equal(await page.locator('#current-pw').inputValue(),'Wrong123');await submit('pw-form');
+  await page.waitForFunction(()=>document.querySelector('#toast').textContent==='Your current password is not correct.');
+  assert(await page.locator('#current-pw').isVisible());
+  await fill('current-pw',password);await submit('pw-form');
+  await page.getByRole('dialog').waitFor({state:'hidden'});await page.reload();await dashboard();console.log('PASS: admin password change and refreshed token');
+  // Verified recovery fixture; endpoint tests cover proving Gmail ownership.
+  const recoveryMail=tag+'@gmail.com';
+  await pool.query('INSERT INTO account_recovery (user_id,email) SELECT id,? FROM users WHERE email=? ON DUPLICATE KEY UPDATE email=VALUES(email)',[recoveryMail,mail]);
+  await logout();await act('role','student');await act('to','vLogin');await act('forgot','viewer');await fill('fpe',mail);await submit('fp-email-form');await page.locator('#fpc').waitFor();
+  for(let i=0;i<50&&!lastCodes.has(recoveryMail);i++)await new Promise(r=>setTimeout(r,20));assert(lastCodes.has(recoveryMail));
+  await fill('fpc',lastCodes.get(recoveryMail));await submit('fp-code-form');await fill('rp','Resetpass123');await fill('rc','Resetpass123');await submit('fp-new-form');
+  await page.getByRole('heading',{name:'Password Updated',exact:true}).waitFor();await page.getByRole('button',{name:'Go to Login',exact:true}).click();
+  await fill('phone',phone);await fill('pw','Resetpass123');await submit('v-login-form');await dashboard();console.log('PASS: server-verified browser password reset');
+  await page.route('**/api/rooms',r=>r.abort());await act('go','home');await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Cannot reach the SafeZone server'));
+  await page.unroute('**/api/rooms');
+  await pool.query('UPDATE users SET token_version=token_version+1 WHERE email=?',[mail]);
+  await act('go','home');await page.locator('[data-act="role"][data-v="admin"]').waitFor();
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('safezone.token')),null);
+  console.log('PASS: revoked session returns to sign-in and clears token');
+  assert.deepEqual(errors,[]);console.log('PASS: network error feedback and no JavaScript errors');console.log('ALL BROWSER CHECKS PASSED');
+ }finally{
+  if(browser)await browser.close();
+  for(const t of thresholds)await pool.query('UPDATE thresholds SET warn_value=?,limit_value=?,updated_by=? WHERE metric=?',[t.warn_value,t.limit_value,t.updated_by,t.metric]);
+  if(settings[0])await pool.query("UPDATE settings SET setting_value=? WHERE setting_key='fan_trigger'",[settings[0].setting_value]);
+  for(const m of modes)await pool.query('UPDATE rooms SET vent_mode=? WHERE id=?',[m.vent_mode,m.id]);
+  await pool.query('DELETE FROM rooms WHERE room_no IN (?,?)',[roomNo,editedRoomNo]);
+  await pool.query('DELETE FROM notification_log WHERE to_address IN (?,?)',[mail,adminMail]);await pool.query('DELETE FROM sms_recipients WHERE phone IN (?,?,?)',[phone,adminPhone,smsPhone]);await pool.query('DELETE FROM users WHERE email IN (?,?,?)',[mail,adminMail,facultyMail]);
+  if(server)await new Promise(r=>server.close(r));await pool.end();
+ }
+})().catch(e=>{console.error(e);process.exitCode=1;});

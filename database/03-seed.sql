@@ -14,9 +14,51 @@ INSERT IGNORE INTO thresholds (metric, warn_value, limit_value) VALUES
 -- Ventilation starts at red (Danger). The app can switch this to yellow (Warning).
 INSERT IGNORE INTO settings (setting_key, setting_value) VALUES ('fan_trigger', 'exceeded');
 
--- 1st floor: Room 101 to Room 110. Floors 2, 3 and 4 start empty.
+-- 43 classrooms; clinic, offices and library excluded.
 INSERT IGNORE INTO rooms (floor_no, room_no) VALUES
-  (1,101),(1,102),(1,103),(1,104),(1,105),(1,106),(1,107),(1,108),(1,109),(1,110);
+  (1,101),
+  (1,102),
+  (1,103),
+  (1,104),
+  (1,105),
+  (1,106),
+  (1,107),
+  (1,109),
+  (1,110),
+  (1,111),
+  (1,112),
+  (2,201),
+  (2,202),
+  (2,203),
+  (2,204),
+  (2,206),
+  (2,207),
+  (2,208),
+  (2,209),
+  (2,211),
+  (2,212),
+  (3,301),
+  (3,302),
+  (3,303),
+  (3,304),
+  (3,305),
+  (3,306),
+  (3,308),
+  (3,310),
+  (3,311),
+  (3,312),
+  (4,401),
+  (4,402),
+  (4,403),
+  (4,404),
+  (4,405),
+  (4,406),
+  (4,407),
+  (4,408),
+  (4,409),
+  (4,410),
+  (4,411),
+  (4,412);
 
 -- Every room starts with its devices marked offline until the hardware reports in.
 INSERT IGNORE INTO device_status (room_id, device)
