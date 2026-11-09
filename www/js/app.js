@@ -524,13 +524,21 @@ function homeView() {
 
 function groupRoomAlerts(alerts, roomId) {
   const days=new Map();
+  const eventKey=a=>{
+    const metric=a.metric || (/temperature/i.test(a.title)?'temp':/humidity/i.test(a.title)?'hum':/co[₂2]/i.test(a.title)?'co2':null);
+    return metric && ['warning','exceeded'].includes(a.type)?'threshold:'+metric:a.type+':'+a.title;
+  };
+  const severity=a=>a.type==='exceeded'?2:a.type==='warning'?1:0;
   for(const alert of alerts.filter(a=>String(a.roomId)===String(roomId)).slice().sort((a,b)=>b.ts-a.ts || b.id-a.id)) {
     const date=new Date(alert.ts);
     const key=[date.getFullYear(),date.getMonth()+1,date.getDate()].join('-');
     if(!days.has(key))days.set(key,{key,ts:alert.ts,times:new Map()});
     const minute=Math.floor(alert.ts/60000),day=days.get(key);
     if(!day.times.has(minute))day.times.set(minute,{ts:alert.ts,items:[]});
-    day.times.get(minute).items.push(alert);
+    const time=day.times.get(minute);
+    const index=time.items.findIndex(item=>eventKey(item)===eventKey(alert));
+    if(index<0)time.items.push(alert);
+    else if(severity(alert)>severity(time.items[index]))time.items[index]=alert;
   }
   return [...days.values()].map(day=>({...day,times:[...day.times.values()]}));
 }

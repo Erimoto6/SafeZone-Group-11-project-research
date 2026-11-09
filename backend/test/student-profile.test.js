@@ -13,7 +13,7 @@ test('client course options match backend and alerts group only the selected roo
  const code=source.slice(source.indexOf('function groupRoomAlerts('),source.indexOf('function alertDescription('));
  const group=vm.runInNewContext(code+'\ngroupRoomAlerts');
  const alerts=[{id:1,ts:10,roomId:1,type:'warning',metric:'hum',title:'Humidity'},{id:2,ts:20,roomId:1,type:'warning',metric:'hum',title:'Humidity'},{id:3,ts:30,roomId:2,type:'warning',metric:'hum',title:'Humidity'}];
- const groups=group(alerts,'1');assert.equal(groups.length,1);assert.equal(groups[0].times.length,1);assert.equal(groups[0].times[0].items[0].id,2);assert.equal(groups[0].times[0].items.length,2);assert.equal(alerts.length,3);
+ const groups=group(alerts,'1');assert.equal(groups.length,1);assert.equal(groups[0].times.length,1);assert.equal(groups[0].times[0].items[0].id,2);assert.equal(groups[0].times[0].items.length,1);assert.equal(alerts.length,3);
 });
 test('student signup stores profile and existing students can update only their own profile',async()=>{
  const base=createRequire(require.resolve('../src/routes/auth')),out={exports:{}};let profile=null,created=null;
@@ -64,4 +64,12 @@ test('formal descriptions use saved event thresholds and identify simulated fan 
  assert.match(describe(alert),/configured limit of 32 °C/);
  assert.match(describe({...alert,type:'warning'}),/warning threshold of 30 °C/);
  assert.match(describe({type:'ventilation',title:'Ventilation Activated',body:'No hardware command was sent.'}),/simulated status change/);
+});
+
+test('one entry per threshold per time block keeps the strongest event without changing records',()=>{
+ const source=fs.readFileSync(require.resolve('../../www/js/app.js'),'utf8');
+ const group=vm.runInNewContext(source.slice(source.indexOf('function groupRoomAlerts('),source.indexOf('function alertDescription('))+'\ngroupRoomAlerts');
+ const base=new Date(2026,10,9,13).getTime();
+ const alerts=[{id:1,ts:base+1000,roomId:1,type:'exceeded',metric:'hum',title:'Humidity'},{id:2,ts:base+2000,roomId:1,type:'warning',metric:'hum',title:'Humidity'},{id:3,ts:base+3000,roomId:1,type:'warning',metric:'temp',title:'Temperature'},{id:4,ts:base+61000,roomId:1,type:'warning',metric:'hum',title:'Humidity'}];
+ const times=group(alerts,1)[0].times;assert.equal(times.length,2);assert.equal(times[0].items.length,1);assert.equal(times[1].items.length,2);assert.equal(times[1].items.find(a=>a.metric==='hum').id,1);assert.equal(alerts.length,4);
 });
