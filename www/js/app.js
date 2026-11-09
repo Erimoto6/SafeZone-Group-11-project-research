@@ -531,10 +531,23 @@ function groupRoomAlerts(alerts, roomId) {
   }
   return [...groups.values()];
 }
+function alertSentence(alert) {
+  const time=new Date(alert.ts).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',hour12:true});
+  const metric=alert.metric || (/temperature/i.test(alert.title)?'temp':/humidity/i.test(alert.title)?'hum':/co[₂2]/i.test(alert.title)?'co2':null);
+  const label={temp:'temperature',hum:'humidity',co2:'CO₂ level'}[metric];
+  let event;
+  if(label && ['warning','exceeded'].includes(alert.type)) {
+    event=`the ${label} was ${alert.type==='exceeded'?'high':'nearing its limit'}`;
+    if(alert.value!=null && Number.isFinite(Number(alert.value)))event+=` (${withUnit(metric,Number(alert.value))})`;
+  } else if(alert.type==='normal')event='room conditions returned to normal';
+  else if(alert.type==='ventilation')event=/stopped|off/i.test(alert.title)?'the exhaust fan was switched off':'the exhaust fan was switched on';
+  else event=alert.title.replace(/^Demo:\s*/,'');
+  return `At ${time}, ${event}.`;
+}
 function alertGroupCard(group) {
   const a=group.latest;
-  return `<article class="alert ${a.type}"><span class="dot ${a.type}"></span><div class="alert-content"><b>${esc(a.title.replace(/^Demo:\s*/,''))}</b><time>${when(a.ts)}</time>${group.items.length>1?`<span class="tag">${group.items.length} occurrences</span>`:''}
-    <details class="alert-history" data-keep-open="alert-${S.roomId}-${esc(group.key)}"><summary>Details${group.items.length>1?' and history':''}</summary>${group.items.map(item=>`<div class="alert-event"><time>${when(item.ts)}</time><p>${esc(item.body)}</p></div>`).join('')}</details></div></article>`;
+  return `<article class="alert ${a.type}"><span class="dot ${a.type}"></span><div class="alert-content"><b>${esc(alertSentence(a))}</b><time>${when(a.ts)}</time>${group.items.length>1?`<span class="tag">${group.items.length} occurrences</span>`:''}
+    <details class="alert-history" data-keep-open="alert-${S.roomId}-${esc(group.key)}"><summary>Details${group.items.length>1?' and history':''}</summary>${group.items.map(item=>`<div class="alert-event"><time>${when(item.ts)}</time><p>${esc(alertSentence(item))}</p><p>${esc(item.body)}</p></div>`).join('')}</details></div></article>`;
 }
 function alertsView() {
   const groups=groupRoomAlerts(S.alerts,S.roomId);
@@ -544,8 +557,8 @@ function alertsView() {
   const list=S.alertFilter==='system'?updates:S.alertFilter==='all'?conditions:conditions.filter(g=>g.latest.type===S.alertFilter);
   return `<div class="alerts-context"><p class="section-label">Alerts for ${esc(cur().name)}</p>${roomBar()}<div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id,label])=>`<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter===id}">${label}</button>`).join('')}</div></div>
     <p class="note">Simulated readings · SMS delivery is not connected.</p>
-    <div class="room-condition-summary">${KEYS.map(k=>`<div><span>${METRICS[k].label}</span><b>${withUnit(k,S.reading[k])}</b><small class="chip ${S.levels[k]}">${LV[S.levels[k]]}</small></div>`).join('')}</div>
-    <p class="section-label">${S.alertFilter==='system'?'Room updates':'Condition history'}</p>
+
+    <p class="section-label">${S.alertFilter==='system'?'Room updates':'Alert history'}</p>
     ${list.map(alertGroupCard).join('') || '<p class="empty">No alerts in this group for this room.</p>'}
     ${S.alertFilter==='all' && updates.length?`<details class="room-updates" data-keep-open="room-updates-${S.roomId}"><summary>Fan and recovery updates (${updates.reduce((n,g)=>n+g.items.length,0)})</summary>${updates.map(alertGroupCard).join('')}</details>`:''}`;
 }

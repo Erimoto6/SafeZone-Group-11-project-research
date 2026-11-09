@@ -37,3 +37,14 @@ test('student signup stores profile and existing students can update only their 
   assert.deepEqual(profile,{courseCode:'BSIE',section:'2-A'});
  }finally{await new Promise(r=>server.close(r));}
 });
+
+test('alert descriptions use event time and historical value, not live readings',()=>{
+ const source=fs.readFileSync(require.resolve('../../www/js/app.js'),'utf8');
+ const code=source.slice(source.indexOf('function alertSentence('),source.indexOf('function alertGroupCard('));
+ const sentence=vm.runInNewContext(code+'\nalertSentence',{withUnit:(k,v)=>v+(k==='temp'?' °C':'')});
+ const alert={ts:Date.UTC(2026,10,9,13),type:'exceeded',metric:'temp',title:'Demo: High Temperature Level',value:32};
+ assert.match(sentence(alert),/^At .+, the temperature was high \(32 °C\)\.$/);
+ assert.match(sentence({...alert,type:'warning'}),/nearing its limit/);
+ assert.match(sentence({...alert,type:'normal'}),/returned to normal/);
+ assert.match(sentence({...alert,type:'ventilation',title:'Ventilation Stopped'}),/switched off/);
+});

@@ -419,11 +419,6 @@ select option{background:var(--surface);color:var(--ink)}
 .alert-history>summary{cursor:pointer;color:var(--nav-active);padding:6px 0}
 .alert-event{padding:8px 0;border-top:1px solid var(--line)}
 .room-updates>summary{padding:14px 0;font-weight:600;cursor:pointer;color:var(--muted)}
-.room-condition-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 18px}
-.room-condition-summary>div{display:flex;flex-direction:column;gap:6px;padding:10px 8px;border:1px solid var(--line);border-radius:12px;background:var(--surface);min-width:0}
-.room-condition-summary span{font-size:11px;color:var(--muted)}
-.room-condition-summary b{font-size:13px;overflow-wrap:anywhere}
-.room-condition-summary .chip{font-size:10px;align-self:start;padding:3px 6px}
 .monitor-utilities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px;align-items:stretch}
 .monitor-utilities>.card{margin:0;padding:14px;min-width:0}
 .monitor-utilities .s-val{font-size:26px;display:flex;align-items:baseline;flex-wrap:wrap;gap:3px;margin-top:12px}
