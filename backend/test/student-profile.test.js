@@ -10,10 +10,10 @@ test('client course options match backend and alerts group only the selected roo
  const source=fs.readFileSync(require.resolve('../../www/js/app.js'),'utf8');
  const courses=vm.runInNewContext(source.slice(source.indexOf('const COURSES ='),source.indexOf('const courseName'))+'\nCOURSES');
  assert.deepEqual(JSON.parse(JSON.stringify(courses)),COURSES);
- const code=source.slice(source.indexOf('function groupRoomAlerts('),source.indexOf('function alertGroupCard('));
+ const code=source.slice(source.indexOf('function groupRoomAlerts('),source.indexOf('function alertDescription('));
  const group=vm.runInNewContext(code+'\ngroupRoomAlerts');
  const alerts=[{id:1,ts:10,roomId:1,type:'warning',metric:'hum',title:'Humidity'},{id:2,ts:20,roomId:1,type:'warning',metric:'hum',title:'Humidity'},{id:3,ts:30,roomId:2,type:'warning',metric:'hum',title:'Humidity'}];
- const groups=group(alerts,'1');assert.equal(groups.length,1);assert.equal(groups[0].latest.id,2);assert.equal(groups[0].items.length,2);assert.equal(alerts.length,3);
+ const groups=group(alerts,'1');assert.equal(groups.length,1);assert.equal(groups[0].times.length,1);assert.equal(groups[0].times[0].items[0].id,2);assert.equal(groups[0].times[0].items.length,2);assert.equal(alerts.length,3);
 });
 test('student signup stores profile and existing students can update only their own profile',async()=>{
  const base=createRequire(require.resolve('../src/routes/auth')),out={exports:{}};let profile=null,created=null;
@@ -38,13 +38,20 @@ test('student signup stores profile and existing students can update only their 
  }finally{await new Promise(r=>server.close(r));}
 });
 
-test('alert descriptions use event time and historical value, not live readings',()=>{
+test('alert descriptions use historical values beneath separate time headings',()=>{
  const source=fs.readFileSync(require.resolve('../../www/js/app.js'),'utf8');
- const code=source.slice(source.indexOf('function alertSentence('),source.indexOf('function alertGroupCard('));
- const sentence=vm.runInNewContext(code+'\nalertSentence',{withUnit:(k,v)=>v+(k==='temp'?' °C':'')});
+ const code=source.slice(source.indexOf('function alertDescription('),source.indexOf('function alertTimeline('));
+ const sentence=vm.runInNewContext(code+'\nalertDescription',{withUnit:(k,v)=>v+(k==='temp'?' °C':'')});
  const alert={ts:Date.UTC(2026,10,9,13),type:'exceeded',metric:'temp',title:'Demo: High Temperature Level',value:32};
- assert.match(sentence(alert),/^At .+, the temperature was high \(32 °C\)\.$/);
+ assert.match(sentence(alert),/^The temperature was high \(32 °C\)\.$/);
  assert.match(sentence({...alert,type:'warning'}),/nearing its limit/);
  assert.match(sentence({...alert,type:'normal'}),/returned to normal/);
  assert.match(sentence({...alert,type:'ventilation',title:'Ventilation Stopped'}),/switched off/);
+});
+
+test('timeline organizes by date then time, never by threshold',()=>{
+ const source=fs.readFileSync(require.resolve('../../www/js/app.js'),'utf8');
+ const fn=vm.runInNewContext(source.slice(source.indexOf('function groupRoomAlerts('),source.indexOf('function alertDescription('))+'\ngroupRoomAlerts');
+ const alerts=[{id:1,ts:new Date(2026,10,8,13).getTime(),roomId:1,type:'exceeded',metric:'hum'}, {id:2,ts:new Date(2026,10,9,13).getTime(),roomId:1,type:'exceeded',metric:'hum'}, {id:3,ts:new Date(2026,10,9,14).getTime(),roomId:1,type:'warning',metric:'temp'}];
+ const days=fn(alerts,1);assert.equal(days.length,2);assert.equal(days[0].times.length,2);assert.equal(days[0].times[0].items[0].id,3);assert.equal(days[0].times[1].items[0].id,2);assert.equal(days[1].times[0].items[0].id,1);
 });

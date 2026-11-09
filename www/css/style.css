@@ -414,11 +414,6 @@ select option{background:var(--surface);color:var(--ink)}
 .alerts-context .section-label{margin:0}
 .alerts-context .chips{margin-bottom:10px}
 .alert-content{min-width:0;flex:1;overflow-wrap:anywhere}
-.alert-content>time{display:block;margin-top:5px}
-.alert-history{margin-top:8px;color:var(--muted);font-size:12px}
-.alert-history>summary{cursor:pointer;color:var(--nav-active);padding:6px 0}
-.alert-event{padding:8px 0;border-top:1px solid var(--line)}
-.room-updates>summary{padding:14px 0;font-weight:600;cursor:pointer;color:var(--muted)}
 .monitor-utilities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px;align-items:stretch}
 .monitor-utilities>.card{margin:0;padding:14px;min-width:0}
 .monitor-utilities .s-val{font-size:26px;display:flex;align-items:baseline;flex-wrap:wrap;gap:3px;margin-top:12px}
@@ -439,3 +434,13 @@ select option{background:var(--surface);color:var(--ink)}
 #v-reg1-form select{max-width:100%;white-space:normal;font-size:13px}
 #registration-profile{margin-bottom:14px;text-align:left}
 #registration-profile[hidden]{display:none}
+
+/* Alert timeline: date, then time, then affected room conditions. */
+.alert-day{margin:18px 0 26px}
+.alert-day>h3{margin:0 0 14px;font-size:15px;color:var(--ink);line-height:1.5}
+.alert-time-block{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;margin-bottom:14px}
+.alert-time-block>h4{font-size:12px;color:var(--muted);margin:0;padding-top:13px;line-height:1.5}
+.alert-time-events{border-left:2px solid var(--line);padding-left:12px;min-width:0}
+.alert-time-events .alert{padding:12px;gap:8px;margin-bottom:8px}
+.alert-time-events .alert b{font-size:13px;font-weight:600;line-height:1.5}
+@media(max-width:360px){.alert-time-block{grid-template-columns:64px minmax(0,1fr);gap:6px}.alert-time-events{padding-left:8px}.alert-time-events .alert{padding:10px}}
