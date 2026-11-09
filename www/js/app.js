@@ -457,8 +457,7 @@ function ventCard(control) {
   const foot = control && admin
     ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Exhaust fan" data-act="toggleVent"><span></span></button>
        ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
-    : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>
-       ${admin ? '<button class="linkbtn" data-act="toMonitor">Control in Monitoring</button>' : ''}`;
+    : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>`;
   return `<article class="card sensor"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Exhaust fan</div>
     <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p>${foot}</article>`;
 }
