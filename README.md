@@ -188,4 +188,13 @@ Local checks: `npm ci --prefix backend`, `npm ci --prefix vercel-email-test`, th
 
 Dependencies, generated Android assets/build output, `.env` files, `.vercel` configuration and signing material are excluded from Git. Install dependencies locally rather than committing `node_modules`. Flutter development remains on the separate `flutter-version` branch.
 
-All admins can permanently delete a student from **Manage Users → Students → Delete** after explicit confirmation. Active and previously deactivated students are listed with their status. Deletion frees the account email/phone for registration, revokes existing sessions, and deletes the linked SMS contact, recovery Gmail and password reset codes. Notification history remains detached from the account. Faculty/admin accounts cannot be deleted through this action. No additional database migration is needed.
+All admins can permanently delete a student from **Manage Users → Student Accounts → trash icon** after explicit confirmation. Active and previously deactivated students are listed with their status. Deletion frees the account email/phone for registration, revokes existing sessions, and deletes the linked SMS contact, recovery Gmail and password reset codes. Notification history remains detached from the account. Faculty/admin accounts cannot be deleted through this action. No additional database migration is needed.
+
+## Room-focused interface and student profiles
+
+- Room selection groups classrooms into expandable floor sections, opening the selected room's floor. Dialog titles/close buttons remain fixed while the content scrolls. Settings uses separate Floor and Room selectors; configuring another room does not change the room being monitored.
+- Alerts load the selected room's latest 200 events, group repeated events with expandable occurrence history, and keep fan/normal updates behind a separate disclosure. Current simulated conditions remain visible above historical cautions. Toasts/badges concern new caution/danger events for the selected room, not every background fan update. Original database history is not deleted.
+- Monitoring shows the exhaust fan and estimated fan electricity in two equal-height cards. Fan controls remain admin-only.
+- Student registration requires a full-name course selection and a free-text section. Existing students can add/change these in Account Settings. Admins open Manage Users → Student Accounts to browse grouped courses/sections and use the trash icon for permanent deletion after confirmation.
+
+For course/section storage, run **`database/09-student-profiles.sql`** once on the database used by the app, after migration 08. It only creates a linked profile table; existing accounts/passwords remain unchanged and old profiles show as not set until students fill them in. Do not rerun the full setup. Core account access works before migration 09, but saving a profile/new student registration needs the table.

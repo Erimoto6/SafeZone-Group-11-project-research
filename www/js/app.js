@@ -40,6 +40,25 @@ const ROOMS_V = 2;                                  // bump when the default roo
 // (Used for the power display. With a real power meter the total comes from the meter.)
 const ROOM_DEFAULTS = { lights: 0, lightWatts: 18, fanWatts: 40 };
 
+const COURSES = {
+  BSA:'Bachelor of Science in Accountancy', BSIT:'Bachelor of Science in Information Technology',
+  'BSBA-MM':'Bachelor of Science in Business Administration major in Marketing Management',
+  'BSBA-HRM':'Bachelor of Science in Business Administration major in Human Resource Management',
+  BSP:'Bachelor of Science in Psychology', BSECE:'Bachelor of Science in Electronics Engineering',
+  BSIE:'Bachelor of Science in Industrial Engineering'
+};
+const courseName = code => COURSES[code] || 'Course not set';
+function profileFields(prefix,profile={}) {
+  return `<label class="f" for="${prefix}-course">Course</label><select id="${prefix}-course" aria-label="Course"><option value="">Choose your course</option>${Object.entries(COURSES).map(([code,name])=>`<option value="${code}" ${profile.courseCode===code?'selected':''}>${name} (${code})</option>`).join('')}</select>
+    <label class="f" for="${prefix}-section">Section</label><input type="text" id="${prefix}-section" aria-label="Section" maxlength="40" placeholder="Enter your section, e.g. 1-1" value="${esc(profile.section || '')}">`;
+}
+function readProfile(prefix) {
+  const courseCode=$('#'+prefix+'-course').value,section=$('#'+prefix+'-section').value.trim();
+  if(!Object.hasOwn(COURSES,courseCode))throw new Error('Choose your course.');
+  if(!section||section.length>40)throw new Error('Enter your section (up to 40 characters).');
+  return {courseCode,section};
+}
+
 // Choices in the SMS Alerts "role" list.
 const ROLES = ['Admin', 'Faculty', 'Student', 'Student / Faculty', 'Maintenance', 'Other'];
 
@@ -130,12 +149,12 @@ function signOut() {
   captureEnabled=false; formDrafts.clear(); settingsDraft=null; settingsDirty=false;
   token = ''; sessionStorage.removeItem('safezone.token');
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
-  newestAlertId = null; S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
-  S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.recovery = null; closeSheet();
+  alertWatermarks.clear(); S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
+  S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.recovery = null; S.studentProfile = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
 async function refreshData() {
-  const [rooms, settings, alerts, shared] = await Promise.all([api('/rooms'), api('/settings'), api('/alerts'), api('/simulation')]);
+  const [rooms, settings, shared] = await Promise.all([api('/rooms'), api('/settings'), api('/simulation')]);
   const previous = new Map(S.rooms.map(r => [r.id, r]));
   S.rooms = rooms.rooms.slice().sort((a,b) => a.floor-b.floor || a.name.localeCompare(b.name, undefined, {numeric:true})).map(r => {
     const room = previous.get(String(r.id)) || makeRoom({ ...r, id: String(r.id), lightWatts: r.wattsPerLight, mode: r.ventMode });
@@ -146,6 +165,7 @@ async function refreshData() {
   if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
   S.limits = settings.thresholds; S.fanTrigger = settings.fanTrigger; S.draftTrigger = S.fanTrigger;
   S.draftAuto = settings.ventMode === 'auto';
+  const alerts=await api('/alerts?roomId='+encodeURIComponent(S.roomId)+'&limit=200');
   applyShared(shared, alerts.alerts);
   if (S.role === 'admin') {
     const [people, sms] = await Promise.all([api('/admin/users'), api('/sms-recipients')]);
@@ -273,7 +293,7 @@ const logo = (px, pinkOnly = false) => pinkOnly
 /* =====================================================================
    ALERTS & VENTILATION LOGIC
    ===================================================================== */
-let newestAlertId = null;
+const alertWatermarks = new Map();
 function applyShared(shared, alerts) {
   S.limits = shared.thresholds; S.fanTrigger = shared.fanTrigger;
   const available = new Set(shared.rooms.map(r => String(r.id)));
@@ -296,25 +316,25 @@ function applyShared(shared, alerts) {
   }
   if (S.rooms.length && !available.has(S.roomId)) S.roomId = S.rooms[0].id;
   if (shared.rooms.length) S.lastUpdate = Math.max(...shared.rooms.map(r => r.updatedAt));
-  const latest = Math.max(0, ...alerts.map(a => a.id));
-  if (newestAlertId !== null) {
-    const fresh = alerts.filter(a => a.id > newestAlertId);
-    if (fresh.length && S.screen !== 'alerts') {
-      S.unread += fresh.length;
-      toast(`${fresh[0].room || 'SafeZone'}: ${fresh[0].title}`);
-    }
+  const scoped=alerts.filter(a=>String(a.roomId)===S.roomId);
+  const latest=Math.max(0,...scoped.map(a=>a.id));
+  const previous=alertWatermarks.get(S.roomId);
+  const fresh=previous===undefined?[]:scoped.filter(a=>a.id>previous && ['warning','exceeded'].includes(a.type));
+  if (S.screen!=='alerts' && fresh.length) {
+    S.unread+=fresh.length;
+    toast(`${cur().name}: ${fresh.length===1?fresh[0].title.replace(/^Demo:\s*/, ''):fresh.length+' new condition alerts'}`);
   }
-  newestAlertId = latest;
-  S.alerts = alerts;
+  alertWatermarks.set(S.roomId,latest);
+  S.alerts=scoped;
 }
 let polling = false;
 async function pollShared() {
   if (!token || !S.role || polling) return;
   polling = true;
-  const session = token;
+  const session = token; const requestedRoom=S.roomId;
   try {
-    const [shared, alerts] = await Promise.all([api('/simulation'), api('/alerts')]);
-    if (token !== session || !S.role) return;
+    const [shared, alerts] = await Promise.all([api('/simulation'), api('/alerts?roomId='+encodeURIComponent(requestedRoom)+'&limit=200')]);
+    if (token !== session || !S.role || requestedRoom!==S.roomId) return;
     applyShared(shared, alerts.alerts); S.syncError = '';
     if (LIVE.has(S.screen)) render();
     else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
@@ -407,18 +427,18 @@ const legend = k => `<div class="legend"><span><i style="color:#E5B800"></i>Warn
    VIEWS
    ===================================================================== */
 const LIVE = new Set(['home', 'alerts', 'monitor', 'status']);
-const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users' };
+const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users', students: 'Student Accounts' };
 
 function nav() {
   const items = S.role === 'admin'
     ? [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['status', 'Devices', 'device'], ['settings', 'Settings', 'sliders']]
     : [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['about', 'About', 'info']];
   return `<nav class="nav" style="--n:${items.length}" aria-label="Main">${items.map(([id, label, ic]) =>
-    `<button data-act="go" data-v="${id}" ${(S.screen === id || (S.screen === 'users' && id === 'settings')) ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
+    `<button data-act="go" data-v="${id}" ${(S.screen === id || (['users','students'].includes(S.screen) && id === 'settings')) ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
 }
 
 function topbar() {
-  const home = S.screen === 'home'; const back = ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
+  const home = S.screen === 'home'; const back = S.screen==='students'?'users': ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
   return `<header class="topbar">${home
     ? `${logo(34)}<h1>SafeZone</h1>`
     : `<button data-act="go" data-v="${back}" aria-label="Back to ${back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
@@ -470,8 +490,9 @@ function roomBar(allowAdd = false) {
   </div>`;
 }
 
-function powerCard(compact) {
+function powerCard(compact, monitor = false) {
   const r = cur(); const e = r.electricity || { totalKwh: 0, lightsKwh: 0, fanKwh: 0 };
+  if (monitor) return `<article class="card power monitor-energy"><div class="s-head"><span class="ico ico-pow">${I.bolt}</span>Electricity</div><div class="s-val">${Number(e.fanKwh).toFixed(4)}<small>kWh</small></div><p class="s-note">Estimated fan usage</p></article>`;
   if (compact) {
     return `<button class="card power compact" data-act="toMonitor" aria-label="Electricity, open monitoring"><span class="ico ico-pow">${I.bolt}</span>
       <div><b>${energyText(e.fanKwh)}</b><span>Estimated fan electricity</span></div><span class="chev" style="margin-left:auto">${I.chev}</span></button>`;
@@ -501,13 +522,32 @@ function homeView() {
   return `${head}${roomBar()}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
 }
 
+function groupRoomAlerts(alerts, roomId) {
+  const groups=new Map();
+  for(const alert of alerts.filter(a=>String(a.roomId)===String(roomId)).slice().sort((a,b)=>b.ts-a.ts || b.id-a.id)) {
+    const key=[alert.type,alert.metric || '',alert.title].join('|');
+    if(!groups.has(key))groups.set(key,{key,latest:alert,items:[]});
+    groups.get(key).items.push(alert);
+  }
+  return [...groups.values()];
+}
+function alertGroupCard(group) {
+  const a=group.latest;
+  return `<article class="alert ${a.type}"><span class="dot ${a.type}"></span><div class="alert-content"><b>${esc(a.title.replace(/^Demo:\s*/,''))}</b><time>${when(a.ts)}</time>${group.items.length>1?`<span class="tag">${group.items.length} occurrences</span>`:''}
+    <details class="alert-history" data-keep-open="alert-${S.roomId}-${esc(group.key)}"><summary>Details${group.items.length>1?' and history':''}</summary>${group.items.map(item=>`<div class="alert-event"><time>${when(item.ts)}</time><p>${esc(item.body)}</p></div>`).join('')}</details></div></article>`;
+}
 function alertsView() {
-  const admin = S.role === 'admin';
-  const filters = [['all', 'All'], ['message', 'Message'], ['exceeded', 'Danger'], ['system', 'System']];
-  const list = S.alerts.filter(a => S.alertFilter === 'all' || a.cats.includes(S.alertFilter));
-  return `<div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id, l]) => `<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter === id}">${l}</button>`).join('')}</div>
-    ${list.length ? list.map(a => `<article class="alert ${a.type}"><span class="dot ${a.type}"></span><div><b>${esc(a.title)}</b><p>${esc(a.body)}</p><time>${when(a.ts)}</time>${a.room ? `<span class="tag room">${esc(a.room)}</span>` : ''}${admin && a.sms ? '<span class="tag">SMS sent</span>' : ''}</div></article>`).join('')
-      : '<p class="empty">No alerts in this group yet.</p>'}`;
+  const groups=groupRoomAlerts(S.alerts,S.roomId);
+  const filters=[['all','Conditions'],['warning','Caution'],['exceeded','Danger'],['system','Updates']];
+  const conditions=groups.filter(g=>['warning','exceeded'].includes(g.latest.type));
+  const updates=groups.filter(g=>!['warning','exceeded'].includes(g.latest.type));
+  const list=S.alertFilter==='system'?updates:S.alertFilter==='all'?conditions:conditions.filter(g=>g.latest.type===S.alertFilter);
+  return `<div class="alerts-context"><p class="section-label">Alerts for ${esc(cur().name)}</p>${roomBar()}<div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id,label])=>`<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter===id}">${label}</button>`).join('')}</div></div>
+    <p class="note">Simulated readings · SMS delivery is not connected.</p>
+    <div class="room-condition-summary">${KEYS.map(k=>`<div><span>${METRICS[k].label}</span><b>${withUnit(k,S.reading[k])}</b><small class="chip ${S.levels[k]}">${LV[S.levels[k]]}</small></div>`).join('')}</div>
+    <p class="section-label">${S.alertFilter==='system'?'Room updates':'Condition history'}</p>
+    ${list.map(alertGroupCard).join('') || '<p class="empty">No alerts in this group for this room.</p>'}
+    ${S.alertFilter==='all' && updates.length?`<details class="room-updates" data-keep-open="room-updates-${S.roomId}"><summary>Fan and recovery updates (${updates.reduce((n,g)=>n+g.items.length,0)})</summary>${updates.map(alertGroupCard).join('')}</details>`:''}`;
 }
 
 function metricChips() {
@@ -519,7 +559,7 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `${seg}${roomBar(true)}${ventCard(true)}${powerCard(false)}${metricChips()}
+    return `${seg}<div class="monitor-room-context">${roomBar(true)}</div><div class="monitor-utilities">${ventCard(true)}${powerCard(false,true)}</div>${metricChips()}
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
   }
@@ -555,8 +595,10 @@ function roomConfiguration() {
   const room = S.rooms.find(r => r.id === S.configRoomId) || S.rooms[0];
   S.configRoomId = room.id;
   return `<section class="room-configuration" aria-label="Room configuration">
+    <label class="f" for="config-floor">Floor</label>
+    <select id="config-floor" aria-label="Floor to configure">${floorList().filter(f=>roomsOn(f).length).map(f=>`<option value="${f}" ${f===room.floor?'selected':''}>${floorName(f)}</option>`).join('')}</select>
     <label class="f" for="config-room">Room</label>
-    <select id="config-room" aria-label="Room to configure">${S.rooms.map(r => `<option value="${esc(r.id)}" ${r.id === room.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+    <select id="config-room" aria-label="Room to configure">${roomsOn(room.floor).map(r => `<option value="${esc(r.id)}" ${r.id === room.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
     <div class="room-config-actions"><button class="btn soft small" id="config-room-edit" data-act="editRoom" data-v="${room.id}">${I.edit} Edit room</button>
       <button class="btn soft small" id="config-room-delete" data-act="roomDel" data-v="${room.id}">${I.trash} Delete room</button></div>
   </section>`;
@@ -679,7 +721,7 @@ function aboutView() {
 }
 
 function shell() {
-  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView };
+  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView, students: studentsView };
   return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
 }
 
@@ -737,6 +779,7 @@ function vReg1View() {
       <label class="flabel" for="phone">Mobile Number</label>
       ${phoneInput()}
       <p class="hint">Enter a valid Philippine mobile number (e.g. 09XXXXXXXXX)</p>
+      <div id="registration-profile" class="stack" ${emailKind(S.reg.email)==='faculty'?'hidden':''}>${profileFields('reg',S.reg)}</div>
       ${errLine()}
       <button class="btn" type="submit">Next</button>
     </form>
@@ -918,8 +961,10 @@ function render() {
   captureDrafts();
   const view = $('#view'); const prev = $('#screen');
   const top = prev && prev.dataset.s === S.screen ? prev.scrollTop : 0;
+  const expanded=new Map(Array.from(document.querySelectorAll('#screen details[data-keep-open]'),d=>[d.dataset.keepOpen,d.open]));
   const AUTH = { splash: splashView, login: loginView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpEmail: fpEmailView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
   view.innerHTML = AUTH[S.screen] ? AUTH[S.screen]() : shell();
+  document.querySelectorAll('#screen details[data-keep-open]').forEach(d=>{if(expanded.has(d.dataset.keepOpen))d.open=expanded.get(d.dataset.keepOpen);});
   restoreDrafts(); captureEnabled=true;
   const sc = $('#screen'); if (sc) sc.scrollTop = top;
 }
@@ -934,34 +979,45 @@ function toast(msg) {
 }
 function openSheet(title, html) {
   captureDrafts();
-  const prev = $('#sheet-root .sheet'); const keep = prev && prev.getAttribute('aria-label') === title ? prev.scrollTop : 0;
-  $('#sheet-root').innerHTML = `<div class="overlay" data-act="closeSheet" data-overlay="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="grab"></div>
-    <div class="sheet-head"><h2>${esc(title)}</h2><button class="x" data-act="closeSheet" aria-label="Close">${I.x}</button></div>${html}</div></div>`;
+  const prev = $('#sheet-root .sheet'); const keep = prev && prev.getAttribute('aria-label') === title ? prev.querySelector('.sheet-content').scrollTop : 0;
+  $('#sheet-root').innerHTML = `<div class="overlay" data-act="closeSheet" data-overlay="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-top"><div class="grab"></div>
+    <div class="sheet-head"><h2>${esc(title)}</h2><button class="x" data-act="closeSheet" aria-label="Close">${I.x}</button></div></div><div class="sheet-content">${html}</div></div></div>`;
   restoreDrafts();
-  const sh = $('#sheet-root .sheet'); if (sh) { sh.setAttribute('tabindex', '-1'); sh.focus({ preventScroll: true }); sh.scrollTop = keep; }
+  const sh = $('#sheet-root .sheet'); if (sh) { sh.setAttribute('tabindex', '-1'); sh.focus({ preventScroll: true }); sh.querySelector('.sheet-content').scrollTop = keep; }
 }
 const closeSheet = () => { captureDrafts(); $('#sheet-root').innerHTML = ''; };
+
+function userTable(title, people, admin = false, removable = false) {
+    const headers = admin ? ['Name', 'Username', 'Email', 'Mobile number'] : ['Email', 'Mobile number'];
+    if (removable) headers.push('Status', 'Actions');
+    const rows = people.map(a => {
+      const cells = admin ? [a.name, a.username, a.email, showPhone(a.phone)] : [a.email, showPhone(a.phone)];
+      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}${removable ? `<td>${a.active === false ? 'Inactive' : 'Active'}</td><td><button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button></td>` : ''}</tr>`;
+    }).join('');
+    return `<section class="users-group"><div class="users-table-scroll" role="region" aria-label="${esc(title)} table" tabindex="0">
+      <table class="users-table"><caption>${esc(title)} (${people.length})</caption>
+        <thead><tr>${headers.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">No ${esc(title.toLowerCase())} accounts yet.</td></tr>`}</tbody>
+      </table></div></section>`;
+}
+function studentsView() {
+  if(S.role!=='admin')return '<p class="empty">Admin access is required.</p>';
+  const students=S.accounts.filter(a=>a.role==='viewer' && a.kind==='student');
+  const courseCodes=[...new Set(students.map(a=>a.courseCode || ''))].sort((a,b)=>courseName(a).localeCompare(courseName(b)));
+  return `<div class="student-page-context"><p class="note">${students.length} students · grouped by course and section</p></div>${courseCodes.map(code=>{
+    const people=students.filter(a=>(a.courseCode||'')===code);
+    const sections=[...new Set(people.map(a=>a.section||'Section not set'))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    return `<details class="student-course" data-keep-open="course-${esc(code)}" open><summary><span>${esc(courseName(code))}${code?' ('+esc(code)+')':''}</span><small>${people.length} students</small>${I.chevd}</summary>${sections.map(section=>userTable(section,people.filter(a=>(a.section||'Section not set')===section).sort((a,b)=>a.email.localeCompare(b.email)),false,true)).join('')}</details>`;
+  }).join('') || '<p class="empty">No student accounts yet.</p>'}`;
+}
 
 function usersView() {
   if (S.role !== 'admin') return '<p class="empty">Admin access is required.</p>';
   const admins = S.accounts.filter(a => a.role === 'admin');
   const students = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'student');
   const faculty = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'faculty');
-  const table = (title, people, admin = false, removable = false) => {
-    const headers = admin ? ['Name', 'Username', 'Email', 'Mobile number'] : ['Email', 'Mobile number'];
-    if (removable) headers.push('Status', 'Actions');
-    const rows = people.map(a => {
-      const cells = admin ? [a.name, a.username, a.email, showPhone(a.phone)] : [a.email, showPhone(a.phone)];
-      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}${removable ? `<td>${a.active === false ? 'Inactive' : 'Active'}</td><td><button type="button" class="btn soft small" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash} Delete</button></td>` : ''}</tr>`;
-    }).join('');
-    return `<section class="users-group"><div class="users-table-scroll" role="region" aria-label="${title} table" tabindex="0">
-      <table class="users-table"><caption>${title} (${people.length})</caption>
-        <thead><tr>${headers.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead>
-        <tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">No ${title.toLowerCase()} accounts yet.</td></tr>`}</tbody>
-      </table></div></section>`;
-  };
-  return `<p class="sub">Registered accounts, grouped by role. Scroll each table sideways to see all columns.</p>
-    ${table('Admins', admins, true)}${table('Faculty', faculty)}${table('Students', students, false, true)}
+  return `<p class="sub">Manage admin and faculty accounts, or open Student Accounts to browse by course and section.</p>
+    <button class="card student-accounts-link" data-act="students">${I.users}<span><b>Student Accounts</b><small>${students.length} students · organized by course and section</small></span>${I.chev}</button>${userTable('Admins', admins, true)}${userTable('Faculty', faculty)}
     <p class="note">Who gets SMS alerts is set in Settings, under SMS Alerts.</p>
     <p class="section-label">Add another admin</p>
     <p class="note">Create an account for another administrator. They can change their password in Account Settings.</p>
@@ -1004,11 +1060,12 @@ function smsSheet(edit) {
 // Pick a room. Rooms are grouped by floor.
 function pickSheet() {
   const now = cur().id;
-  openSheet('Select Room', floorList().map(f => {
+  openSheet('Select Room', `<div class="floor-picker">${floorList().map(f => {
     const rooms = roomsOn(f);
-    return `<div class="floor"><div class="floor-head"><b>${floorName(f)}</b></div>
-      ${rooms.length ? rooms.map(r => `<button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>`).join('') : '<p class="floor-empty">No rooms yet</p>'}</div>`;
-  }).join(''));
+    return `<details class="floor-section" name="room-floor" ${cur().floor===f?'open':''}>
+      <summary><span>${floorName(f)}</span><small>${rooms.length} rooms</small>${I.chevd}</summary>
+      <div class="floor-rooms">${rooms.length ? rooms.map(r => `<button class="room-opt" data-act="room" data-v="${r.id}" aria-pressed="${r.id === now}"><i class="rdot ${roomLevel(r)}"></i><span>${esc(r.name)}</span>${r.id === now ? I.check : ''}</button>`).join('') : '<p class="floor-empty">No classrooms on this floor.</p>'}</div></details>`;
+  }).join('')}</div>`);
 }
 
 // Home and Monitoring add rooms; Settings configures existing rooms.
@@ -1053,6 +1110,7 @@ function accountSheet() {
       <p class="note" style="margin:0">Your account and login email. Password reset codes go to your verified recovery Gmail.<br>${emailHintHtml}</p>
       <button class="btn small" type="submit">Save web mail</button>
     </form>
+    ${me.role==='viewer' && me.kind==='student'?`<p class="section-label">Course and section</p><form id="student-profile-form" class="stack" novalidate>${profileFields('account',S.studentProfile || {})}<button class="btn small" type="submit">Save course and section</button></form>`:''}
     <p class="section-label">Recovery Gmail</p>
     <p class="note">${S.recovery?.email ? 'Verified: '+esc(S.recovery.email) : 'No verified recovery Gmail yet.'} Verify a Gmail you own to receive password reset codes. Your PUP login stays the same.</p>
     <form id="recovery-request-form" class="stack" novalidate>
@@ -1101,11 +1159,11 @@ const ACTS = {
     S.authError = ''; S.notice = ''; S.screen = 'fpEmail'; render();
   },
   closeSheet(v, el, e) { if (el.dataset.overlay && e.target !== el) return; closeSheet(); },
-  async account() { S.recovery = await api('/auth/me/recovery'); accountSheet(); },
+  async account() { const [recovery,profile]=await Promise.all([api('/auth/me/recovery'),api('/auth/me/student-profile')]);S.recovery=recovery;S.studentProfile=profile.profile;accountSheet(); },
   smsEdit(v) { S.pendingDel = ''; smsSheet(+v); },
   smsCancel() { S.pendingDel = ''; smsSheet(); },
   pickRoom() { pickSheet(); },
-  room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId = v; store.save(); closeSheet(); render(); } },
+  async room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId=v;S.alerts=[];S.unread=0;store.save();closeSheet();render();const selected=v,session=token;const result=await api('/alerts?roomId='+encodeURIComponent(v)+'&limit=200');if(S.roomId===selected && token===session && S.role){S.alerts=result.alerts;render();} } },
   addRoom(v) { if(S.role!=='admin'||S.screen!=='monitor')return; S.editingRoomId=null; S.addFloor=v?+v:cur().floor; roomsSheet(); },
   editRoom(v) { if(S.role!=='admin'||S.screen!=='settings')return; captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
   addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
@@ -1146,6 +1204,7 @@ Object.assign(ACTS, {
     if (S.role !== 'admin') return;
     await refreshData(); closeSheet(); S.screen = 'users'; render();
   },
+  async students() {if(S.role!=='admin')return;await refreshData();closeSheet();S.screen='students';render();},
   studentRemove(v) {
     if(S.role!=='admin')return;
     const student=S.accounts.find(a=>String(a.id)===v && a.role==='viewer' && a.kind==='student');
@@ -1157,7 +1216,7 @@ Object.assign(ACTS, {
     el.disabled=true;
     try {
       await api('/admin/users/'+v,'DELETE');
-      await refreshData();closeSheet();S.screen='users';render();toast('Student account deleted');
+      await refreshData();closeSheet();S.screen='students';render();toast('Student account deleted');
     } finally {if(el.isConnected)el.disabled=false;}
   },
   async sms() { await refreshData(); S.pendingDel = ''; smsSheet(); },
@@ -1235,7 +1294,7 @@ document.addEventListener('submit', async e => {
       const email = normEmail(value('email')), phone = normPhone(value('phone'));
       if (!emailKind(email)) throw new Error('Use your PUP web mail. ' + emailHint);
       if (!validPhone(phone)) throw new Error('Enter a valid Philippine mobile number.');
-      S.reg = { email, phone }; S.authError = ''; S.screen = 'vReg2'; render();
+      S.reg = { email, phone, ...(emailKind(email)==='student'?readProfile('reg'):{}) }; S.authError = ''; S.screen = 'vReg2'; render();
     } else if (id === 'v-reg2-form') {
       await api('/auth/register', 'POST', { ...S.reg, password: passwords() });
       S.authError = ''; S.screen = 'vDone'; render();
@@ -1268,6 +1327,8 @@ document.addEventListener('submit', async e => {
       formDrafts.delete(formKey(form));
       await refreshData(); if(!roomId)S.roomId=String(result.room.id); else S.configRoomId=String(result.room.id); captureEnabled=false; closeSheet(); render();
       toast(roomId?'Room updated':'Room added');
+    } else if (id === 'student-profile-form') {
+      const result=await api('/auth/me/student-profile','PUT',readProfile('account'));S.studentProfile=result.profile;toast('Course and section saved');
     } else if (id === 'recovery-request-form') {
       const result = await api('/auth/me/recovery/request', 'POST', { email: value('recovery-email') });
       formDrafts.delete(formKey(form)); form.reset();
@@ -1298,6 +1359,7 @@ document.addEventListener('submit', async e => {
 document.addEventListener('input', e => {
   if(e.target.form)e.target.form.dataset.dirty='1';
   if(/^(temp|hum|co2)-(warn|limit)$/.test(e.target.id))settingsDirty=true;
+  if(e.target.id==='email' && $('#registration-profile'))$('#registration-profile').hidden=emailKind(e.target.value)==='faculty';
   if (e.target.id !== 'rp') return;
   const ul = $('#rules'); if (!ul) return;
   const res = pwRules(e.target.value);
@@ -1312,6 +1374,10 @@ document.addEventListener('change', e => {
     row.querySelector('[data-powered]').hidden=type!=='exhaust_fan';
     row.querySelector('[data-device="label"]').value=DEVICE_NAMES[type];
     if(type==='exhaust_fan')row.querySelector('[data-device="wattsPerDevice"]').value=40;
+  }
+  if (e.target.id === 'config-floor') {
+    const room=roomsOn(Number(e.target.value))[0];
+    if(room){S.configRoomId=room.id;$('.room-configuration').outerHTML=roomConfiguration();}
   }
   if (e.target.id === 'config-room') {
     S.configRoomId = e.target.value;
@@ -1328,6 +1394,10 @@ document.addEventListener('change', e => {
     $('#sim-room-count').textContent = '('+S.simSelected.length+' selected)';
   }
 });
+
+document.addEventListener('toggle',e=>{
+  if(e.target.matches('.floor-section') && e.target.open)document.querySelectorAll('.floor-section').forEach(section=>{if(section!==e.target)section.open=false;});
+},true);
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 

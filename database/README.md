@@ -6,6 +6,7 @@ Shared simulated readings are stored here; physical sensor integration is not in
 | Table | What it holds |
 |---|---|
 | `users` | every account (admins and students/faculty), passwords as bcrypt hashes |
+| `student_profiles` | student course code and free-text section, linked to the account |
 | `account_recovery` | verified recovery Gmail and pending ownership challenges |
 | `password_resets` | forgot-password codes (hashed), expiry and tries |
 | `rooms` | 43 classrooms across four floors on the 1st floor, plus any rooms an admin adds (201..., 301..., 401...) |
@@ -84,3 +85,7 @@ Lighting groups and past lighting kWh remain stored for history, but are hidden 
 ## Recovery Gmail migration
 
 After 07, run `08-recovery-gmail.sql` once to add the `account_recovery` table. Existing users/passwords and PUP account emails stay unchanged. Outstanding password reset codes are invalidated during the upgrade. Users must log in and verify a recovery Gmail in Account Settings before using Forgot Password. No existing addresses are automatically trusted.
+
+## Course and section migration
+
+After 08, run only `09-student-profiles.sql` to add `student_profiles`. It does not alter accounts or assign fabricated course/section values. Existing students can set these in Account Settings; new student registrations require them. Faculty/admin registration is unchanged. Deleting a student cascades their profile. This brings a fully installed database to 16 tables.

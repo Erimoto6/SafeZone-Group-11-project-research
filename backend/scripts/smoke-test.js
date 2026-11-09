@@ -5,6 +5,7 @@
 require('dotenv').config({ quiet: true });
 if (process.env.SAFEZONE_TEST_DB !== '1') throw new Error('Set SAFEZONE_TEST_DB=1 with a disposable database before running tests.');
 // Tests must never send email to a real recipient.
+process.env.EMAIL_RELAY_URL='';process.env.EMAIL_RELAY_SECRET='';
 process.env.SMTP_HOST = '';
 
 const tag = Date.now().toString(36);
@@ -25,6 +26,7 @@ const section = t => console.log('\n' + t);
 const server = app.listen(0, '127.0.0.1');
 const base = () => `http://127.0.0.1:${server.address().port}`;
 async function call(method, path, body, token, extraHeaders) {
+  if(path==='/api/auth/register' && body && typeof body==='object')body={courseCode:'BSIT',section:'1-1',...body};
   const headers = { 'Content-Type': 'application/json', ...(extraHeaders || {}) };
   if (token) headers.Authorization = 'Bearer ' + token;
   const r = await fetch(base() + path, { method, headers, body: body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)) });

@@ -1,7 +1,8 @@
 // Run against a disposable local database only.
 require('dotenv').config({quiet:true});
 if(process.env.SAFEZONE_TEST_DB!=='1')throw Error('Set SAFEZONE_TEST_DB=1 with a disposable database.');
-process.env.RATE_LIMIT='off';process.env.SMTP_HOST='';process.env.NODE_ENV='test';
+process.env.RATE_LIMIT='off';process.env.EMAIL_RELAY_URL='';process.env.EMAIL_RELAY_SECRET='';
+process.env.SMTP_HOST='';process.env.NODE_ENV='test';
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright');
 const {pool}=require('../src/db');const {lastCodes}=require('../src/mail');const app=require('../src/app');
@@ -34,7 +35,7 @@ let server,browser;
   const logout=async()=>{await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'Log out',exact:true}).click();};
   await page.clock.install();
   await page.goto('http://127.0.0.1:'+server.address().port);
-  await act('role','student');await act('to','vReg1');await fill('email',mail);await fill('phone',phone);await submit('v-reg1-form');
+  await act('role','student');await act('to','vReg1');await fill('email',mail);await fill('phone',phone);await page.locator('#reg-course').selectOption('BSIT');await fill('reg-section','1-1');await submit('v-reg1-form');
   await fill('rp',password);await fill('rc',password);await submit('v-reg2-form');await page.getByRole('heading',{name:'Account Created!',exact:true}).waitFor();
   const [[user]]=await pool.query('SELECT password_hash FROM users WHERE email=?',[mail]);assert(user.password_hash.startsWith('$2'));
   console.log('PASS: browser registration stores bcrypt account in MySQL');
@@ -114,7 +115,7 @@ let server,browser;
   await groups.nth(2).locator('[data-device="quantity"]').fill('3');
   await groups.nth(2).locator('[data-device="activeQuantity"]').fill('1');
   await groups.nth(2).locator('[data-device="wattsPerDevice"]').fill('20');
-  await page.evaluate(()=>{document.activeElement?.blur();document.querySelector('#sheet-root .sheet').scrollTop=0;});
+  await page.evaluate(()=>{document.activeElement?.blur();document.querySelector('#sheet-root .sheet-content').scrollTop=0;});
   await page.setViewportSize({width:360,height:800});
   assert(await page.locator('.sheet').evaluate(el=>el.scrollWidth<=el.clientWidth), 'device form must fit a narrow phone sheet');
   assert(await page.locator('.device-editor input,.device-editor select').evaluateAll(els=>els.filter(el=>el.getClientRects().length).every(el=>{const a=el.getBoundingClientRect(),b=el.closest('.device-editor').getBoundingClientRect();return a.left>=b.left && a.right<=b.right+1;})), 'device fields must stay inside their group');

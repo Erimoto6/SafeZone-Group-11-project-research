@@ -7,6 +7,7 @@ test('every admin can permanently delete active/inactive students; sessions and 
  let sms=true,resets=1,recovery=true,snapshot,failDelete=false,rolledBack=false;
  const query=async(sql,p)=>{
   if(sql.startsWith('SELECT * FROM users WHERE id')){const u=users.get(Number(p[0]));return [[...(u?.is_active?[u]:[])]];}
+  if(sql.startsWith('SELECT user_id,course_code'))return [[]];
   if(sql.startsWith('SELECT id,role'))return [[...(users.has(p[0])?[{...users.get(p[0])}]:[])]];
   if(sql.startsWith('DELETE FROM sms_recipients')){sms=false;return [{}];}
   if(sql.startsWith('DELETE FROM users')){if(failDelete)throw Error('simulated database failure');users.delete(p[0]);resets=0;recovery=false;return [{}];}

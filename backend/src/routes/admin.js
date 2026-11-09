@@ -12,9 +12,12 @@ router.use(requireAdmin);
 
 router.get('/users', wrap(async (req, res) => {
   const [rows] = await pool.query("SELECT * FROM users WHERE is_active = 1 OR (role = 'viewer' AND email_kind = 'student') ORDER BY role, id");
+  let profiles=[];
+  try { [profiles]=await pool.query('SELECT user_id,course_code,section FROM student_profiles'); } catch(e) {if(e.code!=='ER_NO_SUCH_TABLE')throw e;}
+  const byId=new Map(profiles.map(p=>[p.user_id,p]));
   res.json({
     admins: rows.filter(u => u.role === 'admin').map(publicUser),
-    viewers: rows.filter(u => u.role === 'viewer').map(publicUser)
+    viewers: rows.filter(u => u.role === 'viewer').map(u=>({...publicUser(u),courseCode:byId.get(u.id)?.course_code || null,section:byId.get(u.id)?.section || null}))
   });
 }));
 

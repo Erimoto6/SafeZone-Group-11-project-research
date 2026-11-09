@@ -10,6 +10,7 @@ const v = require('../validate');
 const { SECRET, sign, publicUser, requireAuth } = require('../auth');
 const { createUser, getUser, dupMessage } = require('../users');
 const mail = require('../mail');
+const {validateProfile}=require('../student-profile');
 
 const router = express.Router();
 const RESET_MINUTES = 10;     // how long a code works
@@ -32,14 +33,15 @@ const PHONE_MSG = 'Enter a valid Philippine mobile number, like 09XXXXXXXXX.';
 
 // ---- Student / Faculty registration ----
 router.post('/register', limiter(20, 15), wrap(async (req, res) => {
-  const { email, phone, password } = req.body || {};
+  const { email, phone, password, courseCode, section } = req.body || {};
   const kind = v.emailKind(email);
   if (!kind) throw new HttpError(400, WEBMAIL_MSG);
   if (!v.validPhone(phone)) throw new HttpError(400, PHONE_MSG);
   const problem = v.passwordProblem(password);
   if (problem) throw new HttpError(400, problem);
+  const profile=kind==='student'?validateProfile(courseCode,section):null;
   const id = await createUser({
-    role: 'viewer', email: v.normEmail(email), kind, phone: v.normPhone(phone),
+    profile, role: 'viewer', email: v.normEmail(email), kind, phone: v.normPhone(phone),
     passwordHash: await bcrypt.hash(password, 10)
   });
   res.status(201).json({ user: publicUser(await getUser(id)) });
@@ -84,6 +86,22 @@ router.post('/login', limiter(15, 15), wrap(async (req, res) => {
 }));
 
 router.get('/me', requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
+
+// Course/section belong to students; login still uses the same PUP account.
+router.get('/me/student-profile',requireAuth,wrap(async(req,res)=>{
+  try {
+    const [[profile]]=await pool.query('SELECT course_code AS courseCode,section FROM student_profiles WHERE user_id=?',[req.user.id]);
+    res.json({profile:profile || null});
+  } catch(e) {if(e.code==='ER_NO_SUCH_TABLE')return res.json({profile:null});throw e;}
+}));
+router.put('/me/student-profile',requireAuth,wrap(async(req,res)=>{
+  if(req.user.role!=='viewer'||req.user.email_kind!=='student')throw new HttpError(403,'Student accounts only.');
+  const profile=validateProfile(req.body?.courseCode,req.body?.section);
+  try {
+  await pool.query('INSERT INTO student_profiles (user_id,course_code,section) VALUES (?,?,?) ON DUPLICATE KEY UPDATE course_code=VALUES(course_code),section=VALUES(section)',[req.user.id,profile.courseCode,profile.section]);
+  } catch(e) {if(e.code==='ER_NO_SUCH_TABLE')throw new HttpError(503,'Install student profile migration 09 first.');throw e;}
+  res.json({profile});
+}));
 
 // ---- Save or change my web mail ----
 router.put('/me/email', requireAuth, wrap(async (req, res) => {

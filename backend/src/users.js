@@ -12,13 +12,14 @@ function dupMessage(err) {
   return null;
 }
 
-async function createUser({ role, username, fullName, email, kind, phone, passwordHash }) {
+async function createUser({ role, username, fullName, email, kind, phone, passwordHash, profile }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [r] = await conn.query(
       'INSERT INTO users (role, username, full_name, email, email_kind, phone, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [role, username || null, fullName || null, email, kind, phone, passwordHash]);
+    if (role==='viewer' && kind==='student' && profile) await conn.query('INSERT INTO student_profiles (user_id,course_code,section) VALUES (?,?,?)',[r.insertId,profile.courseCode,profile.section]);
     const smsRole = role === 'admin' ? 'Admin' : kind === 'faculty' ? 'Faculty' : 'Student';
     const [ex] = await conn.query('SELECT id, role FROM sms_recipients WHERE phone = ? FOR UPDATE', [phone]);
     if (ex[0]) {
@@ -31,6 +32,7 @@ async function createUser({ role, username, fullName, email, kind, phone, passwo
     return r.insertId;
   } catch (e) {
     await conn.rollback();
+    if(e.code==='ER_NO_SUCH_TABLE' && profile)throw new HttpError(503,'Student profiles need database migration 09. Please contact your administrator.');
     const m = dupMessage(e);
     if (m) throw new HttpError(409, m);
     throw e;

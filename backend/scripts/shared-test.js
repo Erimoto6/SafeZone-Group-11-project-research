@@ -1,7 +1,8 @@
 // Integration tests use a disposable database and never send email.
 require('dotenv').config({ quiet: true });
 if (process.env.SAFEZONE_TEST_DB !== '1') throw new Error('Set SAFEZONE_TEST_DB=1 with a disposable database.');
-process.env.RATE_LIMIT = 'off'; process.env.SMTP_HOST = ''; process.env.NODE_ENV = 'test';
+process.env.RATE_LIMIT = 'off'; process.env.EMAIL_RELAY_URL='';process.env.EMAIL_RELAY_SECRET='';
+process.env.SMTP_HOST = ''; process.env.NODE_ENV = 'test';
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { pool } = require('../src/db');
@@ -13,6 +14,7 @@ const phones = ['096', '097'].map(p => p + String(Date.now()).slice(-8));
 let server, browser, base, admin, student, now = Date.now();
 const madeRooms = [];
 async function call(path, method = 'GET', body, token) {
+  if(path==='/auth/register' && body)body={courseCode:'BSIT',section:'1-1',...body};
   const response = await fetch(base + '/api' + path, { method,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body) });
