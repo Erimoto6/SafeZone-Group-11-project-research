@@ -11,7 +11,7 @@ if (!SECRET || SECRET.length < 32) {
 }
 
 const publicUser = u => ({
-  id: u.id, role: u.role, username: u.username, fullName: u.full_name,
+  id: u.id, active: Boolean(u.is_active), role: u.role, username: u.username, fullName: u.full_name,
   email: u.email, kind: u.email_kind, phone: u.phone,
   createdAt: u.created_at ? new Date(u.created_at).getTime() : null
 });

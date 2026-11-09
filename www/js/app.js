@@ -949,10 +949,10 @@ function usersView() {
   const faculty = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'faculty');
   const table = (title, people, admin = false, removable = false) => {
     const headers = admin ? ['Name', 'Username', 'Email', 'Mobile number'] : ['Email', 'Mobile number'];
-    if (removable) headers.push('Actions');
+    if (removable) headers.push('Status', 'Actions');
     const rows = people.map(a => {
       const cells = admin ? [a.name, a.username, a.email, showPhone(a.phone)] : [a.email, showPhone(a.phone)];
-      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}${removable ? `<td><button type="button" class="btn soft small" data-act="studentRemove" data-v="${a.id}" aria-label="Remove student ${esc(a.email)}">${I.trash} Remove</button></td>` : ''}</tr>`;
+      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}${removable ? `<td>${a.active === false ? 'Inactive' : 'Active'}</td><td><button type="button" class="btn soft small" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash} Delete</button></td>` : ''}</tr>`;
     }).join('');
     return `<section class="users-group"><div class="users-table-scroll" role="region" aria-label="${title} table" tabindex="0">
       <table class="users-table"><caption>${title} (${people.length})</caption>
@@ -1150,14 +1150,14 @@ Object.assign(ACTS, {
     if(S.role!=='admin')return;
     const student=S.accounts.find(a=>String(a.id)===v && a.role==='viewer' && a.kind==='student');
     if(!student)return;
-    openSheet('Remove student?',`<p>Remove access for <b>${esc(student.email)}</b>?</p><p class="note">This student will be signed out and cannot log in again. Linked SMS alerts will be disabled. Historical records are kept.</p><div class="stack"><button class="btn" data-act="confirmStudentRemove" data-v="${student.id}">Remove student</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
+    openSheet('Delete student permanently?',`<p>Permanently delete the account for <b>${esc(student.email)}</b>?</p><p class="note">This cannot be undone. The account, recovery Gmail, reset codes and linked SMS contact will be deleted. Existing sessions will stop working. The email and phone number can be registered again.</p><div class="stack"><button class="btn" data-act="confirmStudentRemove" data-v="${student.id}">Delete permanently</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
   },
   async confirmStudentRemove(v,el) {
     if(S.role!=='admin'||el.disabled)return;
     el.disabled=true;
     try {
       await api('/admin/users/'+v,'DELETE');
-      await refreshData();closeSheet();S.screen='users';render();toast('Student removed');
+      await refreshData();closeSheet();S.screen='users';render();toast('Student account deleted');
     } finally {if(el.isConnected)el.disabled=false;}
   },
   async sms() { await refreshData(); S.pendingDel = ''; smsSheet(); },
