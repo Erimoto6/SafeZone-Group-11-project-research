@@ -536,20 +536,28 @@ function groupRoomAlerts(alerts, roomId) {
 }
 function alertDescription(alert) {
   const metric=alert.metric || (/temperature/i.test(alert.title)?'temp':/humidity/i.test(alert.title)?'hum':/co[₂2]/i.test(alert.title)?'co2':null);
-  const label={temp:'temperature',hum:'humidity',co2:'CO₂ level'}[metric];
-  let event;
+  const label={temp:'temperature',hum:'relative humidity',co2:'carbon dioxide (CO₂) concentration'}[metric];
   if(label && ['warning','exceeded'].includes(alert.type)) {
-    event=`the ${label} was ${alert.type==='exceeded'?'high':'nearing its limit'}`;
-    if(alert.value!=null && Number.isFinite(Number(alert.value)))event+=` (${withUnit(metric,Number(alert.value))})`;
-  } else if(alert.type==='normal')event='room conditions returned to normal';
-  else if(alert.type==='ventilation')event=/stopped|off/i.test(alert.title)?'the exhaust fan was switched off':'the exhaust fan was switched on';
-  else event=alert.title.replace(/^Demo:\s*/,'');
-  return event.charAt(0).toUpperCase()+event.slice(1)+'.';
+    const danger=alert.type==='exceeded';
+    const recorded=alert.value!=null && Number.isFinite(Number(alert.value))?withUnit(metric,Number(alert.value)):null;
+    // Use thresholds saved in this event's body, never today's possibly changed settings.
+    const match=String(alert.body || '').match(danger?/limit:\s*(-?\d+(?:\.\d+)?)/i:/warning:\s*(-?\d+(?:\.\d+)?)/i);
+    const threshold=match?withUnit(metric,Number(match[1])):null;
+    const status=danger?'Threshold alert':'Caution';
+    const reading=recorded?`The recorded ${label} was ${recorded}. `:`The ${label} reading `;
+    return `${status}: ${reading}${recorded?'This reading ':''}reached or exceeded the configured ${danger?'limit':'warning threshold'}${threshold?' of '+threshold:''}.`;
+  }
+  if(alert.type==='normal')return 'Room conditions returned to normal. Temperature, relative humidity, and carbon dioxide readings were within their configured normal ranges.';
+  if(alert.type==='ventilation') {
+    const off=/stopped|off/i.test(alert.title);
+    return `The exhaust fan was ${off?'deactivated':'activated'}.${/no hardware command/i.test(alert.body || '')?' This was a simulated status change; no physical hardware command was issued.':''}`;
+  }
+  return alert.title.replace(/^Demo:\s*/,'').replace(/[.!?]+$/,'')+'.';
 }
 function alertTimeline(alerts) {
-  return groupRoomAlerts(alerts,S.roomId).map(day=>`<section class="alert-day"><h3>${esc(new Date(day.ts).toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</h3>
-    ${day.times.map(time=>`<article class="alert-time-block"><h4><time datetime="${new Date(time.ts).toISOString()}">${esc(new Date(time.ts).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',hour12:true}))}</time></h4>
-      <div class="alert-time-events">${time.items.map(a=>`<div class="alert ${a.type}"><span class="dot ${a.type}"></span><div class="alert-content"><b>${esc(alertDescription(a))}</b></div></div>`).join('')}</div>
+  return groupRoomAlerts(alerts,S.roomId).map(day=>`<section class="alert-day"><h3>${esc(new Date(day.ts).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</h3>
+    ${day.times.map(time=>`<article class="alert-time-block"><h4><time datetime="${new Date(time.ts).toISOString()}">${esc(new Date(time.ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}).replace(/\s/g,'').toLowerCase())}</time></h4>
+      <div class="alert-time-events">${time.items.map(a=>`<div class="alert ${a.type}"><div class="alert-content"><p>${esc(alertDescription(a))}</p></div></div>`).join('')}</div>
     </article>`).join('')}</section>`).join('');
 }
 function alertsView() {

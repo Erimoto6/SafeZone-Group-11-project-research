@@ -43,10 +43,10 @@ test('alert descriptions use historical values beneath separate time headings',(
  const code=source.slice(source.indexOf('function alertDescription('),source.indexOf('function alertTimeline('));
  const sentence=vm.runInNewContext(code+'\nalertDescription',{withUnit:(k,v)=>v+(k==='temp'?' °C':'')});
  const alert={ts:Date.UTC(2026,10,9,13),type:'exceeded',metric:'temp',title:'Demo: High Temperature Level',value:32};
- assert.match(sentence(alert),/^The temperature was high \(32 °C\)\.$/);
- assert.match(sentence({...alert,type:'warning'}),/nearing its limit/);
+ assert.match(sentence(alert),/^Threshold alert: The recorded temperature was 32 °C\./);
+ assert.match(sentence({...alert,type:'warning'}),/warning threshold/);
  assert.match(sentence({...alert,type:'normal'}),/returned to normal/);
- assert.match(sentence({...alert,type:'ventilation',title:'Ventilation Stopped'}),/switched off/);
+ assert.match(sentence({...alert,type:'ventilation',title:'Ventilation Stopped'}),/deactivated/);
 });
 
 test('timeline organizes by date then time, never by threshold',()=>{
@@ -54,4 +54,14 @@ test('timeline organizes by date then time, never by threshold',()=>{
  const fn=vm.runInNewContext(source.slice(source.indexOf('function groupRoomAlerts('),source.indexOf('function alertDescription('))+'\ngroupRoomAlerts');
  const alerts=[{id:1,ts:new Date(2026,10,8,13).getTime(),roomId:1,type:'exceeded',metric:'hum'}, {id:2,ts:new Date(2026,10,9,13).getTime(),roomId:1,type:'exceeded',metric:'hum'}, {id:3,ts:new Date(2026,10,9,14).getTime(),roomId:1,type:'warning',metric:'temp'}];
  const days=fn(alerts,1);assert.equal(days.length,2);assert.equal(days[0].times.length,2);assert.equal(days[0].times[0].items[0].id,3);assert.equal(days[0].times[1].items[0].id,2);assert.equal(days[1].times[0].items[0].id,1);
+});
+
+test('formal descriptions use saved event thresholds and identify simulated fan updates',()=>{
+ const source=fs.readFileSync(require.resolve('../../www/js/app.js'),'utf8');
+ const code=source.slice(source.indexOf('function alertDescription('),source.indexOf('function alertTimeline('));
+ const describe=vm.runInNewContext(code+'\nalertDescription',{withUnit:(k,v)=>v+(k==='temp'?' °C':' %')});
+ const alert={type:'exceeded',metric:'temp',title:'High Temperature',value:32,body:'Temperature reached 32. Warning: 30; limit: 32. No SMS was sent.'};
+ assert.match(describe(alert),/configured limit of 32 °C/);
+ assert.match(describe({...alert,type:'warning'}),/warning threshold of 30 °C/);
+ assert.match(describe({type:'ventilation',title:'Ventilation Activated',body:'No hardware command was sent.'}),/simulated status change/);
 });
