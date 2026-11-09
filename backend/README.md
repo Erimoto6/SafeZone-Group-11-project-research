@@ -166,3 +166,7 @@ EMAIL_RELAY_SECRET=THE_EXACT_SAME_NEW_SECRET_AS_VERCEL
 No new database migration is required if migration 08 is installed. The relay accepts only an authenticated readiness check or a fixed six-digit reset/recovery template sent to one Gmail recipient. Railway remains responsible for authentication, rate limits, recipient ownership, generating/storing codes, verifying attempts/expiry and changing passwords. The public frontend calls Railway, not Vercel.
 
 For failures inspect Railway Deploy Logs for `Recovery email delivery failed:`. `RELAY_AUTH` means the shared secrets do not match (or deployment protection returned 401). `RELAY_RESPONSE` means the endpoint returned HTML/non-JSON, often a wrong deployment URL or deployment protection. `RELAY_CONFIG` means the URL/secret is invalid; use HTTPS and the exact `/api/send-code` path. `RELAY_CONNECTION` means Vercel could not be reached within the timeout. `EAUTH`/`ETIMEDOUT` refer to Gmail delivery from Vercel. Never post secrets or codes in logs/chat.
+
+## Remove students
+
+Every active admin can use Manage Users → Students → Remove. `DELETE /api/admin/users/:id` accepts only active viewer accounts with `email_kind=student`; faculty and admin accounts cannot be removed by this endpoint. Removal deactivates the account, increments its session version, disables linked SMS recipients and invalidates unused password resets in one transaction. Account records/history remain stored; unique emails/phone numbers remain reserved. No schema migration is required.

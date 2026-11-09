@@ -187,3 +187,5 @@ For Vercel deployment, use branch `Test-ni-eleyn`, Root Directory `vercel-email-
 Local checks: `npm ci --prefix backend`, `npm ci --prefix vercel-email-test`, then `node --test backend/test/*.test.js` and `npm test --prefix vercel-email-test`. These use simulated email delivery; installed-APK and real-inbox verification remain separate checks. The database-backed test scripts in `backend/scripts` require an isolated test database.
 
 Dependencies, generated Android assets/build output, `.env` files, `.vercel` configuration and signing material are excluded from Git. Install dependencies locally rather than committing `node_modules`. Flutter development remains on the separate `flutter-version` branch.
+
+All admins can remove a student from **Manage Users → Students → Remove** after confirming. This deactivates student access, revokes sessions, disables linked SMS alerts and invalidates unused password reset codes while preserving historical records. Faculty/admin accounts are not removable through this action. No additional database migration is needed.

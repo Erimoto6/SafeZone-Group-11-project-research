@@ -947,11 +947,12 @@ function usersView() {
   const admins = S.accounts.filter(a => a.role === 'admin');
   const students = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'student');
   const faculty = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'faculty');
-  const table = (title, people, admin = false) => {
+  const table = (title, people, admin = false, removable = false) => {
     const headers = admin ? ['Name', 'Username', 'Email', 'Mobile number'] : ['Email', 'Mobile number'];
+    if (removable) headers.push('Actions');
     const rows = people.map(a => {
       const cells = admin ? [a.name, a.username, a.email, showPhone(a.phone)] : [a.email, showPhone(a.phone)];
-      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}</tr>`;
+      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}${removable ? `<td><button type="button" class="btn soft small" data-act="studentRemove" data-v="${a.id}" aria-label="Remove student ${esc(a.email)}">${I.trash} Remove</button></td>` : ''}</tr>`;
     }).join('');
     return `<section class="users-group"><div class="users-table-scroll" role="region" aria-label="${title} table" tabindex="0">
       <table class="users-table"><caption>${title} (${people.length})</caption>
@@ -960,7 +961,7 @@ function usersView() {
       </table></div></section>`;
   };
   return `<p class="sub">Registered accounts, grouped by role. Scroll each table sideways to see all columns.</p>
-    ${table('Admins', admins, true)}${table('Faculty', faculty)}${table('Students', students)}
+    ${table('Admins', admins, true)}${table('Faculty', faculty)}${table('Students', students, false, true)}
     <p class="note">Who gets SMS alerts is set in Settings, under SMS Alerts.</p>
     <p class="section-label">Add another admin</p>
     <p class="note">Create an account for another administrator. They can change their password in Account Settings.</p>
@@ -1144,6 +1145,20 @@ Object.assign(ACTS, {
   async users() {
     if (S.role !== 'admin') return;
     await refreshData(); closeSheet(); S.screen = 'users'; render();
+  },
+  studentRemove(v) {
+    if(S.role!=='admin')return;
+    const student=S.accounts.find(a=>String(a.id)===v && a.role==='viewer' && a.kind==='student');
+    if(!student)return;
+    openSheet('Remove student?',`<p>Remove access for <b>${esc(student.email)}</b>?</p><p class="note">This student will be signed out and cannot log in again. Linked SMS alerts will be disabled. Historical records are kept.</p><div class="stack"><button class="btn" data-act="confirmStudentRemove" data-v="${student.id}">Remove student</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
+  },
+  async confirmStudentRemove(v,el) {
+    if(S.role!=='admin'||el.disabled)return;
+    el.disabled=true;
+    try {
+      await api('/admin/users/'+v,'DELETE');
+      await refreshData();closeSheet();S.screen='users';render();toast('Student removed');
+    } finally {if(el.isConnected)el.disabled=false;}
   },
   async sms() { await refreshData(); S.pendingDel = ''; smsSheet(); },
   async smsDel(v) {

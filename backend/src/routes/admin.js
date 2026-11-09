@@ -36,4 +36,22 @@ router.post('/users', wrap(async (req, res) => {
   res.status(201).json({ user: publicUser(await getUser(id)) });
 }));
 
+// Remove student access without deleting historical records.
+router.delete('/users/:id', wrap(async (req, res) => {
+  const id=Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id<1) throw new HttpError(400,'Choose a valid student account.');
+  const conn=await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[student]]=await conn.query('SELECT id,role,email_kind,is_active FROM users WHERE id=? FOR UPDATE',[id]);
+    if (!student || !student.is_active) throw new HttpError(404,'Student account not found.');
+    if (student.role!=='viewer' || student.email_kind!=='student') throw new HttpError(400,'Only student accounts can be removed here.');
+    await conn.query('UPDATE users SET is_active=0,token_version=token_version+1 WHERE id=?',[id]);
+    await conn.query('UPDATE sms_recipients SET sms_enabled=0 WHERE user_id=?',[id]);
+    await conn.query('DELETE FROM password_resets WHERE user_id=? AND used_at IS NULL',[id]);
+    await conn.commit();
+    res.json({ok:true});
+  } catch(e) { await conn.rollback();throw e; } finally {conn.release();}
+}));
+
 module.exports = router;
