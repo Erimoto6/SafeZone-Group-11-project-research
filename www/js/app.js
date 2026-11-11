@@ -1136,6 +1136,8 @@ function accountSheet() {
       <p class="note" style="margin:0">Your account and login email. Password reset codes go to your verified recovery Gmail.<br>${emailHintHtml}</p>
       <button class="btn small" type="submit">Save web mail</button>
     </form>
+    <button type="button" class="btn soft small" data-act="testWebmail">Send test email to saved PUP webmail</button>
+    <p class="note">Check your PUP Outlook Inbox and Junk folder. This tests delivery only; your recovery Gmail stays the same for now.</p>
     ${me.role==='viewer' && me.kind==='student'?`<p class="section-label">Course and section</p><form id="student-profile-form" class="stack" novalidate>${profileFields('account',S.studentProfile || {})}<button class="btn small" type="submit">Save course and section</button></form>`:''}
     <p class="section-label">Recovery Gmail</p>
     <p class="note">${S.recovery?.email ? 'Verified: '+esc(S.recovery.email) : 'No verified recovery Gmail yet.'} Verify a Gmail you own to receive password reset codes. Your PUP login stays the same.</p>
@@ -1185,6 +1187,12 @@ const ACTS = {
     S.authError = ''; S.notice = ''; S.screen = 'fpEmail'; render();
   },
   closeSheet(v, el, e) { if (el.dataset.overlay && e.target !== el) return; closeSheet(); },
+  async testWebmail(v,el) {
+    if(el.disabled)return;
+    el.disabled=true;const label=el.textContent;el.textContent='Sending test email…';
+    try {const result=await api('/auth/me/test-webmail','POST',{});toast(result.message);}
+    finally {if(el.isConnected){el.disabled=false;el.textContent=label;}}
+  },
   async account() { const [recovery,profile]=await Promise.all([api('/auth/me/recovery'),api('/auth/me/student-profile')]);S.recovery=recovery;S.studentProfile=profile.profile;accountSheet(); },
   smsEdit(v) { S.pendingDel = ''; smsSheet(+v); },
   smsCancel() { S.pendingDel = ''; smsSheet(); },

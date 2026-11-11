@@ -93,4 +93,11 @@ async function sendResetCode(to, code, minutes, purpose = 'reset') {
   return { sent: true, testMode: false };
 }
 
-module.exports = { sendResetCode, lastCodes, ensureDeliveryAvailable };
+async function sendWebmailTest(to) {
+  if(!usesRelay())throw Object.assign(new Error('Configure the email relay first.'),{code:'RELAY_CONFIG'});
+  await ensureDeliveryAvailable();
+  await relayRequest({action:'test',to});
+  return {sent:true};
+}
+
+module.exports = { sendResetCode, lastCodes, ensureDeliveryAvailable, sendWebmailTest };

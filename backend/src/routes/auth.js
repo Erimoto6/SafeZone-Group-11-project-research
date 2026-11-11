@@ -103,6 +103,19 @@ router.put('/me/student-profile',requireAuth,wrap(async(req,res)=>{
   res.json({profile});
 }));
 
+// A delivery-only test to the currently registered PUP address, never a caller-selected recipient.
+const webmailTestLimit=process.env.RATE_LIMIT==='off'?(req,res,next)=>next():rateLimit({windowMs:15*60000,limit:3,keyGenerator:req=>String(req.user.id),standardHeaders:true,legacyHeaders:false,message:{error:'Please wait before requesting another webmail test.'}});
+router.post('/me/test-webmail',requireAuth,webmailTestLimit,wrap(async(req,res)=>{
+  const email=v.normEmail(req.user.email);
+  if(!v.emailKind(email))throw new HttpError(400,'Your account needs a registered PUP webmail address.');
+  try { await mail.sendWebmailTest(email); }
+  catch(e) {
+    console.error('PUP webmail test failed:',JSON.stringify({code:e.code || 'UNKNOWN',relayStatus:e.relayStatus || null}));
+    throw new HttpError(503,'Could not send the webmail test. Please try again after the email service deployment is ready.');
+  }
+  res.json({ok:true,message:'Test email accepted. Check your registered PUP Outlook Inbox and Junk folder.'});
+}));
+
 // ---- Save or change my web mail ----
 router.put('/me/email', requireAuth, wrap(async (req, res) => {
   const email = v.normEmail(req.body && req.body.email);

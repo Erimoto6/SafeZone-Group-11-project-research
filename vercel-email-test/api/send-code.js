@@ -11,17 +11,19 @@ function createHandler({env=process.env,createTransport=nodemailer.createTranspo
     if(typeof authorization!=='string'||!authorization.startsWith('Bearer ')||!crypto.timingSafeEqual(hash(authorization.slice(7)),hash(secret)))return res.status(401).json({error:'Unauthorized.'});
     const body=req.body;
     if(!body||typeof body!=='object'||Array.isArray(body))return res.status(400).json({error:'Use a JSON object.'});
-    const check=body.action==='check';
+    const check=body.action==='check',test=body.action==='test';
     const to=typeof body.to==='string'?body.to.trim().toLowerCase():'';
     const gmail=/^[a-z0-9][a-z0-9._+\-]*@gmail\.com$/;
-    if(!check&&(body.action!=='send'||!gmail.test(to)||to.length>254||typeof body.code!=='string'||!/^\d{6}$/.test(body.code)||!['reset','recovery'].includes(body.purpose)||body.minutes!==10))return res.status(400).json({error:'Invalid SafeZone verification request.'});
+    const pup=/^[a-z0-9][a-z0-9._\-]*@(iskolarngbayan\.pup\.edu\.ph|pup\.edu\.ph)$/;
+    const recipient=(gmail.test(to)||pup.test(to))&&to.length<=254;
+    if(!check&&(!recipient||(test?!pup.test(to):(body.action!=='send'||typeof body.code!=='string'||!/^\d{6}$/.test(body.code)||!['reset','recovery'].includes(body.purpose)||body.minutes!==10))))return res.status(400).json({error:'Invalid SafeZone verification request.'});
     const user=(env.GMAIL_USER||'').trim().toLowerCase(),pass=(env.GMAIL_APP_PASSWORD||'').replace(/\s/g,'');
     if(!gmail.test(user)||!pass)return res.status(503).json({error:'Sender configuration is incomplete.',code:'SENDER_NOT_CONFIGURED'});
     const transport=createTransport({host:'smtp.gmail.com',port:465,secure:true,auth:{user,pass},connectionTimeout:5000,greetingTimeout:5000,socketTimeout:8000});
     try{
       if(check){await transport.verify();return res.status(200).json({ok:true});}
-      const subject=body.purpose==='recovery'?'Verify your SafeZone recovery Gmail':'Your SafeZone password reset code';
-      const sent=await transport.sendMail({from:{name:'SafeZone',address:user},to,subject,text:`${subject}\n\nYour verification code is ${body.code}.\nIt expires in 10 minutes. If you did not request it, ignore this email.`});
+      const subject=test?'SafeZone PUP webmail delivery test':body.purpose==='recovery'?'Verify your SafeZone recovery email':'Your SafeZone password reset code';
+      const sent=await transport.sendMail({from:{name:'SafeZone',address:user},to,subject,text:test?'This test message was requested from the Account Settings of your SafeZone account. Receiving it confirms that SafeZone can deliver email to this PUP webmail inbox. This is not a verification or password-reset code. Your current recovery settings have not been changed.':`${subject}\n\nYour verification code is ${body.code}.\nIt expires in 10 minutes. If you did not request it, ignore this email.`});
       if(!sent.accepted?.some(address=>String(address).toLowerCase()===to))return res.status(502).json({error:'Recipient not accepted.',code:'EENVELOPE'});
       return res.status(200).json({ok:true});
     }catch(e){

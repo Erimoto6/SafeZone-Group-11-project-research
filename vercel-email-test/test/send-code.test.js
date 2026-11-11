@@ -15,3 +15,14 @@ test('missing Vercel variables return distinct safe diagnostic codes',async()=>{
  assert.equal((await setup({env:{...env,EMAIL_RELAY_SECRET:''}}).call({action:'check'})).body.code,'RELAY_NOT_CONFIGURED');
  assert.equal((await setup({env:{...env,GMAIL_APP_PASSWORD:''}}).call({action:'check'})).body.code,'SENDER_NOT_CONFIGURED');
 });
+
+test('relay supports both PUP webmail domains and rejects lookalikes',async()=>{
+ const f=setup();
+ for(const to of ['student@iskolarngbayan.pup.edu.ph','faculty@pup.edu.ph'])assert.equal((await f.call({action:'send',to,code:'123456',minutes:10,purpose:'reset'})).statusCode,200);
+ for(const to of ['student@evil.pup.edu.ph','student@pup.edu.ph.evil.com','student@outlook.com'])assert.equal((await f.call({action:'test',to})).statusCode,400);
+});
+test('webmail test sends fixed content, not a real reset or caller-supplied code',async()=>{
+ const f=setup();const r=await f.call({action:'test',to:'student@iskolarngbayan.pup.edu.ph',code:'123456',text:'INJECTED',subject:'INJECTED'});
+ assert.equal(r.statusCode,200);const m=f.messages[0];assert.equal(m.subject,'SafeZone PUP webmail delivery test');assert.match(m.text,/not a verification or password-reset code/);assert(!m.text.includes('123456'));assert(!m.text.includes('INJECTED'));
+ assert.equal((await f.call({action:'test',to:'user@gmail.com'})).statusCode,400);
+});
