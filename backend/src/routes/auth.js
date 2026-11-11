@@ -23,7 +23,8 @@ const limiter = (max, minutes) => process.env.RATE_LIMIT === 'off'
   : rateLimit({ windowMs: minutes * 60e3, limit: max, standardHeaders: true, legacyHeaders: false,
       message: { error: 'Too many tries. Please wait a few minutes and try again.' } });
 
-const hashCode = code => crypto.createHmac('sha256', SECRET).update(code).digest('hex');
+// Channel/recipient binding invalidates pre-switch Gmail codes without a schema change.
+const hashCode = (code,email) => crypto.createHmac('sha256', SECRET).update('pup-webmail-reset-v1:'+v.normEmail(email)+':'+code).digest('hex');
 const sameText = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password-1', 10);   // so a wrong username takes as long as a wrong password
@@ -157,32 +158,31 @@ router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
   lastRequest.set(email, Date.now());
   if (lastRequest.size > 5000) for (const [k, t] of lastRequest) if (Date.now() - t > 3600e3) lastRequest.delete(k);
 
-  // Always give the same response; never reveal an account or its recovery Gmail.
-  const reply = { ok: true, message: 'If this account has a verified recovery Gmail, a reset code has been requested for it.' };
+  // Always give the same response; never reveal whether the PUP address is registered.
+  const reply = { ok: true, message: 'If this PUP webmail is registered, a password reset code has been requested for it.' };
   let u;
   const code = String(crypto.randomInt(100000, 1000000));
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [rows] = await conn.query(`SELECT u.id,r.email AS recovery_email FROM users u
-      JOIN account_recovery r ON r.user_id=u.id WHERE u.email=? AND u.is_active=1 AND r.email IS NOT NULL FOR UPDATE`,[email]);
+    const [rows] = await conn.query('SELECT id,email FROM users WHERE email=? AND is_active=1 FOR UPDATE',[email]);
     u=rows[0];
     if (u) {
       await conn.query('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL',[u.id]);
-      await conn.query('INSERT INTO password_resets (user_id,code_hash,expires_at) VALUES (?,?,DATE_ADD(NOW(),INTERVAL ? MINUTE))',[u.id,hashCode(code),RESET_MINUTES]);
+      await conn.query('INSERT INTO password_resets (user_id,code_hash,expires_at) VALUES (?,?,DATE_ADD(NOW(),INTERVAL ? MINUTE))',[u.id,hashCode(code,u.email),RESET_MINUTES]);
     }
     await conn.commit();
   } catch(e) { await conn.rollback();throw e; } finally {conn.release();}
   if (!u) return res.json(reply);
 
   // Send in the background so the reply is just as fast whether or not the account exists.
-  mail.sendResetCode(u.recovery_email, code, RESET_MINUTES)
+  mail.sendResetCode(u.email, code, RESET_MINUTES)
     .then(r => pool.query('INSERT INTO notification_log (purpose, channel, to_address, user_id, status) VALUES (?, ?, ?, ?, ?)',
-      ['password_reset', 'email', u.recovery_email, u.id, r.sent ? 'sent' : 'queued']))
+      ['password_reset', 'email', u.email, u.id, r.sent ? 'sent' : 'queued']))
     .catch(async e => {
       console.error('Could not send the reset email:', e.message);
       await pool.query('INSERT INTO notification_log (purpose, channel, to_address, user_id, status, error) VALUES (?, ?, ?, ?, ?, ?)',
-        ['password_reset', 'email', u.recovery_email, u.id, 'failed', String(e.message).slice(0, 255)]).catch(() => {});
+        ['password_reset', 'email', u.email, u.id, 'failed', String(e.message).slice(0, 255)]).catch(() => {});
     });
   res.json(reply);
 }));
@@ -195,7 +195,7 @@ router.post('/verify-code', limiter(30, 15), wrap(async (req, res) => {
 
   const [rows] = await pool.query(
     `SELECT r.id, r.code_hash, r.user_id FROM password_resets r JOIN users u ON u.id = r.user_id
-     WHERE u.email = ? AND r.used_at IS NULL AND r.verified_at IS NULL AND r.expires_at > NOW()
+     WHERE u.email = ? AND u.is_active = 1 AND r.used_at IS NULL AND r.verified_at IS NULL AND r.expires_at > NOW()
      ORDER BY r.id DESC LIMIT 1`, [email]);
   const r = rows[0];
   if (!r) throw bad;
@@ -203,10 +203,10 @@ router.post('/verify-code', limiter(30, 15), wrap(async (req, res) => {
   // Use up one try first (in one step), so fast parallel guessing cannot get more than 5 tries.
   const [claim] = await pool.query('UPDATE password_resets SET attempts = attempts + 1 WHERE id = ? AND attempts < ?', [r.id, RESET_TRIES]);
   if (claim.affectedRows !== 1) throw bad;
-  if (!sameText(hashCode(code), r.code_hash)) throw bad;
+  if (!sameText(hashCode(code,email), r.code_hash)) throw bad;
 
   await pool.query('UPDATE password_resets SET verified_at = NOW() WHERE id = ?', [r.id]);
-  const resetToken = jwt.sign({ purpose: 'reset', rid: r.id, sub: r.user_id }, SECRET, { algorithm: 'HS256', expiresIn: RESET_MINUTES + 'm' });
+  const resetToken = jwt.sign({ purpose: 'reset', channel:'pup-webmail', emailHash:sha(email), rid: r.id, sub: r.user_id }, SECRET, { algorithm: 'HS256', expiresIn: RESET_MINUTES + 'm' });
   res.json({ resetToken });
 }));
 
@@ -215,7 +215,7 @@ router.post('/reset', limiter(15, 15), wrap(async (req, res) => {
   const expired = new HttpError(400, 'This reset has expired. Please start again.');
   let p;
   try { p = jwt.verify(String(resetToken || ''), SECRET, { algorithms: ['HS256'] }); } catch (e) { throw expired; }
-  if (p.purpose !== 'reset') throw expired;
+  if (p.purpose !== 'reset' || p.channel !== 'pup-webmail') throw expired;
   const problem = v.passwordProblem(newPassword);
   if (problem) throw new HttpError(400, problem);
   const hash = await bcrypt.hash(newPassword, 10);
@@ -223,6 +223,9 @@ router.post('/reset', limiter(15, 15), wrap(async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    // Bind the grant to the current active account email, even if it changed after verification.
+    const [[account]]=await conn.query('SELECT email FROM users WHERE id=? AND is_active=1 FOR UPDATE',[p.sub]);
+    if(!account || !sameText(sha(v.normEmail(account.email)),p.emailHash))throw expired;
     // The verified reset can be used exactly once.
     const [claim] = await conn.query(
       `UPDATE password_resets SET used_at = NOW()

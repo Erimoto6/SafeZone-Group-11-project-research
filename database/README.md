@@ -7,7 +7,7 @@ Shared simulated readings are stored here; physical sensor integration is not in
 |---|---|
 | `users` | every account (admins and students/faculty), passwords as bcrypt hashes |
 | `student_profiles` | student course code and free-text section, linked to the account |
-| `account_recovery` | verified recovery Gmail and pending ownership challenges |
+| `account_recovery` | legacy recovery Gmail records (not used by current PUP reset flow) |
 | `password_resets` | forgot-password codes (hashed), expiry and tries |
 | `rooms` | 43 classrooms across four floors on the 1st floor, plus any rooms an admin adds (201..., 301..., 401...) |
 | `thresholds` | warning and limit for temperature, humidity, CO2 |
@@ -84,7 +84,7 @@ Lighting groups and past lighting kWh remain stored for history, but are hidden 
 
 ## Recovery Gmail migration
 
-After 07, run `08-recovery-gmail.sql` once to add the `account_recovery` table. Existing users/passwords and PUP account emails stay unchanged. Outstanding password reset codes are invalidated during the upgrade. Users must log in and verify a recovery Gmail in Account Settings before using Forgot Password. No existing addresses are automatically trusted.
+After 07, run `08-recovery-gmail.sql` once to add the `account_recovery` table. Existing users/passwords and PUP account emails stay unchanged. Outstanding password reset codes are invalidated during the upgrade. This is a historical migration retained for setup compatibility. The current Forgot Password flow does not use this table: it sends directly to registered PUP webmail. Existing rows are left untouched; no manual cleanup is needed.
 
 ## Course and section migration
 

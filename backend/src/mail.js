@@ -78,7 +78,7 @@ async function sendResetCode(to, code, minutes, purpose = 'reset') {
     return { sent: false, testMode: true };
   }
 
-  const title = purpose === 'recovery' ? 'Verify your SafeZone recovery Gmail' : 'Your SafeZone password reset code';
+  const title = purpose === 'recovery' ? 'Verify your SafeZone recovery email' : 'Your SafeZone password reset code';
   await transport.sendMail({
     from: process.env.MAIL_FROM || process.env.SMTP_USER,
     to,

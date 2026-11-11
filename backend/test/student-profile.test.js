@@ -32,6 +32,9 @@ test('student signup stores profile and existing students can update only their 
   assert.equal((await call('/register','POST',account)).status,400);
   assert.equal((await call('/register','POST',{...account,courseCode:'BSIT',section:' 2-1 '})).status,201);
   assert.deepEqual(created.profile,{courseCode:'BSIT',section:'2-1'});
+  assert.equal((await call('/register','POST',{...account,email:'faculty@pup.edu.ph'})).status,201);
+  assert.equal(created.profile,null,'faculty registration does not require course or section');
+  assert.equal(created.kind,'faculty');
   assert.equal((await call('/me/student-profile','PUT',{courseCode:'BSP',section:'1-2'},'admin')).status,403);
   assert.equal((await call('/me/student-profile','PUT',{courseCode:'BSIE',section:'2-a',userId:99})).status,200);
   assert.deepEqual(profile,{courseCode:'BSIE',section:'2-A'});

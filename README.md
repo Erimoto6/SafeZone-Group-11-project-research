@@ -166,9 +166,9 @@ The default roster includes 43 classrooms across four floors, excluding rooms 10
 
 Home only selects rooms for viewing. Admins add missing classrooms from Monitoring and edit existing rooms in Settings. Add/Edit validates room numbers 01–12 on each matching floor and excludes the clinic, offices and library; fully populated floors cannot add another classroom. No database migration is needed for this validation change.
 
-### Recovery Gmail
+### Password recovery
 
-After migration 07, run `database/08-recovery-gmail.sql` once. While logged in, each user can open Account Settings from the menu, enter their own recovery Gmail, and verify the emailed code. The PUP email remains their account/login address. Forgot Password takes that PUP address and sends only to the previously verified Gmail. Existing users must enroll before using this option; no address is automatically verified. Sender SMTP configuration is still required; see [backend email setup](backend/README.md#verified-recovery-gmail).
+Forgot Password asks for the registered PUP webmail and sends the six-digit code directly to that Outlook mailbox. There is no recovery Gmail setup. The project Gmail remains the sender through Vercel. Codes expire in 10 minutes and signed reset grants are single-use; successful password reset revokes old login sessions. Old Gmail-flow codes/tokens stop working after the switch, without a SQL update. See [backend email setup](backend/README.md#pup-webmail-password-recovery).
 
 ## Repository layout and Vercel email delivery
 
@@ -199,4 +199,4 @@ All admins can permanently delete a student from **Manage Users → Student Acco
 
 For course/section storage, run **`database/09-student-profiles.sql`** once on the database used by the app, after migration 08. It only creates a linked profile table; existing accounts/passwords remain unchanged and old profiles show as not set until students fill them in. Do not rerun the full setup. Core account access works before migration 09, but saving a profile/new student registration needs the table.
 
-PUP webmail delivery can be tested from Account Settings using **Send test email to saved PUP webmail**. Check the registered address's Outlook Inbox/Junk for the test message. This does not switch password recovery away from verified Gmail or alter account data; see [PUP delivery test](backend/README.md#test-delivery-to-registered-pup-webmail).
+PUP webmail delivery can be tested from Account Settings using **Send test email to saved PUP webmail**. Check the registered address's Outlook Inbox/Junk for the test message. This does not change account details or passwords; see [PUP delivery test](backend/README.md#test-delivery-to-registered-pup-webmail).

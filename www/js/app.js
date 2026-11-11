@@ -150,7 +150,7 @@ function signOut() {
   token = ''; sessionStorage.removeItem('safezone.token');
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
   alertWatermarks.clear(); S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
-  S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.recovery = null; S.studentProfile = null; closeSheet();
+  S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.studentProfile = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
 async function refreshData() {
@@ -882,11 +882,11 @@ function fpEmailView() {
   return `<div class="splash auth">${authBack(admin ? 'login' : 'vLogin')}<div class="auth-in">
     ${circle('mail')}
     <h2>Forgot Password</h2>
-    <p class="tag-line" style="margin-bottom:20px">Enter your registered PUP web mail. We will send a code to your verified recovery Gmail.</p>
+    <p class="tag-line" style="margin-bottom:20px">Enter your registered PUP webmail. We will send a six-digit password reset code to that address.</p>
     <form id="fp-email-form" style="width:100%" novalidate>
       <label class="flabel" for="fpe">PUP Web Mail</label>
       ${emailInput('fpe', S.reset ? S.reset.email : '')}
-      <p class="hint">${emailHintHtml} Set up a recovery Gmail in Account Settings while logged in before using this feature.</p>
+      <p class="hint">${emailHintHtml} Make sure you can access this address in Outlook.</p>
       ${errLine()}
       <button class="btn" type="submit">Send code</button>
     </form>
@@ -895,12 +895,10 @@ function fpEmailView() {
 
 function fpCodeView() {
   const r = S.reset;
-  const demo = '';
   return `<div class="splash auth">${authBack('fpEmail')}<div class="auth-in">
     ${circle('key')}
     <h2>Enter Code</h2>
-    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> has a verified recovery email, a verification code has been sent to that recovery email. The code works for ${RESET_MINUTES} minutes.<br>Enter the code from your recovery Gmail inbox below. Check Junk if it is missing. Accounts without a verified recovery Gmail must contact their administrator.</p>
-    ${demo}
+    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> is registered, a verification code has been sent to that PUP webmail. It expires in ${RESET_MINUTES} minutes.<br>Open your Outlook Inbox or Junk folder and enter the code below.</p>
     <form id="fp-code-form" style="width:100%" novalidate>
       <label class="flabel" for="fpc">6-digit code</label>
       <div class="field">${I.key}<input type="text" id="fpc" inputmode="numeric" maxlength="6" placeholder="000000" aria-label="6-digit code" autocomplete="one-time-code"></div>
@@ -1133,23 +1131,12 @@ function accountSheet() {
     <p class="section-label">PUP web mail</p>
     <form id="email-form" class="stack" novalidate>
       ${emailInput('ae', me.email || '')}
-      <p class="note" style="margin:0">Your account and login email. Password reset codes go to your verified recovery Gmail.<br>${emailHintHtml}</p>
+      <p class="note" style="margin:0">Your account, login, and password recovery email. Reset codes are sent directly to this PUP webmail.<br>${emailHintHtml}</p>
       <button class="btn small" type="submit">Save web mail</button>
     </form>
     <button type="button" class="btn soft small" data-act="testWebmail">Send test email to saved PUP webmail</button>
-    <p class="note">Check your PUP Outlook Inbox and Junk folder. This tests delivery only; your recovery Gmail stays the same for now.</p>
+    <p class="note">Password reset codes are sent to this saved PUP webmail. Check Outlook Inbox and Junk; mark SafeZone messages as not junk if necessary.</p>
     ${me.role==='viewer' && me.kind==='student'?`<p class="section-label">Course and section</p><form id="student-profile-form" class="stack" novalidate>${profileFields('account',S.studentProfile || {})}<button class="btn small" type="submit">Save course and section</button></form>`:''}
-    <p class="section-label">Recovery Gmail</p>
-    <p class="note">${S.recovery?.email ? 'Verified: '+esc(S.recovery.email) : 'No verified recovery Gmail yet.'} Verify a Gmail you own to receive password reset codes. Your PUP login stays the same.</p>
-    <form id="recovery-request-form" class="stack" novalidate>
-      <label class="f">Recovery Gmail<input id="recovery-email" type="email" autocomplete="email" placeholder="Enter your recovery Gmail" aria-label="Recovery Gmail" value="${esc(S.recovery?.pendingEmail || S.recovery?.email || '')}"></label>
-      <button class="btn small" type="submit">Send verification code</button>
-    </form>
-    ${S.recovery?.pendingEmail ? `<p class="note">Enter the code sent to ${esc(S.recovery.pendingEmail)}. It expires in 10 minutes. An existing verified Gmail remains active until this change is verified.</p>
-    <form id="recovery-verify-form" class="stack" novalidate>
-      <label class="f">Verification code<input id="recovery-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
-      <button class="btn small" type="submit">Verify recovery Gmail</button>
-    </form>` : ''}
     <p class="section-label">Change password</p>
     <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><p class="note" style="margin:0">At least 6 characters, with a letter and a number, and no spaces.</p><button class="btn small" type="submit">Update password</button></form>`);
 }
@@ -1183,7 +1170,7 @@ const ACTS = {
     el.innerHTML = show ? I.eyeoff : I.eye; el.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
   },
   forgot(v) {
-    S.reset = { side: v === 'admin' ? 'admin' : 'viewer', email: '', code: null, exp: 0, tries: 0, sentAt: 0, ok: false, okExp: 0, demo: false };
+    S.reset = { side: v === 'admin' ? 'admin' : 'viewer', email: '', sentAt: 0 };
     S.authError = ''; S.notice = ''; S.screen = 'fpEmail'; render();
   },
   closeSheet(v, el, e) { if (el.dataset.overlay && e.target !== el) return; closeSheet(); },
@@ -1193,7 +1180,7 @@ const ACTS = {
     try {const result=await api('/auth/me/test-webmail','POST',{});toast(result.message);}
     finally {if(el.isConnected){el.disabled=false;el.textContent=label;}}
   },
-  async account() { const [recovery,profile]=await Promise.all([api('/auth/me/recovery'),api('/auth/me/student-profile')]);S.recovery=recovery;S.studentProfile=profile.profile;accountSheet(); },
+  async account() { const result=await api('/auth/me/student-profile');S.studentProfile=result.profile;accountSheet(); },
   smsEdit(v) { S.pendingDel = ''; smsSheet(+v); },
   smsCancel() { S.pendingDel = ''; smsSheet(); },
   pickRoom() { pickSheet(); },
@@ -1243,7 +1230,7 @@ Object.assign(ACTS, {
     if(S.role!=='admin')return;
     const student=S.accounts.find(a=>String(a.id)===v && a.role==='viewer' && a.kind==='student');
     if(!student)return;
-    openSheet('Delete student permanently?',`<p>Permanently delete the account for <b>${esc(student.email)}</b>?</p><p class="note">This cannot be undone. The account, recovery Gmail, reset codes and linked SMS contact will be deleted. Existing sessions will stop working. The email and phone number can be registered again.</p><div class="stack"><button class="btn" data-act="confirmStudentRemove" data-v="${student.id}">Delete permanently</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
+    openSheet('Delete student permanently?',`<p>Permanently delete the account for <b>${esc(student.email)}</b>?</p><p class="note">This cannot be undone. The account, student profile, reset codes and linked SMS contact will be deleted. Existing sessions will stop working. The email and phone number can be registered again.</p><div class="stack"><button class="btn" data-act="confirmStudentRemove" data-v="${student.id}">Delete permanently</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
   },
   async confirmStudentRemove(v,el) {
     if(S.role!=='admin'||el.disabled)return;
@@ -1335,7 +1322,7 @@ document.addEventListener('submit', async e => {
     } else if (id === 'fp-email-form') {
       const email = normEmail(value('fpe'));
       await api('/auth/forgot', 'POST', { email });
-      S.reset = { ...S.reset, email, sentAt: Date.now(), demo: false };
+      S.reset = { ...S.reset, email, sentAt: Date.now() };
       S.authError = ''; S.screen = 'fpCode'; render();
     } else if (id === 'fp-code-form') {
       const result = await api('/auth/verify-code', 'POST', { email: S.reset.email, code: value('fpc').trim() });
@@ -1363,16 +1350,6 @@ document.addEventListener('submit', async e => {
       toast(roomId?'Room updated':'Room added');
     } else if (id === 'student-profile-form') {
       const result=await api('/auth/me/student-profile','PUT',readProfile('account'));S.studentProfile=result.profile;toast('Course and section saved');
-    } else if (id === 'recovery-request-form') {
-      const result = await api('/auth/me/recovery/request', 'POST', { email: value('recovery-email') });
-      formDrafts.delete(formKey(form)); form.reset();
-      S.recovery = { ...S.recovery, pendingEmail: result.pendingEmail };
-      captureEnabled=false; accountSheet(); captureEnabled=true; toast('Verification code sent to your Gmail');
-    } else if (id === 'recovery-verify-form') {
-      const result = await api('/auth/me/recovery/verify', 'POST', { code: value('recovery-code') });
-      formDrafts.delete(formKey(form)); form.reset();
-      S.recovery = { email: result.email, pendingEmail: null };
-      captureEnabled=false; accountSheet(); captureEnabled=true; toast('Recovery Gmail verified');
     } else if (id === 'email-form') {
       const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
       S.me = mapUser(data.user); toast('Web mail saved');

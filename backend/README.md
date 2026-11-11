@@ -128,24 +128,13 @@ After Railway redeploys, request a reset for an existing account, check its Inbo
 
 The backend checks SMTP connectivity/authentication before accepting reset requests and reports a generic 503 error during an email outage without disclosing whether an account exists. Provider acceptance still does not guarantee inbox delivery; check the sender provider's logs and recipient spam filtering if a code is missing. Some Railway plans restrict outbound SMTP; check current plan support if connections time out, or use a transactional email provider through an HTTPS integration. The Vercel HTTPS relay described below is supported.
 
-## Verified recovery Gmail
+## PUP webmail password recovery
 
-Run `database/08-recovery-gmail.sql` after migration 07. It creates `account_recovery` and invalidates outstanding pre-upgrade password reset codes, preserving account/password data. Accounts start without a recovery Gmail.
+Forgot Password sends a six-digit code directly to the active account's registered PUP webmail, received in Outlook. Admins and students/faculty use the same code flow. Users no longer add or verify a separate recovery Gmail. Codes expire after 10 minutes, allow five guesses, and can be requested again after a 30-second cooldown. Code hashes and signed reset grants are bound to the PUP recipient; a successful reset consumes the grant and revokes previous login sessions.
 
-While logged in, open Account Settings, enter a personal recovery Gmail, request a code, and verify the code. Codes expire in 10 minutes, allow five attempts and have a 30-second resend cooldown. A replacement address stays pending until verified; the previous verified address remains usable. Completing a change invalidates existing password reset codes. Login email remains the PUP address. The forgot-password form accepts the PUP account email and sends only to the verified Gmail saved for that account; it never accepts an arbitrary reset recipient. Accounts without verified recovery Gmail need administrator assistance.
+The project Gmail `safezone.project0@gmail.com` remains only the sender through Vercel. It is not a user recovery account. Existing `account_recovery` rows are legacy data and are not read by reset requests. The old Gmail enrollment endpoints have been removed. No new database migration or secret is required for the switch: changed code hashing and a new reset-token channel reject pre-switch codes/grants. Existing passwords and login tokens remain valid until a user actually resets their password.
 
-The project sender `safezone.project0@gmail.com` is separate from users' recovery Gmail addresses. In the Railway backend service set:
-
-```env
-NODE_ENV=production
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=safezone.project0@gmail.com
-SMTP_PASS=YOUR_GOOGLE_APP_PASSWORD
-MAIL_FROM=SafeZone <safezone.project0@gmail.com>
-```
-
-Enable 2-Step Verification on the sender Google account, then create an App Password. Store the actual value only in Railway/private `.env`. Outbound SMTP must be permitted on the Railway plan; these code changes do not establish mail delivery by themselves. No PUP/Outlook sender credentials are needed.
+Use the Railway/Vercel relay variables described below. Users should check Outlook Inbox and Junk, mark the known SafeZone sender as not junk, and request a fresh code after the deployment. Microsoft may continue to add an EXTERNAL banner because the sender is outside PUP.
 
 ## Railway Trial: Vercel HTTPS email relay
 
@@ -161,7 +150,7 @@ EMAIL_RELAY_SECRET=THE_EXACT_SAME_NEW_SECRET_AS_VERCEL
 ```
 
 4. Deploy the latest backend with these variables. Old SMTP variables are ignored when relay configuration is present. Never put the relay secret or App Password in the public frontend.
-5. While logged in, open Account Settings, enter a recovery Gmail, request/enter the emailed code, then log out and test Forgot Password with the PUP account email. The new reset code arrives at the verified Gmail; after reset the old password should fail.
+5. While logged in, log out and choose Forgot Password, enter the PUP account email, receive the emailed code in Outlook, and complete verification. The new reset code arrives at the registered PUP address; after reset the old password should fail.
 
 No new database migration is required if migration 08 is installed. The relay accepts only an authenticated readiness check or a fixed six-digit reset/recovery template sent to one Gmail or PUP-domain recipient. An authenticated delivery-test action can also send fixed test content to a PUP address. Railway remains responsible for authentication, rate limits, recipient ownership, generating/storing codes, verifying attempts/expiry and changing passwords. The public frontend calls Railway, not Vercel.
 
@@ -181,4 +170,4 @@ Authenticated students use `GET /api/auth/me/student-profile` and `PUT /api/auth
 
 After both Railway and Vercel deploy the test update, a logged-in user can open Account Settings and choose **Send test email to saved PUP webmail**. `POST /api/auth/me/test-webmail` ignores request-supplied recipients and uses the account's current registered PUP email. It is limited to three requests per account per 15 minutes. No reset codes, verification records or recovery settings are created or changed.
 
-The relay supports only Gmail, `@pup.edu.ph` and `@iskolarngbayan.pup.edu.ph` recipients. The test action accepts PUP recipients only and uses fixed content/subject. The project Gmail remains the sender. A successful API response means SMTP acceptance, not inbox arrival: the user must check Outlook Inbox and Junk for **SafeZone PUP webmail delivery test**. Keep the existing recovery Gmail flow until live PUP delivery is confirmed. No SQL migration or new secrets are required.
+The relay supports only Gmail, `@pup.edu.ph` and `@iskolarngbayan.pup.edu.ph` recipients. The test action accepts PUP recipients only and uses fixed content/subject. The project Gmail remains the sender. A successful API response means SMTP acceptance, not inbox arrival: the user must check Outlook Inbox and Junk for **SafeZone PUP webmail delivery test**. PUP delivery has been confirmed for this deployment; the active reset flow now uses the registered PUP address. No SQL migration or new secrets are required.
