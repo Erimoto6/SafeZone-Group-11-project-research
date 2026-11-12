@@ -433,7 +433,7 @@ function nav() {
 }
 
 function topbar() {
-  const home = S.screen === 'home'; const back = S.screen==='students'?'users': ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
+  const home = S.screen === 'home'; const back = ['rooms','analytics'].includes(S.screen)?'monitor':S.screen==='students'?'users': ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
   return `<header class="topbar">${home
     ? `${logo(34)}<h1>SafeZone</h1>`
     : `<button data-act="go" data-v="${back}" aria-label="Back to ${back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
@@ -522,14 +522,14 @@ function overviewStatus(room,limits) {
 }
 function overviewView() {
   const rooms=S.rooms.filter(r=>S.overviewFloor==='all'||r.floor===Number(S.overviewFloor));
-  return `${monitoringLinks()}<p class="note">Current simulated readings. Status uses the more severe temperature or CO₂ level.</p><label class="f" for="overview-floor">Floor</label><select id="overview-floor"><option value="all">All floors</option>${floorList().map(f=>`<option value="${f}" ${String(f)===S.overviewFloor?'selected':''}>${floorName(f)}</option>`).join('')}</select><div class="room-table-scroll" role="region" aria-label="Classroom readings" tabindex="0"><table class="room-overview-table"><caption>Classroom environmental readings</caption><thead><tr><th scope="col">Room Number</th><th scope="col">Temperature</th><th scope="col">Carbon Dioxide (CO₂)</th><th scope="col">Status</th></tr></thead><tbody>${rooms.map(r=>{const status=overviewStatus(r,S.limits);return `<tr class="room-state-${status}"><th scope="row"><button class="linkbtn" data-act="monitorRoom" data-v="${r.id}">${esc(r.name)}</button></th><td>${r.observed&&r.reading.temp!=null?withUnit('temp',Number(r.reading.temp)):'—'}</td><td>${r.observed&&r.reading.co2!=null?withUnit('co2',Number(r.reading.co2)):'—'}</td><td><span class="chip ${status}">${status==='unknown'?'Awaiting data':LV[status]}</span></td></tr>`;}).join('')}</tbody></table></div><p class="note">Green: Normal · Yellow: Warning · Red: Danger. Open a room to view its charts.</p>`;
+  return `<p class="note">Current simulated readings. Status uses the more severe temperature or CO₂ level.</p><label class="f" for="overview-floor">Floor</label><select id="overview-floor"><option value="all">All floors</option>${floorList().map(f=>`<option value="${f}" ${String(f)===S.overviewFloor?'selected':''}>${floorName(f)}</option>`).join('')}</select><div class="room-table-scroll" role="region" aria-label="Classroom readings" tabindex="0"><table class="room-overview-table"><caption>Classroom environmental readings</caption><thead><tr><th scope="col">Room Number</th><th scope="col">Temperature</th><th scope="col">Carbon Dioxide (CO₂)</th><th scope="col">Status</th></tr></thead><tbody>${rooms.map(r=>{const status=overviewStatus(r,S.limits);return `<tr class="room-state-${status}"><th scope="row"><button class="linkbtn" data-act="monitorRoom" data-v="${r.id}">${esc(r.name)}</button></th><td>${r.observed&&r.reading.temp!=null?withUnit('temp',Number(r.reading.temp)):'—'}</td><td>${r.observed&&r.reading.co2!=null?withUnit('co2',Number(r.reading.co2)):'—'}</td><td><span class="chip ${status}">${status==='unknown'?'Awaiting data':LV[status]}</span></td></tr>`;}).join('')}</tbody></table></div><p class="note">Green: Normal · Yellow: Warning · Red: Danger. Open a room to view its charts.</p>`;
 }
 function temperatureRanking(rooms,limits) {
   return rooms.filter(r=>r.observed && r.reading.temp!=null && Number.isFinite(Number(r.reading.temp))).slice().sort((a,b)=>Number(b.reading.temp)-Number(a.reading.temp)||a.name.localeCompare(b.name,undefined,{numeric:true})).map(r=>({room:r,status:readingStatus(r.reading.temp,limits)}));
 }
 function analyticsView() {
   const ranked=temperatureRanking(S.rooms,S.limits.temp),atRisk=ranked.filter(r=>r.status!=='normal');
-  return `${monitoringLinks()}<h2>Rooms with high temperatures</h2><p class="sub">Current snapshot, ranked from highest to lowest. These are simulated readings, not historical averages.</p><div class="analytics-summary"><div><b>${atRisk.length}</b><span>At warning or danger</span></div><div><b>${ranked.length}</b><span>Rooms with data</span></div></div><p class="note">Warning: ${withUnit('temp',S.limits.temp.warn)} · Limit: ${withUnit('temp',S.limits.temp.limit)}. Actual conditions may vary with weather, occupancy and ventilation.</p><div class="temperature-ranking">${ranked.map(({room:r,status},index)=>`<button class="card temperature-rank" data-act="monitorRoom" data-v="${r.id}"><span class="rank-number">${index+1}</span><span class="rank-room"><b>${esc(r.name)}</b><small>${floorName(r.floor)}</small></span><span class="rank-reading"><b>${withUnit('temp',Number(r.reading.temp))}</b><small class="chip ${status}">${LV[status]}</small></span></button>`).join('') || '<p class="empty">Waiting for room readings.</p>'}</div>`;
+  return `<h2>Rooms with high temperatures</h2><p class="sub">Current snapshot, ranked from highest to lowest. These are simulated readings, not historical averages.</p><div class="analytics-summary"><div><b>${atRisk.length}</b><span>At warning or danger</span></div><div><b>${ranked.length}</b><span>Rooms with data</span></div></div><p class="note">Warning: ${withUnit('temp',S.limits.temp.warn)} · Limit: ${withUnit('temp',S.limits.temp.limit)}. Actual conditions may vary with weather, occupancy and ventilation.</p><div class="temperature-ranking">${ranked.map(({room:r,status},index)=>`<button class="card temperature-rank" data-act="monitorRoom" data-v="${r.id}"><span class="rank-number">${index+1}</span><span class="rank-room"><b>${esc(r.name)}</b><small>${floorName(r.floor)}</small></span><span class="rank-reading"><b>${withUnit('temp',Number(r.reading.temp))}</b><small class="chip ${status}">${LV[status]}</small></span></button>`).join('') || '<p class="empty">Waiting for room readings.</p>'}</div>`;
 }
 
 function homeView() {
@@ -537,7 +537,7 @@ function homeView() {
   const head = S.role === 'admin'
     ? `<h2>Welcome, Admin!</h2><p class="sub">Here's the current environment in ${room} and the system status.</p>`
     : `<h2>Classroom Environment</h2><p class="sub">Real-time indoor conditions in ${room}.</p>`;
-  return `${head}${roomBar()}${liveLine()}${cards()}${FEATURES.fanEnergy?powerCard(true):''}${banner()}${monitoringLinks()}${legendCard()}`;
+  return `${head}${roomBar()}${liveLine()}${cards()}${FEATURES.fanEnergy?powerCard(true):''}${banner()}${legendCard()}`;
 }
 
 function groupRoomAlerts(alerts, roomId) {
