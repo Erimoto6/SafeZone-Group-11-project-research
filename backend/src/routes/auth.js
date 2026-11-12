@@ -17,6 +17,12 @@ const RESET_MINUTES = 10;     // how long a code works
 const RESET_TRIES = 5;        // guesses allowed per code
 const RESEND_SECONDS = 30;    // wait before another code can be requested
 
+// Keep useful diagnostics without logging recipients, codes, secrets or SMTP payloads.
+const deliveryFailure = error => ({
+  code:typeof error?.code==='string' && /^[A-Z0-9_]{1,48}$/.test(error.code)?error.code:'UNKNOWN',
+  relayStatus:Number.isInteger(error?.relayStatus)&&error.relayStatus>=100&&error.relayStatus<=599?error.relayStatus:null
+});
+
 // Slows down people who keep guessing. Switched off by RATE_LIMIT=off (used by the test script only).
 const limiter = (max, minutes) => process.env.RATE_LIMIT === 'off'
   ? (req, res, next) => next()
@@ -152,7 +158,7 @@ router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
   try {
     await mail.ensureDeliveryAvailable();
   } catch (e) {
-    console.error('Password reset email unavailable:', e.message);
+    console.error('Password reset email unavailable:', JSON.stringify(deliveryFailure(e)));
     throw new HttpError(503, 'Password reset email is temporarily unavailable. Please contact your administrator or try again later.');
   }
   lastRequest.set(email, Date.now());
@@ -178,11 +184,12 @@ router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
   // Send in the background so the reply is just as fast whether or not the account exists.
   mail.sendResetCode(u.email, code, RESET_MINUTES)
     .then(r => pool.query('INSERT INTO notification_log (purpose, channel, to_address, user_id, status) VALUES (?, ?, ?, ?, ?)',
-      ['password_reset', 'email', u.email, u.id, r.sent ? 'sent' : 'queued']))
+      ['password_reset', 'email', u.email, u.id, r.sent ? 'sent' : 'queued']).catch(e=>{console.error('Could not record reset email status:',JSON.stringify(deliveryFailure(e)));}))
     .catch(async e => {
-      console.error('Could not send the reset email:', e.message);
+      const failure=JSON.stringify(deliveryFailure(e));
+      console.error('Could not send the reset email:', failure);
       await pool.query('INSERT INTO notification_log (purpose, channel, to_address, user_id, status, error) VALUES (?, ?, ?, ?, ?, ?)',
-        ['password_reset', 'email', u.email, u.id, 'failed', String(e.message).slice(0, 255)]).catch(() => {});
+        ['password_reset', 'email', u.email, u.id, 'failed', failure]).catch(() => {});
     });
   res.json(reply);
 }));

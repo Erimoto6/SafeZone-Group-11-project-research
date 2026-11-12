@@ -5,7 +5,7 @@ const SECRET='pup-reset-test-secret-'.repeat(3);
 async function fixture(role){
  let clock=Date.now(),rows=new Map(),nextId=1,snapshot=null;
  const user={id:7,role,username:role==='admin'?'admin':null,email:role==='admin'?'admin@pup.edu.ph':'student@iskolarngbayan.pup.edu.ph',email_kind:role==='admin'?'faculty':'student',phone:'09123456789',is_active:1,token_version:0,password_hash:await bcrypt.hash('Original1',4)};
- const sent=[];
+ const sent=[],errors=[],notifications=[],mailState={preflightError:null,sendError:null};
  const query=async(sql,args=[])=>{
   const q=sql.replace(/\s+/g,' ');
   if(q.startsWith('SELECT id,email FROM users'))return [[...(user.email===args[0]&&user.is_active?[{id:user.id,email:user.email}]:[])]];
@@ -14,7 +14,8 @@ async function fixture(role){
   if(q.startsWith('SELECT * FROM users WHERE email'))return [[...(user.email===args[0]&&user.is_active?[{...user}]:[])]];
   if(q.startsWith('DELETE FROM password_resets')){for(const [id,r]of rows)if(r.user_id===args[0]&&!r.used_at)rows.delete(id);return [{}];}
   if(q.startsWith('INSERT INTO password_resets')){const id=nextId++;rows.set(id,{id,user_id:args[0],code_hash:args[1],expires_at:clock+args[2]*60000,attempts:0,verified_at:null,used_at:null});return [{insertId:id}];}
-  if(q.startsWith('INSERT INTO notification_log')||q.startsWith('UPDATE users SET last_login_at'))return [{}];
+  if(q.startsWith('INSERT INTO notification_log')){notifications.push(args);return [{}];}
+  if(q.startsWith('UPDATE users SET last_login_at'))return [{}];
   if(q.startsWith('SELECT r.id, r.code_hash')){const matches=[...rows.values()].filter(r=>user.email===args[0]&&user.is_active&&!r.used_at&&!r.verified_at&&r.expires_at>clock).sort((a,b)=>b.id-a.id);return [matches.slice(0,1).map(r=>({...r}))];}
   if(q.startsWith('UPDATE password_resets SET attempts')){const r=rows.get(args[0]);if(!r||r.attempts>=args[1])return [{affectedRows:0}];r.attempts++;return [{affectedRows:1}];}
   if(q.startsWith('UPDATE password_resets SET verified_at')){rows.get(args[0]).verified_at=clock;return [{affectedRows:1}];}
@@ -26,11 +27,11 @@ async function fixture(role){
  const authOut={exports:{}};vm.runInNewContext(fs.readFileSync(require.resolve('../src/auth'),'utf8'),{module:authOut,process:{env:{JWT_SECRET:SECRET}},console,require:name=>name==='./db'?{pool}:baseAuth(name)});
  const auth=authOut.exports,out={exports:{}};
  class Clock extends Date{static now(){return clock;}}
- vm.runInNewContext(fs.readFileSync(require.resolve('../src/routes/auth'),'utf8'),{module:out,Buffer,Date:Clock,process:{env:{RATE_LIMIT:'off'}},console,require(name){if(name==='../db')return{pool};if(name==='../auth')return auth;if(name==='../users')return{getUser:async()=>user};if(name==='../mail')return{ensureDeliveryAvailable:async()=>{},sendResetCode:async(to,code)=>{sent.push({to,code});return{sent:true};}};return base(name);}});
+ vm.runInNewContext(fs.readFileSync(require.resolve('../src/routes/auth'),'utf8'),{module:out,Buffer,Date:Clock,process:{env:{RATE_LIMIT:'off'}},console:{error:(...args)=>errors.push(args.join(' '))},require(name){if(name==='../db')return{pool};if(name==='../auth')return auth;if(name==='../users')return{getUser:async()=>user};if(name==='../mail')return{ensureDeliveryAvailable:async()=>{if(mailState.preflightError)throw mailState.preflightError;},sendResetCode:async(to,code)=>{if(mailState.sendError)throw mailState.sendError;sent.push({to,code});return{sent:true};}};return base(name);}});
  const express=base('express'),app=express();app.use(express.json());app.use(out.exports);app.use((e,req,res,next)=>res.status(e.status||500).json({error:e.status?e.message:'Unexpected test error: '+e.message}));
  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
  const call=async(path,body,token)=>{const response=await fetch(`http://127.0.0.1:${server.address().port}${path}`,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});return{status:response.status,body:await response.json()};};
- return{user,sent,auth,call,latest:()=>[...rows.values()].at(-1),advance:()=>{clock+=31000;},close:()=>new Promise(r=>server.close(r))};
+ return{user,sent,auth,call,errors,notifications,mailState,latest:()=>[...rows.values()].at(-1),advance:()=>{clock+=31000;},close:()=>new Promise(r=>server.close(r))};
 }
 for(const role of ['admin','viewer'])test(`${role} can reset via registered PUP email without recovery Gmail, revoking old password and sessions`,async()=>{
  const f=await fixture(role);try{
@@ -67,5 +68,21 @@ test('PUP reset rejects old Gmail codes/grants, expired codes, excess guesses an
   const grant=(await f.call('/verify-code',{email:f.user.email,code})).body.resetToken;
   f.user.email='changed@iskolarngbayan.pup.edu.ph';
   assert.equal((await f.call('/reset',{resetToken:grant,newPassword:'Newpass2'})).status,400);
+ }finally{await f.close();}
+});
+
+test('reset delivery diagnostics preserve safe relay codes/status without logging code or recipient',async()=>{
+ const f=await fixture('viewer');try{
+  const failure=Object.assign(new Error('PRIVATE_SMTP_PAYLOAD_123456'),{code:'EAUTH',relayStatus:502});
+  f.mailState.preflightError=failure;
+  const known=await f.call('/forgot',{email:f.user.email}),unknown=await f.call('/forgot',{email:'unknown@pup.edu.ph'});
+  assert.equal(known.status,503);assert.deepEqual(known.body,unknown.body);assert.equal(f.sent.length,0);
+  assert.match(f.errors[0],/"code":"EAUTH","relayStatus":502/);
+  f.mailState.preflightError=null;f.mailState.sendError=Object.assign(new Error('PRIVATE_SMTP_PAYLOAD_123456'),{code:'RELAY_AUTH',relayStatus:401});
+  assert.equal((await f.call('/forgot',{email:f.user.email})).status,200);
+  for(let i=0;i<20&&!f.notifications.length;i++)await new Promise(r=>setTimeout(r,5));
+  assert.equal(f.notifications.at(-1)[4],'failed');
+  assert.deepEqual(JSON.parse(f.notifications.at(-1)[5]),{code:'RELAY_AUTH',relayStatus:401});
+  const logs=f.errors.join(' ');assert(!logs.includes('PRIVATE_SMTP_PAYLOAD'));assert(!logs.includes(f.user.email));
  }finally{await f.close();}
 });
