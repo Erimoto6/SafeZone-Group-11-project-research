@@ -53,16 +53,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 }
 #view{display:flex;flex-direction:column;flex:1;min-height:0}
 
-/* ---------- Manage Users: spreadsheet-style tables ---------- */
-.users-group{margin:18px 0;min-width:0}
-.users-table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);-webkit-overflow-scrolling:touch}
-.users-table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}
-.users-table caption{text-align:left;padding:12px;font-size:15px;font-weight:700;color:var(--ink);background:var(--surface)}
-.users-table th,.users-table td{padding:10px 12px;border-top:1px solid var(--line);border-right:1px solid var(--line);white-space:nowrap}
-.users-table th:last-child,.users-table td:last-child{border-right:0}
-.users-table th{background:var(--surface-2);font-weight:700}
-.users-table tbody tr:nth-child(even){background:var(--surface-2)}
-.users-table tbody tr:hover{background:var(--brand-soft)}
+
 .device-editor{margin:0;padding:12px;border:1px solid var(--line);border-radius:12px;min-width:0;width:100%;background:var(--surface)}
 .device-editor legend{font-weight:700;padding:0 5px;font-size:13px}
 [hidden]{display:none!important}
@@ -428,8 +419,6 @@ select option{background:var(--surface);color:var(--ink)}
 .student-course{margin:12px 0;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
 .student-course>summary{font-size:13px;line-height:1.5;align-items:flex-start}
 .student-course .users-group{margin:0 10px 12px}
-.users-table-scroll{max-height:55vh;overflow:auto}
-.users-table thead{position:sticky;top:0;z-index:1}
 .student-delete{min-width:44px;min-height:44px;color:var(--bad)}
 #v-reg1-form select{max-width:100%;white-space:normal;font-size:13px}
 #registration-profile{margin-bottom:14px;text-align:left}
@@ -438,14 +427,11 @@ select option{background:var(--surface);color:var(--ink)}
 /* Date-first alert log: day, indented time, then indented event descriptions. */
 .alert-day{margin:20px 0 28px}
 .alert-day>h3{margin:0 0 6px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:18px;font-weight:750;letter-spacing:-.2px;color:var(--ink);line-height:1.45}
-.alert-time-block{display:block;margin:0 0 22px 16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
-.alert-time-block>h4{font-size:14px;font-weight:700;color:#fff;margin:0 0 12px;padding:0;line-height:1.5}
+.alert-time-block{display:block;margin:0 0 22px 16px;padding-bottom:0;border-bottom:0}
+.alert-time-block>h4{font-size:14px;font-weight:600;color:var(--muted);margin:0 0 12px;padding:0;line-height:1.5}
 .alert-time-block>h4 time{display:inline-block;position:relative;top:-3px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-variant-numeric:tabular-nums;padding:0;background:none;border-radius:0}
 .alert-time-events{margin-left:12px;min-width:0}
-.alert-time-events .alert{display:block;margin:0 0 12px;padding:14px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:14px;box-shadow:var(--shadow)}
-.alert-time-events .alert.exceeded{border-left-color:var(--bad)}
-.alert-time-events .alert.warning{border-left-color:var(--warn)}
-.alert-time-events .alert.normal{border-left-color:var(--ok)}
+.alert-time-events .alert{display:block;margin:0 0 12px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
 .alert-time-events .alert:last-child{margin-bottom:0}
 .alert-time-events .alert p{margin:0;font-size:14px;color:var(--ink);line-height:1.65;font-weight:400}
 @media(max-width:360px){.alert-time-block{margin-left:8px}.alert-time-events{margin-left:8px}.alert-time-events .alert{padding:12px}}
@@ -453,3 +439,36 @@ select option{background:var(--surface);color:var(--ink)}
 /* Use more of the Monitoring screen width without leaving a wide right gutter. */
 .screen[data-s="monitor"]{padding-right:8px}
 .monitor-utilities{width:100%}
+
+/* Classroom overview and consistent account cards */
+.monitor-utilities.fan-only{grid-template-columns:minmax(0,1fr)}
+.monitor-links{display:grid;gap:10px;margin:0 0 16px}
+.monitor-links .card{display:flex;align-items:center;gap:12px;text-align:left;margin:0;width:100%;min-width:0;color:var(--ink)}
+.monitor-links span{flex:1;min-width:0}.monitor-links b,.monitor-links small{display:block}
+.monitor-links small{font-size:12px;font-weight:400;color:var(--muted);margin-top:4px;line-height:1.5}
+.room-table-scroll{overflow:auto;max-height:60vh;margin-top:16px;border-radius:16px;border:1px solid var(--line);background:var(--surface)}
+.room-overview-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;text-align:left}
+.room-overview-table caption{text-align:left;padding:14px;font-weight:700}
+.room-overview-table thead{position:sticky;top:0;z-index:1}
+.room-overview-table th,.room-overview-table td{padding:14px 12px;white-space:nowrap}
+.room-overview-table thead th{background:var(--surface-2);font-size:12px}
+.room-overview-table tbody tr+tr>*{border-top:1px solid var(--line)}
+.room-state-normal th[scope=row]{color:var(--ok)}.room-state-warning th[scope=row]{color:var(--warn)}.room-state-exceeded th[scope=row]{color:var(--bad)}
+.chip.unknown{background:var(--idle-bg);color:var(--idle)}
+.analytics-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+.analytics-summary>div{background:var(--surface);padding:16px;border:1px solid var(--line);border-radius:16px}
+.analytics-summary b{display:block;font-size:28px}.analytics-summary span{font-size:12px;color:var(--muted)}
+.temperature-rank{display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink)}
+.rank-number{color:var(--muted);font-size:13px;min-width:18px}.rank-room{flex:1;min-width:0}.rank-room small{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.rank-reading{display:grid;gap:6px;justify-items:end}.rank-reading b{font-size:17px}
+.alert-time-events .alert{display:flex;align-items:flex-start;gap:8px}.alert-content{flex:1;min-width:0}
+.alert-archive-action{flex-shrink:0;min-width:44px;min-height:44px;color:var(--muted)}
+.account-group{margin:20px 0}.account-group-heading{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.account-group-heading h3{font-size:15px;margin:0}.account-count{font-size:12px;border-radius:20px;background:var(--surface-2);padding:4px 10px;color:var(--muted)}
+.account-card-list{display:grid;gap:12px}.account-card{display:flex;align-items:flex-start;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;min-width:0}
+.account-card-main{flex:1;min-width:0}.account-card strong,.account-card dd{overflow-wrap:anywhere}.account-card strong{font-size:14px}.account-card p{font-size:13px;color:var(--muted);margin:6px 0}
+.account-card dl{margin:12px 0 0}.account-card dl>div{margin-top:8px}.account-card dt{color:var(--muted);font-size:11px}.account-card dd{font-size:13px;margin:3px 0 0}
+.settings-layout .section-label{font-weight:700;margin-top:24px}.settings-layout .list{border-radius:18px;box-shadow:var(--shadow)}
+.settings-layout .room-configuration{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:20px}
+#admin-form{padding:16px;border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+#pw-form .rules{margin:0 0 8px;font-size:12px}

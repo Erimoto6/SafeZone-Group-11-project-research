@@ -5,6 +5,7 @@
    CONFIG: edit these first
    ===================================================================== */
 // Supplied artwork: theme-aware by default; student login uses fixed pink.
+const FEATURES = { fanEnergy: false }; // Retained for restoring the fan-energy view later.
 const LOGOS = { red: 'images/light%20mode.png', pink: 'images/dark%20mode.png' };
 
 // Button names on the start screen. Change the wording here.
@@ -85,7 +86,7 @@ const S = {
   role: null,                 // null | 'student' (Student / Faculty) | 'admin'
   screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | home | alerts | monitor | status | settings | about
   mon: { view: 'live', metric: 'temp', range: '6h' },
-  alertFilter: 'all',
+  alertFilter: 'all', alertView: 'active', archiveAvailable: false, overviewFloor: 'all',
   rooms: [],                  // every room has its own readings, levels and fan. Built in init().
   roomId: null,               // the room being viewed
   fanTrigger: 'exceeded',     // when automatic ventilation turns ON: 'warning' (yellow) | 'exceeded' (red)
@@ -150,9 +151,11 @@ function signOut() {
   token = ''; sessionStorage.removeItem('safezone.token');
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
   alertWatermarks.clear(); S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
+  S.alertView='active';S.archiveAvailable=false;
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.studentProfile = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
+const alertUrl=(roomId=S.roomId)=>'/alerts?roomId='+encodeURIComponent(roomId)+'&limit=200&archived='+(S.alertView==='archived'?'1':'0');
 async function refreshData() {
   const [rooms, settings, shared] = await Promise.all([api('/rooms'), api('/settings'), api('/simulation')]);
   const previous = new Map(S.rooms.map(r => [r.id, r]));
@@ -165,7 +168,8 @@ async function refreshData() {
   if (!S.rooms.some(r => r.id === S.roomId)) S.roomId = S.rooms[0].id;
   S.limits = settings.thresholds; S.fanTrigger = settings.fanTrigger; S.draftTrigger = S.fanTrigger;
   S.draftAuto = settings.ventMode === 'auto';
-  const alerts=await api('/alerts?roomId='+encodeURIComponent(S.roomId)+'&limit=200');
+  const alerts=await api(alertUrl());
+  S.archiveAvailable=alerts.archiveAvailable===true;
   applyShared(shared, alerts.alerts);
   if (S.role === 'admin') {
     const [people, sms] = await Promise.all([api('/admin/users'), api('/sms-recipients')]);
@@ -244,6 +248,7 @@ const emailHintHtml = `Students: @${WEBMAIL.student}<br>Faculty: @${WEBMAIL.facu
 const maskEmail = e => { const [u, d] = normEmail(e).split('@'); return (u.length > 2 ? u.slice(0, 2) + '*'.repeat(Math.min(u.length - 2, 6)) : u[0] + '*') + '@' + d; };
 /* ---------- icons ---------- */
 const P = {
+  archive:'<rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v12h14V8M9 12h6"/>',
   thermo: '<path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>',
   drop: '<path d="M12 2.7s6 6.2 6 10.6a6 6 0 0 1-12 0C6 8.9 12 2.7 12 2.7z"/>',
   cloud: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
@@ -305,6 +310,7 @@ function applyShared(shared, alerts) {
       S.rooms.push(room);
     }
     Object.assign(room, { name: state.name, floor: state.floor, lights: state.lights, lightWatts: state.wattsPerLight, fanWatts: state.fanWatts });
+    room.observed=true;room.updatedAt=state.updatedAt;
     room.reading = state.reading; room.levels = state.levels; room.electricity = state.electricity;
     room.devices = state.devices || []; room.lightsOn = state.lightsOn;
     room.vent = { mode: state.ventMode, on: state.fanOn }; room.scenario = state.scenario;
@@ -317,6 +323,7 @@ function applyShared(shared, alerts) {
   if (S.rooms.length && !available.has(S.roomId)) S.roomId = S.rooms[0].id;
   if (shared.rooms.length) S.lastUpdate = Math.max(...shared.rooms.map(r => r.updatedAt));
   const scoped=alerts.filter(a=>String(a.roomId)===S.roomId);
+  if(S.alertView==='archived'){S.alerts=scoped;return;}
   const latest=Math.max(0,...scoped.map(a=>a.id));
   const previous=alertWatermarks.get(S.roomId);
   const fresh=previous===undefined?[]:scoped.filter(a=>a.id>previous && ['warning','exceeded'].includes(a.type));
@@ -324,17 +331,18 @@ function applyShared(shared, alerts) {
     S.unread+=fresh.length;
     toast(`${cur().name}: ${fresh.length===1?fresh[0].title.replace(/^Demo:\s*/, ''):fresh.length+' new condition alerts'}`);
   }
-  alertWatermarks.set(S.roomId,latest);
+  alertWatermarks.set(S.roomId,Math.max(previous||0,latest));
   S.alerts=scoped;
 }
 let polling = false;
 async function pollShared() {
   if (!token || !S.role || polling) return;
   polling = true;
-  const session = token; const requestedRoom=S.roomId;
+  const session = token; const requestedRoom=S.roomId,requestedView=S.alertView;
   try {
-    const [shared, alerts] = await Promise.all([api('/simulation'), api('/alerts?roomId='+encodeURIComponent(requestedRoom)+'&limit=200')]);
-    if (token !== session || !S.role || requestedRoom!==S.roomId) return;
+    const [shared, alerts] = await Promise.all([api('/simulation'), api(alertUrl(requestedRoom))]);
+    if (token !== session || !S.role || requestedRoom!==S.roomId || requestedView!==S.alertView) return;
+    S.archiveAvailable=alerts.archiveAvailable===true;
     applyShared(shared, alerts.alerts); S.syncError = '';
     if (LIVE.has(S.screen)) render();
     else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
@@ -369,36 +377,23 @@ function makeRoom(cfg) {
   };
   r.lightsOn = Math.round(r.lights * 0.75);
   r.reading = roomBase(r);
-  const now = Date.now();
-  for (let i = 29; i >= 0; i--) {
-    r.buf.t.push(now - i * 2000);
-    KEYS.forEach(k => r.buf[k].push(r.reading[k] + (rnd() - 0.5) * ({ temp: 0.3, hum: 1.2, co2: 24 })[k]));
-  }
   return r;
 }
 
-/* ---------- history (synthetic; replace with an API call) ---------- */
-const RANGES = { '6h': { n: 36, step: 10 * 60e3 }, '24h': { n: 48, step: 30 * 60e3 }, '7d': { n: 56, step: 3 * 3600e3 } };
+/* History includes only samples received during this browser session. */
 function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-function history(k, r) {
-  const R = RANGES[r]; const rnd = mulberry(k.length * 977 + r.length * 131 + 7); const end = Date.now(); const vals = [], labels = [];
-  for (let i = 0; i < R.n; i++) {
-    const d = new Date(end - (R.n - 1 - i) * R.step); const hr = d.getHours() + d.getMinutes() / 60;
-    const occ = Math.max(0, Math.sin((hr - 7) / 10 * Math.PI));
-    let v;
-    if (k === 'temp') v = 25.2 + 3.6 * occ + (rnd() - 0.5) * 0.8;
-    else if (k === 'hum') v = 63 - 7 * occ + (rnd() - 0.5) * 3;
-    else v = 520 + 560 * occ + (hr > 10 && hr < 11.5 ? 230 : 0) + (rnd() - 0.5) * 70;
-    vals.push(v);
-    labels.push(r === '7d' ? d.toLocaleDateString(undefined, { weekday: 'short' }) : tShort(d));
-  }
-  return { vals, labels };
+function history(k, range) {
+  const buf=cur().buf, cutoff=Date.now()-({'6h':6,'24h':24,'7d':168}[range]||6)*3600000;
+  const vals=[],labels=[];
+  buf.t.forEach((ts,i)=>{if(ts>=cutoff && Number.isFinite(Number(buf[k][i]))){vals.push(Number(buf[k][i]));labels.push(tShort(new Date(ts)));}});
+  return {vals,labels};
 }
 
 /* =====================================================================
    CHART (inline SVG)
    ===================================================================== */
 function chartSVG(vals, labels, k, cls, id) {
+  if(!vals.length)return '<p class="empty">Waiting for recorded readings.</p>';
   const m = METRICS[k]; const th = S.limits[k];
   const W = 340, H = 190, L = 42, R = 10, T = 12, B = 26;
   let lo = Math.min(m.axis[0], ...vals), hi = Math.max(m.axis[1], ...vals, th.limit);
@@ -426,15 +421,15 @@ const legend = k => `<div class="legend"><span><i style="color:#E5B800"></i>Warn
 /* =====================================================================
    VIEWS
    ===================================================================== */
-const LIVE = new Set(['home', 'alerts', 'monitor', 'status']);
-const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users', students: 'Student Accounts' };
+const LIVE = new Set(['home', 'alerts', 'monitor', 'status', 'rooms', 'analytics']);
+const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users', students: 'Student Accounts', rooms: 'Classroom Overview', analytics: 'Temperature Analytics' };
 
 function nav() {
   const items = S.role === 'admin'
     ? [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['status', 'Devices', 'device'], ['settings', 'Settings', 'sliders']]
     : [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['about', 'About', 'info']];
   return `<nav class="nav" style="--n:${items.length}" aria-label="Main">${items.map(([id, label, ic]) =>
-    `<button data-act="go" data-v="${id}" ${(S.screen === id || (['users','students'].includes(S.screen) && id === 'settings')) ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
+    `<button data-act="go" data-v="${id}" ${(S.screen === id || (['rooms','analytics'].includes(S.screen) && id==='monitor') || (['users','students'].includes(S.screen) && id === 'settings')) ? 'aria-current="page"' : ''}>${I[ic]}${label}${id === 'alerts' && S.unread ? `<span class="badge" aria-label="${S.unread} new">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</button>`).join('')}</nav>`;
 }
 
 function topbar() {
@@ -513,12 +508,36 @@ function legendCard() {
     <p class="legend-foot">In automatic mode, the exhaust fan turns OFF again when every reading is green.</p></section>`;
 }
 
+function monitoringLinks() {
+  return `<div class="monitor-links"><button class="card" data-act="go" data-v="rooms">${I.building}<span><b>All classrooms</b><small>Temperature, CO₂ and room status</small></span>${I.chev}</button><button class="card" data-act="go" data-v="analytics">${I.chart}<span><b>Temperature analytics</b><small>Rooms requiring attention</small></span>${I.chev}</button></div>`;
+}
+function readingStatus(value,limits) {
+  if(!Number.isFinite(Number(value))||value==null)return 'unknown';
+  return Number(value)>=limits.limit?'exceeded':Number(value)>=limits.warn?'warning':'normal';
+}
+function overviewStatus(room,limits) {
+  if(!room.observed)return 'unknown';
+  const levels=['temp','co2'].map(k=>readingStatus(room.reading[k],limits[k]));
+  return levels.includes('unknown')?'unknown':levels.includes('exceeded')?'exceeded':levels.includes('warning')?'warning':'normal';
+}
+function overviewView() {
+  const rooms=S.rooms.filter(r=>S.overviewFloor==='all'||r.floor===Number(S.overviewFloor));
+  return `${monitoringLinks()}<p class="note">Current simulated readings. Status uses the more severe temperature or CO₂ level.</p><label class="f" for="overview-floor">Floor</label><select id="overview-floor"><option value="all">All floors</option>${floorList().map(f=>`<option value="${f}" ${String(f)===S.overviewFloor?'selected':''}>${floorName(f)}</option>`).join('')}</select><div class="room-table-scroll" role="region" aria-label="Classroom readings" tabindex="0"><table class="room-overview-table"><caption>Classroom environmental readings</caption><thead><tr><th scope="col">Room Number</th><th scope="col">Temperature</th><th scope="col">Carbon Dioxide (CO₂)</th><th scope="col">Status</th></tr></thead><tbody>${rooms.map(r=>{const status=overviewStatus(r,S.limits);return `<tr class="room-state-${status}"><th scope="row"><button class="linkbtn" data-act="monitorRoom" data-v="${r.id}">${esc(r.name)}</button></th><td>${r.observed&&r.reading.temp!=null?withUnit('temp',Number(r.reading.temp)):'—'}</td><td>${r.observed&&r.reading.co2!=null?withUnit('co2',Number(r.reading.co2)):'—'}</td><td><span class="chip ${status}">${status==='unknown'?'Awaiting data':LV[status]}</span></td></tr>`;}).join('')}</tbody></table></div><p class="note">Green: Normal · Yellow: Warning · Red: Danger. Open a room to view its charts.</p>`;
+}
+function temperatureRanking(rooms,limits) {
+  return rooms.filter(r=>r.observed && r.reading.temp!=null && Number.isFinite(Number(r.reading.temp))).slice().sort((a,b)=>Number(b.reading.temp)-Number(a.reading.temp)||a.name.localeCompare(b.name,undefined,{numeric:true})).map(r=>({room:r,status:readingStatus(r.reading.temp,limits)}));
+}
+function analyticsView() {
+  const ranked=temperatureRanking(S.rooms,S.limits.temp),atRisk=ranked.filter(r=>r.status!=='normal');
+  return `${monitoringLinks()}<h2>Rooms with high temperatures</h2><p class="sub">Current snapshot, ranked from highest to lowest. These are simulated readings, not historical averages.</p><div class="analytics-summary"><div><b>${atRisk.length}</b><span>At warning or danger</span></div><div><b>${ranked.length}</b><span>Rooms with data</span></div></div><p class="note">Warning: ${withUnit('temp',S.limits.temp.warn)} · Limit: ${withUnit('temp',S.limits.temp.limit)}. Actual conditions may vary with weather, occupancy and ventilation.</p><div class="temperature-ranking">${ranked.map(({room:r,status},index)=>`<button class="card temperature-rank" data-act="monitorRoom" data-v="${r.id}"><span class="rank-number">${index+1}</span><span class="rank-room"><b>${esc(r.name)}</b><small>${floorName(r.floor)}</small></span><span class="rank-reading"><b>${withUnit('temp',Number(r.reading.temp))}</b><small class="chip ${status}">${LV[status]}</small></span></button>`).join('') || '<p class="empty">Waiting for room readings.</p>'}</div>`;
+}
+
 function homeView() {
   const room = esc(cur().name);
   const head = S.role === 'admin'
     ? `<h2>Welcome, Admin!</h2><p class="sub">Here's the current environment in ${room} and the system status.</p>`
     : `<h2>Classroom Environment</h2><p class="sub">Real-time indoor conditions in ${room}.</p>`;
-  return `${head}${roomBar()}${liveLine()}${cards()}${powerCard(true)}${banner()}${legendCard()}`;
+  return `${head}${roomBar()}${liveLine()}${cards()}${FEATURES.fanEnergy?powerCard(true):''}${banner()}${monitoringLinks()}${legendCard()}`;
 }
 
 function groupRoomAlerts(alerts, roomId) {
@@ -536,8 +555,8 @@ function groupRoomAlerts(alerts, roomId) {
     if(!day.times.has(minute))day.times.set(minute,{ts:alert.ts,items:[]});
     const time=day.times.get(minute);
     const index=time.items.findIndex(item=>eventKey(item)===eventKey(alert));
-    if(index<0)time.items.push(alert);
-    else if(severity(alert)>severity(time.items[index]))time.items[index]=alert;
+    if(index<0)time.items.push({...alert,sourceIds:[alert.id]});
+    else {const sourceIds=[...time.items[index].sourceIds,alert.id];if(severity(alert)>severity(time.items[index]))time.items[index]={...alert,sourceIds};else time.items[index].sourceIds=sourceIds;}
   }
   return [...days.values()].map(day=>({...day,times:[...day.times.values()]}));
 }
@@ -564,16 +583,17 @@ function alertDescription(alert) {
 function alertTimeline(alerts) {
   return groupRoomAlerts(alerts,S.roomId).map(day=>`<section class="alert-day"><h3>${esc(new Date(day.ts).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}))}</h3>
     ${day.times.map(time=>`<article class="alert-time-block"><h4><time datetime="${new Date(time.ts).toISOString()}">${esc(new Date(time.ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}).replace(/\s/g,'').toLowerCase())}</time></h4>
-      <div class="alert-time-events">${time.items.map(a=>`<div class="alert ${a.type}"><div class="alert-content"><p>${esc(alertDescription(a))}</p></div></div>`).join('')}</div>
+      <div class="alert-time-events">${time.items.map(a=>`<div class="alert ${a.type}"><div class="alert-content"><p>${esc(alertDescription(a))}</p></div>${S.archiveAvailable?`<button type="button" class="x alert-archive-action" data-act="archiveAlert" data-v="${a.sourceIds.join(',')}" data-restore="${S.alertView==='archived'}" aria-label="${S.alertView==='archived'?'Restore alert':'Archive alert'}" title="${S.alertView==='archived'?'Restore alert':'Archive alert'}">${S.alertView==='archived'?I.back:I.archive}</button>`:''}</div>`).join('')}</div>
     </article>`).join('')}</section>`).join('');
 }
 function alertsView() {
   const scoped=S.alerts.filter(a=>String(a.roomId)===S.roomId);
   const filters=[['all','All alerts'],['warning','Caution'],['exceeded','Danger'],['system','Updates']];
   const list=scoped.filter(a=>S.alertFilter==='all'||(S.alertFilter==='system'?!['warning','exceeded'].includes(a.type):a.type===S.alertFilter));
-  return `<div class="alerts-context"><p class="section-label">Alerts for ${esc(cur().name)}</p>${roomBar()}<div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id,label])=>`<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter===id}">${label}</button>`).join('')}</div></div>
+  return `<div class="alerts-context"><p class="section-label">Alerts for ${esc(cur().name)}</p>${roomBar()}<div class="seg archive-tabs" role="group" aria-label="Alert list"><button data-act="alertView" data-v="active" aria-pressed="${S.alertView==='active'}">Current</button><button data-act="alertView" data-v="archived" aria-pressed="${S.alertView==='archived'}">Archive</button></div><div class="chips" role="group" aria-label="Filter alerts">${filters.map(([id,label])=>`<button data-act="filter" data-v="${id}" aria-pressed="${S.alertFilter===id}">${label}</button>`).join('')}</div></div>
     <p class="note">Simulated readings · SMS delivery is not connected.</p>
-    ${alertTimeline(list) || '<p class="empty">No alerts in this group for this room.</p>'}`;
+    ${S.alertView==='archived'?'<p class="note">Your archived alerts. Restore an alert to return it to Current. Records are never deleted.</p>':''}
+    ${S.alertView==='archived'&&!S.archiveAvailable?'<p class="empty">Archive is temporarily unavailable. Please contact an administrator.</p>':alertTimeline(list) || '<p class="empty">No alerts in this group for this room.</p>'}`;
 }
 
 function metricChips() {
@@ -585,24 +605,24 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `<div class="monitor-room-context">${roomBar(true)}${seg}</div><div class="monitor-utilities">${ventCard(true)}${powerCard(false,true)}</div>${metricChips()}
+    return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${monitoringLinks()}<div class="monitor-utilities ${FEATURES.fanEnergy?'':'fan-only'}">${ventCard(true)}${FEATURES.fanEnergy?powerCard(false,true):''}</div>${metricChips()}
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
   }
-  const r = S.mon.range; const h = history(k, r); h.vals = h.vals.map(v => v + cur().off[k]);
+  const r = S.mon.range; const h = history(k, r);
   const min = Math.min(...h.vals), max = Math.max(...h.vals), avg = h.vals.reduce((a, b) => a + b, 0) / h.vals.length;
   const over = h.vals.filter(v => v >= S.limits[k].limit).length;
   const rc = `<div class="mini-chips" role="group" aria-label="Time range">${[['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']].map(([id, l]) => `<button data-act="range" data-v="${id}" aria-pressed="${r === id}">${l}</button>`).join('')}</div>`;
-  return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${metricChips()}${rc}
+  return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${monitoringLinks()}${metricChips()}${rc}
     <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${chartSVG(h.vals, h.labels, k, 'neutral', 'hist')}${legend(k)}</section>
-    <div class="stats"><div class="stat"><span>Lowest</span><b>${fmt(k, min)}</b></div><div class="stat"><span>Average</span><b>${fmt(k, avg)}</b></div><div class="stat"><span>Highest</span><b>${fmt(k, max)}</b></div></div>
-    <p class="note">${over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
+    <div class="stats"><div class="stat"><span>Lowest</span><b>${h.vals.length?fmt(k,min):'—'}</b></div><div class="stat"><span>Average</span><b>${h.vals.length?fmt(k,avg):'—'}</b></div><div class="stat"><span>Highest</span><b>${h.vals.length?fmt(k,max):'—'}</b></div></div>
+    <p class="note">Simulated samples received during this browser session only; up to 40 recent readings per room are retained. Earlier history is not available. Actual conditions vary with weather, occupancy and ventilation.</p><p class="note">${!h.vals.length?'No recorded samples yet.':over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
 }
 
 const DEVICE_NAMES = {exhaust_fan:'Exhaust fan',esp8266:'NodeMCU V3 ESP8266',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
 const FAN_NAMES = {unspecified:'Not specified',wall:'Wall-mounted',window:'Window-mounted',ceiling:'Ceiling-mounted',inline:'Inline duct'};
 function statusView() {
-  const devices = (cur().devices || []).filter(d => d.type !== 'light');
+  const devices = (cur().devices || []).filter(d => d.type !== 'light' && (FEATURES.fanEnergy || d.type !== 'power_meter'));
   return `<h2>Room devices</h2><p class="sub">Configured devices for ${esc(cur().name)}.</p>${roomBar()}
     <div class="list">${devices.map(d => `<div class="row"><span class="r-ico">${I[d.type === 'light' ? 'bulb' : d.type === 'exhaust_fan' ? 'fan' : 'device']}</span>
       <div class="r-txt"><b>${esc(d.label)}</b><span>${d.quantity} × ${esc(DEVICE_NAMES[d.type])}${d.type === 'exhaust_fan' ? ' · ' + esc(FAN_NAMES[d.fanType] || 'Not specified') : ''}${d.wattsPerDevice ? ' · ' + d.wattsPerDevice + ' W each' : ''}</span></div>
@@ -632,7 +652,7 @@ function roomConfiguration() {
 
 function settingsView() {
   const trig = S.draftTrigger;
-  return `<p class="section-label" style="margin-top:0">Admin account</p>
+  return `<div class="settings-layout"><h2>Administration</h2><p class="sub">Manage accounts, rooms and environmental thresholds.</p><p class="section-label" style="margin-top:0">Admin account</p>
     <div class="list">
       <button class="row" data-act="users"><span class="r-ico">${I.users}</span><div class="r-txt"><b>Manage Users</b><span>Admins and registered accounts</span></div><span class="chev">${I.chev}</span></button>
       <button class="row" data-act="account"><span class="r-ico">${I.user}</span><div class="r-txt"><b>Account Settings</b><span>Username and password</span></div><span class="chev">${I.chev}</span></button>
@@ -677,7 +697,7 @@ function settingsView() {
       <button class="btn soft small" data-act="sim" data-v="temp">Simulate high temperature</button>
       <button class="btn soft small" data-act="sim" data-v="hum">Simulate high humidity</button>
       <button class="btn soft small" data-act="sim" data-v="reset">Reset readings</button>
-    </div>`;
+    </div></div>`;
 }
 
 // About: system overview and features. One version for students/faculty and one for admins.
@@ -717,21 +737,21 @@ function aboutView() {
       <li>Monitoring needs an internet connection. SMS alerts need a cellular network.</li></ul>`;
 
   const features = admin ? `<ul>
-      <li><b>Admin dashboard:</b> readings, status and power use for each room, with the system status.</li>
+      <li><b>Admin dashboard:</b> readings and status for each room, with the system status.</li>
       <li><b>Rooms:</b> add a room with the + button. The number follows the floor, such as 101, 201, 301 or 401. Remove rooms in Settings.</li>
       <li><b>Exhaust fan control:</b> turn the fan on or off in Monitoring, or leave it in Automatic mode. Choose whether it starts at yellow or red.</li>
       <li><b>Thresholds:</b> set the warning and limit for temperature, humidity and CO₂.</li>
       <li><b>SMS Alerts:</b> choose who receives texts, with name, role and mobile number. Switch people on or off, edit or remove them.</li>
       <li><b>Manage Users:</b> see admin and registered accounts, and add other admins.</li>
       <li><b>Account Settings:</b> change your own password.</li>
-      <li><b>Device status:</b> check the controller, sensors, fan, Wi-Fi, SMS module and power meter.</li>
+      <li><b>Device status:</b> check the controller, sensors, fan, Wi-Fi and SMS module.</li>
       <li><b>Alerts and history:</b> review warnings, danger alerts and charts for the last 6 hours, 24 hours or 7 days.</li></ul>`
   : `<ul>
       <li><b>Real-time readings:</b> temperature, humidity and CO₂ for the room you choose.</li>
       <li><b>Room status:</b> green, yellow and red indicators show the room's condition.</li>
       <li><b>Exhaust fan status:</b> see whether the exhaust fan is running, and whether it is in Automatic or Manual mode.</li>
       <li><b>Room selection:</b> pick a room by floor.</li>
-      <li><b>Electricity:</b> accumulated estimated energy in kWh for exhaust fans.</li>
+
       <li><b>History:</b> charts for the last 6 hours, 24 hours or 7 days.</li>
       <li><b>Alerts:</b> warnings, danger alerts and system messages, tagged by room.</li>
       <li><b>SMS alerts:</b> your registered mobile number gets a text at Warning or Danger.</li>
@@ -747,7 +767,7 @@ function aboutView() {
 }
 
 function shell() {
-  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView, students: studentsView };
+  const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView, students: studentsView, rooms: overviewView, analytics: analyticsView };
   return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
 }
 
@@ -772,7 +792,7 @@ const errLine = () => `<p class="err" id="err" role="alert">${esc(S.authError)}<
 const noteLine = () => S.notice ? `<p class="okmsg" role="status">${esc(S.notice)}</p>` : '';
 const pwField = (id, ph, auto) => `<div class="field">${I.lock}<input type="password" id="${id}" placeholder="${ph}" aria-label="${ph}" autocomplete="${auto}"><button type="button" class="eye" data-act="pw" data-v="${id}" aria-label="Show password">${I.eye}</button></div>`;
 const textField = (ic, id, ph, type, extra) => `<div class="field">${I[ic]}<input type="${type}" id="${id}" placeholder="${ph}" aria-label="${ph}" ${extra || ''}></div>`;
-const rulesList = () => `<ul class="rules" id="rules" aria-label="Password rules">${pwRules('').map(([t, ok]) => `<li class="${ok ? 'ok' : ''}">${I.check}${t}</li>`).join('')}</ul>`;
+const rulesList = (field = 'rp') => `<ul class="rules" id="${field==='rp'?'rules':'rules-'+field}" data-password-for="${field}" aria-label="Password rules">${pwRules('').map(([t, ok]) => `<li class="${ok ? 'ok' : ''}">${I.check}${t}</li>`).join('')}</ul>`;
 const emailInput = (id, val) => `<div class="field">${I.mail}<input type="email" id="${id}" inputmode="email" placeholder="PUP web mail" aria-label="PUP web mail" autocapitalize="none" autocomplete="email" value="${esc(val || '')}"></div>`;
 const phoneInput = () => `<div class="field">${I.phone}<input type="tel" id="phone" inputmode="numeric" placeholder="09XXXXXXXXX" aria-label="Mobile number" autocomplete="tel" value="${esc(S.reg.phone)}"></div>`;
 
@@ -969,10 +989,11 @@ function restoreDrafts() {
       if(value){el.value=value.value;if(el.type==='checkbox')el.checked=value.checked;}
     });
   });
-  if($('#rp') && $('#rules')){
-    const checks=pwRules($('#rp').value);
-    $('#rules').querySelectorAll('li').forEach((el,index)=>el.classList.toggle('ok',checks[index][1]));
-  }
+  document.querySelectorAll('[data-password-for]').forEach(ul=>{
+    const input=document.getElementById(ul.dataset.passwordFor);if(!input)return;
+    const checks=pwRules(input.value);
+    ul.querySelectorAll('li').forEach((el,index)=>el.classList.toggle('ok',checks[index][1]));
+  });
   if(settingsDraft && $('#temp-warn')){
     settingsDraft.values.forEach(v=>{$('#'+v.id).value=v.value;});
     S.draftTrigger=settingsDraft.trigger;S.draftAuto=settingsDraft.auto;
@@ -1011,18 +1032,8 @@ function openSheet(title, html) {
 }
 const closeSheet = () => { captureDrafts(); $('#sheet-root').innerHTML = ''; };
 
-function userTable(title, people, admin = false, removable = false) {
-    const headers = admin ? ['Name', 'Username', 'Email', 'Mobile number'] : ['Email', 'Mobile number'];
-    if (removable) headers.push('Status', 'Actions');
-    const rows = people.map(a => {
-      const cells = admin ? [a.name, a.username, a.email, showPhone(a.phone)] : [a.email, showPhone(a.phone)];
-      return `<tr>${cells.map(value => `<td>${esc(value || '—')}</td>`).join('')}${removable ? `<td>${a.active === false ? 'Inactive' : 'Active'}</td><td><button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button></td>` : ''}</tr>`;
-    }).join('');
-    return `<section class="users-group"><div class="users-table-scroll" role="region" aria-label="${esc(title)} table" tabindex="0">
-      <table class="users-table"><caption>${esc(title)} (${people.length})</caption>
-        <thead><tr>${headers.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead>
-        <tbody>${rows || `<tr><td colspan="${headers.length}" class="empty">No ${esc(title.toLowerCase())} accounts yet.</td></tr>`}</tbody>
-      </table></div></section>`;
+function userCards(title, people, admin = false, removable = false) {
+  return `<section class="account-group"><div class="account-group-heading"><h3>${esc(title)}</h3><span class="account-count">${people.length}</span></div><div class="account-card-list">${people.map(a=>`<article class="account-card"><div class="account-card-main"><strong>${esc(admin?a.name:a.email)}</strong>${admin?`<p>${esc(a.username || '')}</p>`:''}<dl>${admin?`<div><dt>PUP webmail</dt><dd>${esc(a.email)}</dd></div>`:''}<div><dt>Mobile</dt><dd>${esc(showPhone(a.phone))}</dd></div>${removable?`<div><dt>Account status</dt><dd>${a.active===false?'Inactive':'Active'}</dd></div>`:''}</dl></div>${removable?`<button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button>`:''}</article>`).join('') || '<p class="empty">No accounts in this group.</p>'}</div></section>`;
 }
 function studentsView() {
   if(S.role!=='admin')return '<p class="empty">Admin access is required.</p>';
@@ -1031,7 +1042,7 @@ function studentsView() {
   return `<div class="student-page-context"><p class="note">${students.length} students · grouped by course and section</p></div>${courseCodes.map(code=>{
     const people=students.filter(a=>(a.courseCode||'')===code);
     const sections=[...new Set(people.map(a=>a.section||'Section not set'))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-    return `<details class="student-course" data-keep-open="course-${esc(code)}" open><summary><span>${esc(courseName(code))}${code?' ('+esc(code)+')':''}</span><small>${people.length} students</small>${I.chevd}</summary>${sections.map(section=>userTable(section,people.filter(a=>(a.section||'Section not set')===section).sort((a,b)=>a.email.localeCompare(b.email)),false,true)).join('')}</details>`;
+    return `<details class="student-course" data-keep-open="course-${esc(code)}" open><summary><span>${esc(courseName(code))}${code?' ('+esc(code)+')':''}</span><small>${people.length} students</small>${I.chevd}</summary>${sections.map(section=>userCards(section,people.filter(a=>(a.section||'Section not set')===section).sort((a,b)=>a.email.localeCompare(b.email)),false,true)).join('')}</details>`;
   }).join('') || '<p class="empty">No student accounts yet.</p>'}`;
 }
 
@@ -1041,17 +1052,18 @@ function usersView() {
   const students = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'student');
   const faculty = S.accounts.filter(a => a.role === 'viewer' && a.kind === 'faculty');
   return `<p class="sub">Manage admin and faculty accounts, or open Student Accounts to browse by course and section.</p>
-    <button class="card student-accounts-link" data-act="students">${I.users}<span><b>Student Accounts</b><small>${students.length} students · organized by course and section</small></span>${I.chev}</button>${userTable('Admins', admins, true)}${userTable('Faculty', faculty)}
+    <button class="card student-accounts-link" data-act="students">${I.users}<span><b>Student Accounts</b><small>${students.length} students · organized by course and section</small></span>${I.chev}</button>${userCards('Admins', admins, true)}${userCards('Faculty', faculty)}
     <p class="note">Who gets SMS alerts is set in Settings, under SMS Alerts.</p>
     <p class="section-label">Add another admin</p>
     <p class="note">Create an account for another administrator. They can change their password in Account Settings.</p>
     <form id="admin-form" class="stack" autocomplete="off" novalidate>
-      ${textField('user', 'an', 'Full name', 'text', 'autocomplete="off"')}
-      ${textField('user', 'au', 'Username', 'text', 'autocapitalize="none" autocomplete="off"')}
+      ${textField('user', 'an', 'Full name', 'text', 'autocomplete="off" required minlength="2" maxlength="100"')}
+      ${textField('user', 'au', 'Username', 'text', 'autocapitalize="none" autocomplete="off" required minlength="3" maxlength="20"')}
       ${textField('mail', 'aem', 'PUP web mail', 'email', 'inputmode="email" autocapitalize="none" autocomplete="off"')}
       ${textField('phone', 'ap', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="off"')}
       ${pwField('rp', 'Password for the new admin', 'new-password')}
       ${rulesList()}
+      <p class="err" data-form-error role="alert"></p>
       <button class="btn small" type="submit">Add admin</button>
     </form>`;
 }
@@ -1097,11 +1109,11 @@ function defaultDevices() { return [
   {type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'}
 ]; }
 function deviceRows(devices) {
-  return devices.map((d,i)=>`<section class="device-editor" data-index="${i}" aria-labelledby="device-title-${i}"><h3 class="device-editor-title" id="device-title-${i}">Device ${i+1}</h3><div class="device-editor-body">
-    <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
+  return devices.map((d,i)=>`<section class="device-editor" ${!FEATURES.fanEnergy && d.type==='power_meter'?'hidden':''} data-index="${i}" aria-labelledby="device-title-${i}"><h3 class="device-editor-title" id="device-title-${i}">Device ${i+1}</h3><div class="device-editor-body">
+    <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).filter(([key])=>FEATURES.fanEnergy||key!=='power_meter'||d.type==='power_meter').map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
     <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(d.label)}" maxlength="100"></label>
     <div class="fields3"><label class="f">Quantity<input data-device="quantity" name="device-${i}-quantity" type="number" min="1" max="100" value="${d.quantity}"></label>
-    <label class="f" data-powered ${d.type!=='exhaust_fan'?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
+    <label class="f" data-powered ${!FEATURES.fanEnergy||d.type!=='exhaust_fan'?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
     </div>
     <label class="f" data-fan ${d.type!=='exhaust_fan'?'hidden':''}>Exhaust fan type<select data-device="fanType" name="device-${i}-fan">${Object.entries(FAN_NAMES).map(([key,name])=>`<option value="${key}" ${key===(d.fanType||'unspecified')?'selected':''}>${name}</option>`).join('')}</select></label>
     <button type="button" class="linkbtn" data-act="removeDevice" data-v="${i}">Remove device</button></div></section>`).join('');
@@ -1137,7 +1149,7 @@ function accountSheet() {
     <p class="note">Password reset codes are sent to this saved PUP webmail. Check Outlook Inbox and Junk; mark SafeZone messages as not junk if necessary.</p>
     ${me.role==='viewer' && me.kind==='student'?`<p class="section-label">Course and section</p><form id="student-profile-form" class="stack" novalidate>${profileFields('account',S.studentProfile || {})}<button class="btn small" type="submit">Save course and section</button></form>`:''}
     <p class="section-label">Change password</p>
-    <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><p class="note" style="margin:0">At least 6 characters, with a letter and a number, and no spaces.</p><button class="btn small" type="submit">Update password</button></form>`);
+    <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password">${rulesList('np')}<input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><button class="btn small" type="submit">Update password</button></form>`);
 }
 
 /* =====================================================================
@@ -1156,6 +1168,7 @@ const ACTS = {
     openSheet(admin ? 'Signed in as Admin' : 'Signed in', `<div class="stack"><p class="sub" style="margin:0 0 6px">${who ? `<b>${who}</b><br>` : ''}${admin ? 'You can change settings and control ventilation.' : 'You can view conditions and alerts. Only admins can change settings.'}</p>
       <div class="list"><div class="row"><span class="r-ico">${dark ? I.moon : I.sun}</span><div class="r-txt"><b>Dark mode</b><span>${dark ? 'On' : 'Off'}</span></div>
         <button class="switch" role="switch" aria-checked="${dark}" aria-label="Dark mode" data-act="theme"><span></span></button></div></div>
+      <button class="btn soft" data-act="go" data-v="rooms">All classrooms</button><button class="btn soft" data-act="go" data-v="analytics">Temperature analytics</button>
       <button class="btn soft" data-act="account">Account Settings</button>
       <button class="btn soft" data-act="logout">Log out</button></div>`);
   },
@@ -1177,7 +1190,7 @@ const ACTS = {
   smsEdit(v) { S.pendingDel = ''; smsSheet(+v); },
   smsCancel() { S.pendingDel = ''; smsSheet(); },
   pickRoom() { pickSheet(); },
-  async room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId=v;S.alerts=[];S.unread=0;store.save();closeSheet();render();const selected=v,session=token;const result=await api('/alerts?roomId='+encodeURIComponent(v)+'&limit=200');if(S.roomId===selected && token===session && S.role){S.alerts=result.alerts;render();} } },
+  async room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId=v;S.alerts=[];S.unread=0;store.save();closeSheet();render();const selected=v,session=token;const result=await api(alertUrl(v));if(S.roomId===selected && token===session && S.role){S.alerts=result.alerts;S.archiveAvailable=result.archiveAvailable===true;render();} } },
   addRoom(v) { if(S.role!=='admin'||S.screen!=='monitor')return; S.editingRoomId=null; S.addFloor=v?+v:cur().floor; roomsSheet(); },
   editRoom(v) { if(S.role!=='admin'||S.screen!=='settings')return; captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
   addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
@@ -1208,12 +1221,29 @@ const ACTS = {
 
 Object.assign(ACTS, {
   async go(v) {
+    if(v!=='alerts')S.alertView='active';
     if (['settings', 'alerts', 'home'].includes(v)) await refreshData();
     S.screen = v; if (v === 'alerts') S.unread = 0;
     if (v === 'settings') { S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto'); S.draftTrigger = S.fanTrigger; }
     render();
   },
   logout() { signOut(); render(); },
+  async alertView(v) {
+    if(!['active','archived'].includes(v))return;
+    S.alertView=v;S.unread=0;S.alerts=[];render();
+    const session=token,room=S.roomId,result=await api(alertUrl());
+    if(token===session&&S.roomId===room&&S.alertView===v){S.alerts=result.alerts;S.archiveAvailable=result.archiveAvailable===true;render();}
+  },
+  async archiveAlert(v,el) {
+    if(el.disabled||!S.archiveAvailable)return;
+    el.disabled=true;
+    try {await api('/alerts/archive','PUT',{ids:v.split(',').map(Number),archived:el.dataset.restore!=='true'});await refreshData();render();toast(el.dataset.restore==='true'?'Alert restored':'Alert archived');}
+    finally{if(el.isConnected)el.disabled=false;}
+  },
+  async monitorRoom(v) {
+    if(!S.rooms.some(r=>r.id===v))return;
+    S.alertView='active';S.roomId=v;S.unread=0;S.alerts=[];S.mon.view='live';S.screen='monitor';store.save();render();
+  },
   async users() {
     if (S.role !== 'admin') return;
     await refreshData(); closeSheet(); S.screen = 'users'; render();
@@ -1248,7 +1278,7 @@ Object.assign(ACTS, {
     if(S.role!=='admin'||S.screen!=='settings')return;
     const room=S.rooms.find(r=>r.id===v);if(!room)return;
     captureDrafts();
-    openSheet('Remove '+room.name+'?',`<p>This will remove ${esc(room.name)}, its devices and accumulated electricity estimate. Alert history will remain without a room link.</p><div class="stack"><button class="btn" data-act="confirmRoomDel" data-v="${v}">Remove ${esc(room.name)}</button><button class="btn soft" data-act="cancelRoomDel">Cancel</button></div>`);
+    openSheet('Remove '+room.name+'?',`<p>This will remove ${esc(room.name)} and its configured devices. Alert history will remain without a room link.</p><div class="stack"><button class="btn" data-act="confirmRoomDel" data-v="${v}">Remove ${esc(room.name)}</button><button class="btn soft" data-act="cancelRoomDel">Cancel</button></div>`);
   },
   async confirmRoomDel(v) {
     await api('/rooms/'+encodeURIComponent(v),'DELETE');formDrafts.delete('room:'+v);
@@ -1324,6 +1354,11 @@ document.addEventListener('submit', async e => {
       await api('/auth/reset', 'POST', { resetToken: S.reset.resetToken, newPassword: passwords() });
       S.resetSide = S.reset.side; S.reset = null; S.authError = ''; S.screen = 'fpDone'; render();
     } else if (id === 'admin-form') {
+      const name=value('an').trim(),username=value('au').trim();
+      if(name.length<2||name.length>100)throw new Error('Enter a full name from 2 to 100 characters.');
+      if(!/^[a-z0-9._-]{3,20}$/i.test(username))throw new Error('Username must contain 3–20 letters, numbers, dots, dashes or underscores.');
+      if(!emailKind(value('aem')))throw new Error('Enter a valid PUP webmail.');
+      if(!validPhone(value('ap')))throw new Error('Enter a valid Philippine mobile number.');
       await api('/admin/users', 'POST', { fullName: value('an'), username: value('au'), email: value('aem'), phone: value('ap'), password: passwords() });
       await refreshData(); S.screen = 'users'; render(); toast('Admin account created');
     } else if (id === 'sms-form') {
@@ -1347,6 +1382,7 @@ document.addEventListener('submit', async e => {
       const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
       S.me = mapUser(data.user); toast('Web mail saved');
     } else if (id === 'pw-form') {
+      if (!pwRules(value('np')).every(rule=>rule[1])) throw new Error('New password must meet all the listed rules.');
       if (value('np') !== value('cp')) throw new Error('The two passwords do not match.');
       const data = await api('/auth/change-password', 'POST', { currentPassword: value('current-pw'), newPassword: value('np') });
       token = data.token; sessionStorage.setItem('safezone.token', token); closeSheet(); toast('Password updated');
@@ -1354,7 +1390,7 @@ document.addEventListener('submit', async e => {
     formDrafts.delete(formKey(form));
     const freshForm=document.getElementById(id);if(freshForm && id==='admin-form')freshForm.reset();
   } catch (err) {
-    S.authError = err.message; const error = $('#err');
+    S.authError = err.message; const error = form.querySelector('[data-form-error]') || $('#err');
     if (error) error.textContent = err.message; else toast(err.message);
   } finally { if (button && button.isConnected) button.disabled = false; }
 });
@@ -1364,8 +1400,8 @@ document.addEventListener('input', e => {
   if(e.target.form)e.target.form.dataset.dirty='1';
   if(/^(temp|hum|co2)-(warn|limit)$/.test(e.target.id))settingsDirty=true;
   if(e.target.id==='email' && $('#registration-profile'))$('#registration-profile').hidden=emailKind(e.target.value)==='faculty';
-  if (e.target.id !== 'rp') return;
-  const ul = $('#rules'); if (!ul) return;
+  if (!['rp','np'].includes(e.target.id)) return;
+  const ul = document.querySelector('[data-password-for="'+e.target.id+'"]'); if (!ul) return;
   const res = pwRules(e.target.value);
   ul.querySelectorAll('li').forEach((li, i) => li.classList.toggle('ok', res[i][1]));
 });
@@ -1375,10 +1411,11 @@ document.addEventListener('change', e => {
   if(e.target.matches('[data-device="type"]')){
     const row=e.target.closest('.device-editor'), type=e.target.value;
     row.querySelector('[data-fan]').hidden=type!=='exhaust_fan';
-    row.querySelector('[data-powered]').hidden=type!=='exhaust_fan';
+    row.querySelector('[data-powered]').hidden=!FEATURES.fanEnergy||type!=='exhaust_fan';
     row.querySelector('[data-device="label"]').value=DEVICE_NAMES[type];
     if(type==='exhaust_fan')row.querySelector('[data-device="wattsPerDevice"]').value=40;
   }
+  if(e.target.id==='overview-floor'){S.overviewFloor=e.target.value;render();}
   if (e.target.id === 'config-floor') {
     const room=roomsOn(Number(e.target.value))[0];
     if(room){S.configRoomId=room.id;$('.room-configuration').outerHTML=roomConfiguration();}

@@ -13,7 +13,8 @@ Shared simulated readings are stored here; physical sensor integration is not in
 | `thresholds` | warning and limit for temperature, humidity, CO2 |
 | `settings` | when the fan starts (yellow or red) |
 | `sms_recipients` | name, role and mobile number of everyone who gets a text |
-| `alerts` | the Alerts list in the app |
+| `alerts` | original alert records |
+| `alert_archives` | per-account archive bookmarks; original alerts remain intact |
 | `notification_log` | every SMS and email sent, and whether it worked |
 | `system_logs` | faults (sensor, fan, Wi-Fi, ...) |
 | `device_status` | the Devices screen (NodeMCU V3 ESP8266, sensors, fan, Wi-Fi, SMS module, power meter) |
@@ -32,8 +33,12 @@ Shared simulated readings are stored here; physical sensor integration is not in
 4. `04-shared-simulations.sql` adds the shared demo table.
 5. `05-electricity-usage.sql` adds persistent estimated energy totals.
 6. `06-room-devices.sql` adds device groups and converts existing light/fan ratings.
+7. `07-classroom-roster.sql` aligns the classroom roster.
+8. `08-recovery-gmail.sql` adds legacy recovery tables (retained for compatibility; current recovery uses registered PUP webmail).
+9. `09-student-profiles.sql` adds student course and section.
+10. `10-alert-archives.sql` adds per-account alert bookmarks. Run it as the database administrator on the database used by the running backend. Archive/restore changes bookmarks only, preserving alert history.
 
-For an existing database with shared simulations installed, back up the database and run **only 05, then 06** as the database administrator. Keep existing accounts, configuration and `.env`; do not rerun the setup/seed files.
+For an existing database, run only missing migrations in numerical order as the database administrator. If 01–09 are already installed, this revision requires **only 10**. Keep existing accounts, configuration and `.env`; do not rerun the setup/seed files.
 The first admin account is NOT created here. You create it from the backend with `npm run create-admin`.
 
 ### Option A: XAMPP (easiest)
@@ -42,8 +47,8 @@ The first admin account is NOT created here. You create it from the backend with
 2. Open the XAMPP Control Panel and click **Start** next to **MySQL** and **Apache**.
 3. Click **Admin** next to MySQL (or open http://localhost/phpmyadmin).
 4. Click the **SQL** tab, paste the whole content of `01-create-database.sql` (with your password), click **Go**.
-5. Do the same with `02-schema.sql`, then `03-seed.sql`, then `04-shared-simulations.sql`, `05-electricity-usage.sql` and `06-room-devices.sql`.
-6. Check: on the left you should see `safezone` with 14 tables, and `classroom roster has 43 rooms.
+5. Run the remaining numbered scripts, 02 through 10, in order.
+6. Check: `safezone` contains the tables above and the classroom roster has 43 rooms.
 
 XAMPP's database is **MariaDB**, a MySQL-compatible database. These files work on both.
 If your adviser needs the real "MySQL" product, use Option B.

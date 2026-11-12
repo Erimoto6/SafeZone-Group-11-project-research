@@ -1,6 +1,6 @@
 # SafeZone
 
-SafeZone is a classroom monitoring app for temperature, humidity, carbon dioxide (CO₂), simulated exhaust fan operation and estimated electricity use. Admins configure rooms and thresholds, run simulations and manage accounts. Students and faculty view room readings and alerts.
+SafeZone is a classroom monitoring app for temperature, humidity, carbon dioxide (CO₂), simulated exhaust fan operation. Admins configure rooms and thresholds, run simulations and manage accounts. Students and faculty view room readings and alerts.
 
 This branch, **Test-ni-eleyn**, uses a shared Node.js/Express backend and MySQL/MariaDB database. The backend serves the browser app and API from the same address. An Android APK bundles the frontend and connects to that backend. Login, saved data and shared simulations require a running backend and database.
 
@@ -20,7 +20,7 @@ Keep the detailed [backend instructions](backend/README.md) and [database instru
 
 You need Node.js/npm, MySQL or MariaDB (for example, XAMPP), and a browser. Android packaging also needs the root project's Capacitor dependencies, Android Studio and an Android project.
 
-1. Follow [database/README.md](database/README.md) and run SQL files **01 through 06 in order** for a new database. Change the database-user password placeholder privately before running file 01. The initial seed creates Rooms 101–110; it does not create an admin account.
+1. Follow [database/README.md](database/README.md) and run SQL files **01 through 10 in order** for a new database. Change the database-user password placeholder privately before running file 01. The initial seed creates 43 classrooms across four floors; it does not create an admin account.
 2. Open a terminal in `backend` and install dependencies:
 
    ```powershell
@@ -52,8 +52,12 @@ The `admin / safezone` demo login is not enabled on this branch. Accounts previo
    | `database/04-shared-simulations.sql` | Shared simulation state |
    | `database/05-electricity-usage.sql` | Persistent estimated energy totals |
    | `database/06-room-devices.sql` | Configurable device groups |
+   | `database/07-classroom-roster.sql` | Classroom roster |
+   | `database/08-recovery-gmail.sql` | Legacy recovery schema, retained for compatibility |
+   | `database/09-student-profiles.sql` | Student course and section |
+   | `database/10-alert-archives.sql` | Per-account alert archive bookmarks |
 
-   Run missing migrations in numerical order as the database administrator through phpMyAdmin or Workbench. If shared simulations already work and 05/06 are missing, run **05, then 06**. If all migrations are installed, no new SQL is needed. Do not recreate the database or rerun the original setup/seed files for an existing installation.
+   Run missing migrations in numerical order as the database administrator through phpMyAdmin or Workbench. If shared simulations already work and 05/06 are missing, run **05, then 06**. This UI revision adds migration **10**. If 01–09 are already installed, run only `database/10-alert-archives.sql` against the database used by the running backend. Current alerts continue to work before migration 10; Archive becomes available after it is installed. Do not recreate the database or rerun the original setup/seed files for an existing installation.
 4. From `backend`, run `npm ci`, `npm run check-db`, then `npm start`. Open http://localhost:3000/ and press Ctrl+F5.
 5. For an installed Android app, sync the frontend and rebuild/reinstall the APK as described below. Pulling source code does not update an already installed APK.
 
@@ -78,15 +82,27 @@ Changing scenarios retains existing readings and ventilation mode. Use Reset rea
 
 To verify sharing, sign in as an admin in one browser and a student/faculty member in another browser or private window. Start a simulation as admin, choose the affected room in the other session and compare readings and alerts.
 
-## Estimated electricity
+## Application UI revisions
 
-Electricity displays accumulated **estimated kWh**, separately for exhaust fans. Fan quantities, configured wattages and simulated fan operating time determine the estimate:
+- **Classroom Overview:** floor filter and a table of room number, temperature, CO₂ and status. Status uses the more severe of temperature and CO₂ against the configured warning/limit. Missing data shows Awaiting data. The table header stays visible inside its scroll area.
+- **Temperature Analytics:** current simulated room readings ranked highest first, with warning/danger counts. This is a current snapshot, not a historical report or weather prediction.
+- **Alerts:** selected-room date/time timeline with separate event cards, muted timestamps and neutral borders. Current and Archive each show up to the latest 200 matching records. Archive bookmarks belong to the signed-in account; archiving/restoring does not delete or change original alert records. Run migration 10 to enable it.
+- **Accounts and Settings:** account cards replace account tables; students remain grouped by course and section. Password rules appear immediately under the password field and update while typing. Admin input is validated in the browser and again by the API.
+- **Graphs:** temperature, humidity and CO₂ charts use samples received during the browser session, retaining at most 40 recent samples per room. Closing/reloading the app clears those chart samples. The time windows filter available samples; earlier readings are not invented. Persistent historical reporting remains future work; `reading_hourly` is reserved for it.
 
-```text
-kWh = watts × operating milliseconds ÷ 3,600,000,000
-```
+### Electricity feature retained for later
 
-Totals persist in `electricity_usage`; backend downtime is excluded. Resetting simulated readings does not erase totals. Unconfigured appliances are excluded. This is not a measured energy reading, cost estimate or electricity bill.
+Electricity consumption, meter options and wattage inputs are hidden from the app. Set `FEATURES.fanEnergy` to `true` in `www/js/app.js` to restore the views, then update the asset cache version in `www/index.html` and rebuild the APK if applicable. The backend calculation code, device wattages and `electricity_usage` totals remain intact. They still represent estimated fan energy based on simulated operating time, not measured electricity.
+
+### Notification recommendations (follow-up)
+
+Push notifications and real SMS delivery are not implemented in this revision. The app currently polls while open. Firebase/hardware integration was deferred.
+
+Firebase Cloud Messaging itself has no per-message fee; supporting hosting, network access and implementation can still cost money. Arduino-based SMS requires a compatible cellular module, SIM and carrier messaging/load plan, plus maintenance. Push generally has lower recurring delivery costs when users have internet; SMS can reach users without mobile data but adds carrier costs per message or bundle. Use push as the primary option when internet access is expected, and assess SMS as a fallback using actual carrier quotes and expected alert volume. No paid notification subscription was added.
+
+### Revision verification
+
+Run `node --test backend/test/*.test.js` for backend and alert-grouping checks. `node backend/scripts/ui-revisions-check.cjs` runs mocked responsive browser checks using Playwright and Chromium (set `CHROMIUM_PATH` if needed). These checks do not connect to a production database or send emails.
 
 ## Phones on the same Wi-Fi
 
