@@ -1204,7 +1204,6 @@ const ACTS = {
     openSheet(admin ? 'Signed in as Admin' : 'Signed in', `<div class="stack"><p class="sub" style="margin:0 0 6px">${who ? `<b>${who}</b><br>` : ''}${admin ? 'You can change settings and control ventilation.' : 'You can view conditions and alerts. Only admins can change settings.'}</p>
       <div class="list"><div class="row"><span class="r-ico">${dark ? I.moon : I.sun}</span><div class="r-txt"><b>Dark mode</b><span>${dark ? 'On' : 'Off'}</span></div>
         <button class="switch" role="switch" aria-checked="${dark}" aria-label="Dark mode" data-act="theme"><span></span></button></div></div>
-      <button class="btn soft" data-act="go" data-v="rooms">All classrooms</button><button class="btn soft" data-act="go" data-v="analytics">Temperature analytics</button>
       <button class="btn soft" data-act="account">Account Settings</button>
       <button class="btn soft" data-act="logout">Log out</button></div>`);
   },
