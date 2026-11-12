@@ -199,4 +199,4 @@ All admins can permanently delete a student from **Manage Users → Student Acco
 
 For course/section storage, run **`database/09-student-profiles.sql`** once on the database used by the app, after migration 08. It only creates a linked profile table; existing accounts/passwords remain unchanged and old profiles show as not set until students fill them in. Do not rerun the full setup. Core account access works before migration 09, but saving a profile/new student registration needs the table.
 
-PUP webmail delivery can be tested from Account Settings using **Send test email to saved PUP webmail**. Check the registered address's Outlook Inbox/Junk for the test message. This does not change account details or passwords; see [PUP delivery test](backend/README.md#test-delivery-to-registered-pup-webmail).
+PUP webmail delivery has been confirmed through Outlook. Account Settings no longer includes the temporary test-email button. Password reset codes are sent to the registered PUP address; check Outlook Inbox and Junk.

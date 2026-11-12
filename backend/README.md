@@ -168,6 +168,6 @@ Authenticated students use `GET /api/auth/me/student-profile` and `PUT /api/auth
 
 ## Test delivery to registered PUP webmail
 
-After both Railway and Vercel deploy the test update, a logged-in user can open Account Settings and choose **Send test email to saved PUP webmail**. `POST /api/auth/me/test-webmail` ignores request-supplied recipients and uses the account's current registered PUP email. It is limited to three requests per account per 15 minutes. No reset codes, verification records or recovery settings are created or changed.
+The temporary Account Settings test-email button has been removed after successful delivery testing. The authenticated diagnostic endpoint remains available for backend troubleshooting: `POST /api/auth/me/test-webmail` ignores request-supplied recipients and uses the account's current registered PUP email. It is limited to three requests per account per 15 minutes. No reset codes, verification records or recovery settings are created or changed.
 
 The relay supports only Gmail, `@pup.edu.ph` and `@iskolarngbayan.pup.edu.ph` recipients. The test action accepts PUP recipients only and uses fixed content/subject. The project Gmail remains the sender. A successful API response means SMTP acceptance, not inbox arrival: the user must check Outlook Inbox and Junk for **SafeZone PUP webmail delivery test**. PUP delivery has been confirmed for this deployment; the active reset flow now uses the registered PUP address. No SQL migration or new secrets are required.
