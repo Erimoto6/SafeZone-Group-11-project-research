@@ -628,18 +628,18 @@ function monitorView() {
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${monitoringLinks()}<div class="monitor-utilities ${FEATURES.fanEnergy?'':'fan-only'}">${ventCard(true)}${FEATURES.fanEnergy?powerCard(false,true):''}</div>${metricChips()}
+    return `<div class="monitor-room-context">${roomBar(true)}${seg}</div><div class="monitor-utilities ${FEATURES.fanEnergy?'':'fan-only'}">${ventCard(true)}${FEATURES.fanEnergy?powerCard(false,true):''}</div>${metricChips()}
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
-      ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>`;
+      ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>${monitoringLinks()}`;
   }
   const r = S.mon.range; const h = history(k, r);
   const min = Math.min(...h.vals), max = Math.max(...h.vals), avg = h.vals.reduce((a, b) => a + b, 0) / h.vals.length;
   const over = h.vals.filter(v => v >= S.limits[k].limit).length;
   const rc = `<div class="mini-chips" role="group" aria-label="Time range">${[['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']].map(([id, l]) => `<button data-act="range" data-v="${id}" aria-pressed="${r === id}">${l}</button>`).join('')}</div>`;
-  return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${monitoringLinks()}${metricChips()}${rc}
+  return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${metricChips()}${rc}
     <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${chartSVG(h.vals, h.labels, k, 'neutral', 'hist')}${legend(k)}</section>
     <div class="stats"><div class="stat"><span>Lowest</span><b>${h.vals.length?fmt(k,min):'—'}</b></div><div class="stat"><span>Average</span><b>${h.vals.length?fmt(k,avg):'—'}</b></div><div class="stat"><span>Highest</span><b>${h.vals.length?fmt(k,max):'—'}</b></div></div>
-    <p class="note">Simulated samples received during this browser session only; up to 40 recent readings per room are retained. Earlier history is not available. Actual conditions vary with weather, occupancy and ventilation.</p><p class="note">${!h.vals.length?'No recorded samples yet.':over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>`;
+    <p class="note">Simulated samples received during this browser session only; up to 40 recent readings per room are retained. Earlier history is not available. Actual conditions vary with weather, occupancy and ventilation.</p><p class="note">${!h.vals.length?'No recorded samples yet.':over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>${monitoringLinks()}`;
 }
 
 const DEVICE_NAMES = {exhaust_fan:'Exhaust fan',esp8266:'NodeMCU V3 ESP8266',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
