@@ -86,7 +86,7 @@ const S = {
   role: null,                 // null | 'student' (Student / Faculty) | 'admin'
   screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | home | alerts | monitor | status | settings | about
   mon: { view: 'live', metric: 'temp', range: '6h' },
-  alertFilter: 'all', alertView: 'active', archiveAvailable: false, overviewFloor: 'all',
+  alertFilter: 'all', alertView: 'active', archiveAvailable: false, overviewFloor: 'all', studentCourse: null, studentSection: null,
   rooms: [],                  // every room has its own readings, levels and fan. Built in init().
   roomId: null,               // the room being viewed
   fanTrigger: 'exceeded',     // when automatic ventilation turns ON: 'warning' (yellow) | 'exceeded' (red)
@@ -151,7 +151,7 @@ function signOut() {
   token = ''; sessionStorage.removeItem('safezone.token');
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
   alertWatermarks.clear(); S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
-  S.alertView='active';S.archiveAvailable=false;
+  S.alertView='active';S.archiveAvailable=false;S.studentCourse=null;S.studentSection=null;
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.studentProfile = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
@@ -436,7 +436,7 @@ function topbar() {
   const home = S.screen === 'home'; const back = ['rooms','analytics'].includes(S.screen)?'monitor':S.screen==='students'?'users': ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
   return `<header class="topbar">${home
     ? `${logo(34)}<h1>SafeZone</h1>`
-    : `<button data-act="go" data-v="${back}" aria-label="Back to ${back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
+    : `<button data-act="${S.screen==='students' && S.studentCourse!==null?'studentsBack':'go'}" data-v="${back}" aria-label="${S.screen==='students' && S.studentCourse!==null?(S.studentSection!==null?'Back to sections':'Back to courses'):'Back to '+back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
     <button data-act="menu" aria-label="Menu">${I.menu}</button></header>`;
 }
 
@@ -1033,17 +1033,30 @@ function openSheet(title, html) {
 const closeSheet = () => { captureDrafts(); $('#sheet-root').innerHTML = ''; };
 
 function userCards(title, people, admin = false, removable = false) {
-  return `<section class="account-group"><div class="account-group-heading"><h3>${esc(title)}</h3><span class="account-count">${people.length}</span></div><div class="account-card-list">${people.map(a=>`<article class="account-card"><div class="account-card-main"><strong>${esc(admin?a.name:a.email)}</strong>${admin?`<p>${esc(a.username || '')}</p>`:''}<dl>${admin?`<div><dt>PUP webmail</dt><dd>${esc(a.email)}</dd></div>`:''}<div><dt>Mobile</dt><dd>${esc(showPhone(a.phone))}</dd></div>${removable?`<div><dt>Account status</dt><dd>${a.active===false?'Inactive':'Active'}</dd></div>`:''}</dl></div>${removable?`<button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button>`:''}</article>`).join('') || '<p class="empty">No accounts in this group.</p>'}</div></section>`;
+  const emailText = email => esc(email).replace(/@/g,'@<wbr>').replace(/\./g,'.<wbr>');
+  return `<section class="account-group"><div class="account-group-heading"><h3>${esc(title)}</h3><span class="account-count">${people.length}</span></div><div class="account-card-list">${people.map(a=>`<article class="account-card">
+    <div class="account-card-heading"><div class="account-card-identity"><strong>${admin?esc(a.name):emailText(a.email)}</strong>${admin?`<p>${esc(a.username || '')}</p>`:''}</div>${removable?`<button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button>`:''}</div>
+    <dl>${admin?`<div><dt>PUP webmail</dt><dd>${emailText(a.email)}</dd></div>`:''}<div><dt>Mobile</dt><dd>${esc(showPhone(a.phone))}</dd></div>${removable?`<div><dt>Account status</dt><dd>${a.active===false?'Inactive':'Active'}</dd></div>`:''}</dl>
+  </article>`).join('') || '<p class="empty">No accounts in this group.</p>'}</div></section>`;
 }
 function studentsView() {
   if(S.role!=='admin')return '<p class="empty">Admin access is required.</p>';
   const students=S.accounts.filter(a=>a.role==='viewer' && a.kind==='student');
-  const courseCodes=[...new Set(students.map(a=>a.courseCode || ''))].sort((a,b)=>courseName(a).localeCompare(courseName(b)));
-  return `<div class="student-page-context"><p class="note">${students.length} students · grouped by course and section</p></div>${courseCodes.map(code=>{
-    const people=students.filter(a=>(a.courseCode||'')===code);
-    const sections=[...new Set(people.map(a=>a.section||'Section not set'))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-    return `<details class="student-course" data-keep-open="course-${esc(code)}" open><summary><span>${esc(courseName(code))}${code?' ('+esc(code)+')':''}</span><small>${people.length} students</small>${I.chevd}</summary>${sections.map(section=>userCards(section,people.filter(a=>(a.section||'Section not set')===section).sort((a,b)=>a.email.localeCompare(b.email)),false,true)).join('')}</details>`;
-  }).join('') || '<p class="empty">No student accounts yet.</p>'}`;
+  const course=S.studentCourse,section=S.studentSection;
+  const countLabel = count => `${count} student${count===1?'':'s'}`;
+  const browseButton = (act,value,title,subtitle,count) => `<button class="student-browse-button" data-act="${act}" data-v="${esc(value)}"><span class="student-browse-label"><b>${esc(title)}</b>${subtitle?`<small>${esc(subtitle)}</small>`:''}</span><span class="account-count">${countLabel(count)}</span>${I.chev}</button>`;
+  const context=`<div class="student-page-context"><nav class="student-breadcrumb" aria-label="Student account location"><button data-act="studentCourses" ${course===null?'aria-current="page"':''}>Courses</button>${course!==null?`${I.chev}<button data-act="studentCourse" data-v="${esc(course)}" ${section===null?'aria-current="page"':''}>${esc(course || 'Course not set')}</button>`:''}${section!==null?`${I.chev}<span aria-current="page">${esc(section || 'Section not set')}</span>`:''}</nav></div>`;
+  if(course===null){
+    const codes=[...new Set([...Object.keys(COURSES),...students.map(a=>a.courseCode||'')])];
+    return `${context}<p class="note">${countLabel(students.length)} · Select a course to view its sections.</p><div class="student-browse-list">${codes.map(code=>browseButton('studentCourse',code,code||'Course not set',code?courseName(code):'Students without a saved course',students.filter(a=>(a.courseCode||'')===code).length)).join('')}</div>`;
+  }
+  const people=students.filter(a=>(a.courseCode||'')===course);
+  if(section===null){
+    const sections=[...new Set(people.map(a=>a.section||''))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    return `${context}<h2 class="student-stage-title">${esc(courseName(course))}</h2><p class="note">${countLabel(people.length)} · Select a section to view student profiles.</p><div class="student-browse-list">${sections.map(value=>browseButton('studentSection',value,value||'Section not set','',people.filter(a=>(a.section||'')===value).length)).join('') || '<p class="empty">No student accounts in this course yet.</p>'}</div>`;
+  }
+  const profiles=people.filter(a=>(a.section||'')===section).sort((a,b)=>a.email.localeCompare(b.email));
+  return `${context}<p class="note">${esc(course || 'Course not set')} · ${esc(section || 'Section not set')}</p>${userCards('Student profiles',profiles,false,true)}`;
 }
 
 function usersView() {
@@ -1248,7 +1261,11 @@ Object.assign(ACTS, {
     if (S.role !== 'admin') return;
     await refreshData(); closeSheet(); S.screen = 'users'; render();
   },
-  async students() {if(S.role!=='admin')return;await refreshData();closeSheet();S.screen='students';render();},
+  async students() {if(S.role!=='admin')return;await refreshData();closeSheet();S.studentCourse=null;S.studentSection=null;S.screen='students';render();},
+  studentCourses() {if(S.role!=='admin')return;S.studentCourse=null;S.studentSection=null;render();},
+  studentCourse(v) {if(S.role!=='admin')return;S.studentCourse=v;S.studentSection=null;render();const screen=$('#screen');if(screen)screen.scrollTop=0;},
+  studentSection(v) {if(S.role!=='admin'||S.studentCourse===null)return;S.studentSection=v;render();const screen=$('#screen');if(screen)screen.scrollTop=0;},
+  studentsBack() {if(S.role!=='admin')return;if(S.studentSection!==null)S.studentSection=null;else S.studentCourse=null;render();},
   studentRemove(v) {
     if(S.role!=='admin')return;
     const student=S.accounts.find(a=>String(a.id)===v && a.role==='viewer' && a.kind==='student');
