@@ -493,3 +493,14 @@ select option{background:var(--surface);color:var(--ink)}
 .account-card dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin:16px 0 0}
 .account-card dl>div{margin:0;min-width:0}.account-card dt{font-size:12px;line-height:1.5}.account-card dd{font-size:14px;line-height:1.6}
 .student-browse-button:focus-visible,.student-breadcrumb button:focus-visible{outline:2px solid var(--nav-active);outline-offset:3px}
+
+/* Place the Monitoring fan control beside its status. */
+.monitor-utilities.fan-only .fan-control-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(105px,auto);column-gap:16px;row-gap:6px;min-height:150px}
+.monitor-utilities.fan-only .fan-control-card .s-head{grid-column:1/-1}
+.monitor-utilities.fan-only .fan-control-card .s-val{grid-column:1;grid-row:2;align-self:end;margin-top:4px}
+.monitor-utilities.fan-only .fan-control-card .fan-count{grid-column:1;grid-row:3;margin:0}
+.monitor-utilities.fan-only .fan-control-card .fan-card-controls{grid-column:2;grid-row:2/4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;max-width:125px;text-align:center}
+.fan-card-controls .linkbtn{text-align:center}.fan-card-controls .s-note{margin:0}
+.alert-frequency-rank .rank-reading small{font-size:11px;color:var(--muted);white-space:nowrap}
+.alert-frequency-rank .rank-reading b{font-size:24px;color:var(--nav-active)}
+.alert-frequency-rank{align-items:flex-start}.alert-frequency-rank .rank-room small{line-height:1.6}

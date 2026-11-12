@@ -36,6 +36,23 @@ router.get('/', requireAuth, require('../poll-limit'), wrap(async (req, res) => 
   }
 }));
 
+// Count stored temperature limit alerts across every classroom, including archived alerts.
+router.get('/temperature-analytics',requireAuth,wrap(async(req,res)=>{
+  const range=req.query.range===undefined?'7d':req.query.range;
+  if(!['7d','30d','all'].includes(range))throw new HttpError(400,'Choose 7 days, 30 days or all time.');
+  const days=range==='7d'?7:30;
+  const [rows]=await pool.query(`SELECT r.id,r.room_no,r.floor_no,COUNT(a.id) AS alert_count,
+    COUNT(DISTINCT DATE(a.created_at)) AS alert_days,MAX(UNIX_TIMESTAMP(a.created_at))*1000 AS last_alert_at
+    FROM rooms r LEFT JOIN alerts a ON a.room_id=r.id AND a.metric='temp' AND a.type='exceeded'
+      ${range==='all'?'':'AND a.created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? DAY)'}
+    WHERE r.room_no NOT IN (108,205,210,307,309)
+    GROUP BY r.id,r.room_no,r.floor_no
+    ORDER BY alert_count DESC,last_alert_at DESC,r.room_no ASC`,range==='all'?[]:[days]);
+  const rooms=rows.map(r=>({roomId:r.id,room:'Room '+r.room_no,floor:r.floor_no,
+    alertCount:Number(r.alert_count),alertDays:Number(r.alert_days),lastAlertAt:r.last_alert_at==null?null:Number(r.last_alert_at)}));
+  res.json({range,generatedAt:Date.now(),totalAlerts:rooms.reduce((sum,r)=>sum+r.alertCount,0),rooms});
+}));
+
 router.put('/archive',requireAuth,wrap(async(req,res)=>{
   const {ids,archived}=req.body || {};
   if(!Array.isArray(ids)||!ids.length||ids.length>200||ids.some(id=>!Number.isSafeInteger(id)||id<1)||typeof archived!=='boolean')throw new HttpError(400,'Choose valid alerts and an archive action.');

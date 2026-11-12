@@ -87,6 +87,7 @@ const S = {
   screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | home | alerts | monitor | status | settings | about
   mon: { view: 'live', metric: 'temp', range: '6h' },
   alertFilter: 'all', alertView: 'active', archiveAvailable: false, overviewFloor: 'all', studentCourse: null, studentSection: null,
+  temperatureAnalytics: {range:'7d',data:null,loading:false,error:'',fetchedAt:0},
   rooms: [],                  // every room has its own readings, levels and fan. Built in init().
   roomId: null,               // the room being viewed
   fanTrigger: 'exceeded',     // when automatic ventilation turns ON: 'warning' (yellow) | 'exceeded' (red)
@@ -152,6 +153,7 @@ function signOut() {
   S.role = null; S.me = null; S.session = null; S.accounts = []; S.users = []; S.alerts = []; S.unread = 0;
   alertWatermarks.clear(); S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
   S.alertView='active';S.archiveAvailable=false;S.studentCourse=null;S.studentSection=null;
+  S.temperatureAnalytics={range:'7d',data:null,loading:false,error:'',fetchedAt:0};
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.studentProfile = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
@@ -344,6 +346,7 @@ async function pollShared() {
     if (token !== session || !S.role || requestedRoom!==S.roomId || requestedView!==S.alertView) return;
     S.archiveAvailable=alerts.archiveAvailable===true;
     applyShared(shared, alerts.alerts); S.syncError = '';
+    if(S.screen==='analytics'&&!S.temperatureAnalytics.loading&&Date.now()-S.temperatureAnalytics.fetchedAt>=30000)void loadTemperatureAnalytics();
     if (LIVE.has(S.screen)) render();
     else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
   } catch (err) {
@@ -453,8 +456,8 @@ function ventCard(control) {
     ? `<button class="switch" role="switch" aria-checked="${on}" aria-label="Exhaust fan" data-act="toggleVent"><span></span></button>
        ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
     : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>`;
-  return `<article class="card sensor"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Exhaust fan</div>
-    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p>${foot}</article>`;
+  return `<article class="card sensor ${control && admin?'fan-control-card':''}"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Exhaust fan</div>
+    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note fan-count">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p><div class="fan-card-controls">${foot}</div></article>`;
 }
 
 function cards(control = false) { return `<div class="grid2">${sensorCard('temp')}${sensorCard('hum')}${sensorCard('co2')}${ventCard(control)}</div>`; }
@@ -509,7 +512,7 @@ function legendCard() {
 }
 
 function monitoringLinks() {
-  return `<div class="monitor-links"><button class="card" data-act="go" data-v="rooms">${I.building}<span><b>All classrooms</b><small>Temperature, CO₂ and room status</small></span>${I.chev}</button><button class="card" data-act="go" data-v="analytics">${I.chart}<span><b>Temperature analytics</b><small>Rooms requiring attention</small></span>${I.chev}</button></div>`;
+  return `<div class="monitor-links"><button class="card" data-act="go" data-v="rooms">${I.building}<span><b>All classrooms</b><small>Temperature, CO₂ and room status</small></span>${I.chev}</button><button class="card" data-act="go" data-v="analytics">${I.chart}<span><b>Temperature analytics</b><small>Rooms with frequent temperature limit alerts</small></span>${I.chev}</button></div>`;
 }
 function readingStatus(value,limits) {
   if(!Number.isFinite(Number(value))||value==null)return 'unknown';
@@ -524,12 +527,32 @@ function overviewView() {
   const rooms=S.rooms.filter(r=>S.overviewFloor==='all'||r.floor===Number(S.overviewFloor));
   return `<p class="note">Current simulated readings. Status uses the more severe temperature or CO₂ level.</p><label class="f" for="overview-floor">Floor</label><select id="overview-floor"><option value="all">All floors</option>${floorList().map(f=>`<option value="${f}" ${String(f)===S.overviewFloor?'selected':''}>${floorName(f)}</option>`).join('')}</select><div class="room-table-scroll" role="region" aria-label="Classroom readings" tabindex="0"><table class="room-overview-table"><caption>Classroom environmental readings</caption><thead><tr><th scope="col">Room Number</th><th scope="col">Temperature</th><th scope="col">Carbon Dioxide (CO₂)</th><th scope="col">Status</th></tr></thead><tbody>${rooms.map(r=>{const status=overviewStatus(r,S.limits);return `<tr class="room-state-${status}"><th scope="row"><button class="linkbtn" data-act="monitorRoom" data-v="${r.id}">${esc(r.name)}</button></th><td>${r.observed&&r.reading.temp!=null?withUnit('temp',Number(r.reading.temp)):'—'}</td><td>${r.observed&&r.reading.co2!=null?withUnit('co2',Number(r.reading.co2)):'—'}</td><td><span class="chip ${status}">${status==='unknown'?'Awaiting data':LV[status]}</span></td></tr>`;}).join('')}</tbody></table></div><p class="note">Green: Normal · Yellow: Warning · Red: Danger. Open a room to view its charts.</p>`;
 }
-function temperatureRanking(rooms,limits) {
-  return rooms.filter(r=>r.observed && r.reading.temp!=null && Number.isFinite(Number(r.reading.temp))).slice().sort((a,b)=>Number(b.reading.temp)-Number(a.reading.temp)||a.name.localeCompare(b.name,undefined,{numeric:true})).map(r=>({room:r,status:readingStatus(r.reading.temp,limits)}));
+let analyticsRequest = 0;
+async function loadTemperatureAnalytics() {
+  const request=++analyticsRequest,session=token,range=S.temperatureAnalytics.range;
+  const state=S.temperatureAnalytics;state.loading=true;state.error='';state.fetchedAt=Date.now();
+  if(S.screen==='analytics')render();
+  try {
+    const data=await api('/alerts/temperature-analytics?range='+encodeURIComponent(range));
+    if(request!==analyticsRequest||token!==session||S.temperatureAnalytics!==state)return;
+    state.data=data;
+  }catch(error){if(request===analyticsRequest&&token===session&&S.temperatureAnalytics===state)state.error=error.message;}
+  finally{if(request===analyticsRequest&&token===session&&S.temperatureAnalytics===state){state.loading=false;if(S.screen==='analytics')render();}}
 }
 function analyticsView() {
-  const ranked=temperatureRanking(S.rooms,S.limits.temp),atRisk=ranked.filter(r=>r.status!=='normal');
-  return `<h2>Rooms with high temperatures</h2><p class="sub">Current snapshot, ranked from highest to lowest. These are simulated readings, not historical averages.</p><div class="analytics-summary"><div><b>${atRisk.length}</b><span>At warning or danger</span></div><div><b>${ranked.length}</b><span>Rooms with data</span></div></div><p class="note">Warning: ${withUnit('temp',S.limits.temp.warn)} · Limit: ${withUnit('temp',S.limits.temp.limit)}. Actual conditions may vary with weather, occupancy and ventilation.</p><div class="temperature-ranking">${ranked.map(({room:r,status},index)=>`<button class="card temperature-rank" data-act="monitorRoom" data-v="${r.id}"><span class="rank-number">${index+1}</span><span class="rank-room"><b>${esc(r.name)}</b><small>${floorName(r.floor)}</small></span><span class="rank-reading"><b>${withUnit('temp',Number(r.reading.temp))}</b><small class="chip ${status}">${LV[status]}</small></span></button>`).join('') || '<p class="empty">Waiting for room readings.</p>'}</div>`;
+  const state=S.temperatureAnalytics,ranked=(state.data?.rooms||[]).filter(r=>r.alertCount>0);
+  const ranges=[['7d','Last 7 days'],['30d','Last 30 days'],['all','All time']];
+  const controls=`<div class="mini-chips" role="group" aria-label="Analytics period">${ranges.map(([id,label])=>`<button data-act="analyticsRange" data-v="${id}" aria-pressed="${state.range===id}">${label}</button>`).join('')}</div>`;
+  const intro=`<h2>Rooms with frequent temperature alerts</h2><p class="sub">Ranked by the number of recorded alerts that reached or exceeded the temperature limit.</p>${controls}`;
+  if(state.error)return `${intro}<p class="note" role="alert">Temperature alert history could not load. ${esc(state.error)}</p><button class="btn soft" data-act="analyticsRetry">Try again</button>`;
+  if(!state.data)return `${intro}<p class="empty" role="status">${state.loading?'Loading temperature alert history…':'Temperature alert history has not loaded yet.'}</p>`;
+  return `${intro}<div class="analytics-summary"><div><b>${state.data.totalAlerts}</b><span>Temperature limit alerts</span></div><div><b>${ranked.length}</b><span>Rooms with limit alerts</span></div></div>
+    <p class="note">Includes archived and demo alerts. Cautions and other sensor alerts are excluded.</p>
+    ${state.loading?'<p class="note" role="status">Updating alert history…</p>':''}
+    <div class="temperature-ranking">${ranked.map((r,index)=>`<button class="card temperature-rank alert-frequency-rank" data-act="monitorRoom" data-v="${r.roomId}">
+      <span class="rank-number">${index+1}</span><span class="rank-room"><b>${esc(r.room)}</b><small>${floorName(r.floor)} · ${r.alertDays} day${r.alertDays===1?'':'s'} with alerts</small><small>Latest: ${r.lastAlertAt?esc(new Date(r.lastAlertAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})):'—'}</small></span>
+      <span class="rank-reading"><b>${r.alertCount}</b><small>limit alert${r.alertCount===1?'':'s'}</small></span></button>`).join('') || '<p class="empty">No temperature limit alerts were recorded for this period.</p>'}</div>
+    <p class="note">Counts represent logged events and depend on how long each room has been monitored. Select a room to open Monitoring.</p>`;
 }
 
 function homeView() {
@@ -1239,7 +1262,10 @@ Object.assign(ACTS, {
     S.screen = v; if (v === 'alerts') S.unread = 0;
     if (v === 'settings') { S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto'); S.draftTrigger = S.fanTrigger; }
     render();
+    if(v==='analytics')await loadTemperatureAnalytics();
   },
+  async analyticsRange(v) {if(!['7d','30d','all'].includes(v))return;S.temperatureAnalytics.range=v;S.temperatureAnalytics.data=null;await loadTemperatureAnalytics();},
+  async analyticsRetry() {await loadTemperatureAnalytics();},
   logout() { signOut(); render(); },
   async alertView(v) {
     if(!['active','archived'].includes(v))return;
