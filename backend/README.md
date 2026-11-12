@@ -1,6 +1,6 @@
 # SafeZone backend (Node.js + MySQL)
 
-The API behind the app. It handles accounts, login, forgot password (by email), rooms, limits,
+The API behind the app. It handles accounts, login, forgot password (codes delivered to registered PUP webmail), rooms, limits,
 the SMS list and alerts, and stores everything in MySQL.
 It needs the database from `../database` to be set up first, including migrations `04-shared-simulations.sql`, `05-electricity-usage.sql` and `06-room-devices.sql`, in order. Existing users with shared simulations already installed should back up the database and run only 05 and 06 in phpMyAdmin as the database administrator. Keep the existing `.env`.
 
@@ -130,7 +130,7 @@ The backend checks SMTP connectivity/authentication before accepting reset reque
 
 ## PUP webmail password recovery
 
-Forgot Password sends a six-digit code directly to the active account's registered PUP webmail, received in Outlook. Admins and students/faculty use the same code flow. Users no longer add or verify a separate recovery Gmail. Codes expire after 10 minutes, allow five guesses, and can be requested again after a 30-second cooldown. Code hashes and signed reset grants are bound to the PUP recipient; a successful reset consumes the grant and revokes previous login sessions.
+On the login form, enter the admin username or student/faculty mobile number and select Forgot Password. The app immediately calls `/auth/forgot` with that login `identifier` and opens code verification; users do not re-enter webmail. The server resolves the active account and sends a six-digit code to its saved PUP address. `/auth/verify-code` receives the same identifier plus code, and binds the reset grant to the account's actual PUP recipient. Both endpoints retain legacy `{email}` requests for previously installed apps. No recipient address is returned to the signed-out browser. Admins and students/faculty use the same code flow. Users no longer add or verify a separate recovery Gmail. Codes expire after 10 minutes, allow five guesses, and can be requested again after a 30-second cooldown. Code hashes and signed reset grants are bound to the PUP recipient; a successful reset consumes the grant and revokes previous login sessions.
 
 The project Gmail `safezone.project0@gmail.com` remains only the sender through Vercel. It is not a user recovery account. Existing `account_recovery` rows are legacy data and are not read by reset requests. The old Gmail enrollment endpoints have been removed. No new database migration or secret is required for the switch: changed code hashing and a new reset-token channel reject pre-switch codes/grants. Existing passwords and login tokens remain valid until a user actually resets their password.
 

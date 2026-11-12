@@ -247,7 +247,6 @@ const emailKind = x => {
 };
 const emailHint = `Students: @${WEBMAIL.student}. Faculty: @${WEBMAIL.faculty}.`;                 // plain text, for messages
 const emailHintHtml = `Students: @${WEBMAIL.student}<br>Faculty: @${WEBMAIL.faculty}`;           // two lines, for hints under a field
-const maskEmail = e => { const [u, d] = normEmail(e).split('@'); return (u.length > 2 ? u.slice(0, 2) + '*'.repeat(Math.min(u.length - 2, 6)) : u[0] + '*') + '@' + d; };
 /* ---------- icons ---------- */
 const P = {
   archive:'<rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v12h14V8M9 12h6"/>',
@@ -919,29 +918,13 @@ function loginView() {
   </div></div>`;
 }
 
-/* ---------- Forgot password: web mail, code, new password ---------- */
-function fpEmailView() {
-  const admin = S.reset && S.reset.side === 'admin';
-  return `<div class="splash auth">${authBack(admin ? 'login' : 'vLogin')}<div class="auth-in">
-    ${circle('mail')}
-    <h2>Forgot Password</h2>
-    <p class="tag-line" style="margin-bottom:20px">Enter your registered PUP webmail. We will send a six-digit password reset code to that address.</p>
-    <form id="fp-email-form" style="width:100%" novalidate>
-      <label class="flabel" for="fpe">PUP Web Mail</label>
-      ${emailInput('fpe', S.reset ? S.reset.email : '')}
-      <p class="hint">${emailHintHtml} Make sure you can access this address in Outlook.</p>
-      ${errLine()}
-      <button class="btn" type="submit">Send code</button>
-    </form>
-  </div></div>`;
-}
-
+/* ---------- Forgot password: login identifier, code, new password ---------- */
 function fpCodeView() {
   const r = S.reset;
-  return `<div class="splash auth">${authBack('fpEmail')}<div class="auth-in">
+  return `<div class="splash auth">${authBack(S.reset?.side==='admin'?'login':'vLogin')}<div class="auth-in">
     ${circle('key')}
     <h2>Enter Code</h2>
-    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If <b>${esc(maskEmail(r.email))}</b> is registered, a verification code has been sent to that PUP webmail. It expires in ${RESET_MINUTES} minutes.<br>Open your Outlook Inbox or Junk folder and enter the code below.</p>
+    <p class="tag-line" style="margin-bottom:16px;max-width:100%">If this account is registered, a verification code has been requested for its saved PUP webmail. It expires in ${RESET_MINUTES} minutes.<br>Open your Outlook Inbox or Junk folder and enter the code below.</p>
     <form id="fp-code-form" style="width:100%" novalidate>
       <label class="flabel" for="fpc">6-digit code</label>
       <div class="field">${I.key}<input type="text" id="fpc" inputmode="numeric" maxlength="6" placeholder="000000" aria-label="6-digit code" autocomplete="one-time-code"></div>
@@ -953,7 +936,7 @@ function fpCodeView() {
 }
 
 function fpNewView() {
-  return `<div class="splash auth">${authBack('fpEmail')}<div class="auth-in">
+  return `<div class="splash auth">${authBack(S.reset?.side==='admin'?'login':'vLogin')}<div class="auth-in">
     ${circle('lock')}
     <h2>New Password</h2>
     <p class="tag-line" style="margin-bottom:18px">Set a new password for your account.</p>
@@ -1030,7 +1013,7 @@ function render() {
   const view = $('#view'); const prev = $('#screen');
   const top = prev && prev.dataset.s === S.screen ? prev.scrollTop : 0;
   const expanded=new Map(Array.from(document.querySelectorAll('#screen details[data-keep-open]'),d=>[d.dataset.keepOpen,d.open]));
-  const AUTH = { splash: splashView, login: loginView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpEmail: fpEmailView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
+  const AUTH = { splash: splashView, login: loginView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
   view.innerHTML = AUTH[S.screen] ? AUTH[S.screen]() : shell();
   document.querySelectorAll('#screen details[data-keep-open]').forEach(d=>{if(expanded.has(d.dataset.keepOpen))d.open=expanded.get(d.dataset.keepOpen);});
   restoreDrafts(); captureEnabled=true;
@@ -1216,9 +1199,19 @@ const ACTS = {
     const show = inp.type === 'password'; inp.type = show ? 'text' : 'password';
     el.innerHTML = show ? I.eyeoff : I.eye; el.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
   },
-  forgot(v) {
-    S.reset = { side: v === 'admin' ? 'admin' : 'viewer', email: '', sentAt: 0 };
-    S.authError = ''; S.notice = ''; S.screen = 'fpEmail'; render();
+  async forgot(v,el) {
+    if(el?.disabled)return;
+    const side=v==='admin'?'admin':'viewer',input=$(side==='admin'?'#u':'#phone');
+    const identifier=input?.value.trim()||'';
+    if(!identifier){S.authError=side==='admin'?'Enter your username first, then select Forgot password.':'Enter your mobile number first, then select Forgot password.';if($('#err'))$('#err').textContent=S.authError;input?.focus();return;}
+    const origin=S.screen,label=el?.textContent;
+    if(el){el.disabled=true;el.textContent='Requesting code…';}
+    try {
+      await api('/auth/forgot','POST',{identifier});
+      if(S.screen!==origin)return;
+      S.reset={side,identifier,sentAt:Date.now()};S.authError='';S.notice='';S.screen='fpCode';render();
+    }catch(error){if(S.screen===origin){S.authError=error.message;if($('#err'))$('#err').textContent=error.message;}}
+    finally{if(el?.isConnected){el.disabled=false;el.textContent=label;}}
   },
   closeSheet(v, el, e) { if (el.dataset.overlay && e.target !== el) return; closeSheet(); },
   async account() { const result=await api('/auth/me/student-profile');S.studentProfile=result.profile;accountSheet(); },
@@ -1348,7 +1341,7 @@ Object.assign(ACTS, {
   },
   async fpResend() {
     if (!S.reset) return;
-    await api('/auth/forgot', 'POST', { email: S.reset.email });
+    await api('/auth/forgot', 'POST', { identifier: S.reset.identifier });
     S.reset.sentAt = Date.now(); S.authError = ''; render(); toast('If registered, a new code was requested');
   }
 });
@@ -1384,13 +1377,8 @@ document.addEventListener('submit', async e => {
     } else if (id === 'v-reg2-form') {
       await api('/auth/register', 'POST', { ...S.reg, password: passwords() });
       S.authError = ''; S.screen = 'vDone'; render();
-    } else if (id === 'fp-email-form') {
-      const email = normEmail(value('fpe'));
-      await api('/auth/forgot', 'POST', { email });
-      S.reset = { ...S.reset, email, sentAt: Date.now() };
-      S.authError = ''; S.screen = 'fpCode'; render();
     } else if (id === 'fp-code-form') {
-      const result = await api('/auth/verify-code', 'POST', { email: S.reset.email, code: value('fpc').trim() });
+      const result = await api('/auth/verify-code', 'POST', { identifier: S.reset.identifier, code: value('fpc').trim() });
       S.reset.resetToken = result.resetToken; S.authError = ''; S.screen = 'fpNew'; render();
     } else if (id === 'fp-new-form') {
       await api('/auth/reset', 'POST', { resetToken: S.reset.resetToken, newPassword: passwords() });

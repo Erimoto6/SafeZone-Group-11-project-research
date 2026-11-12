@@ -102,7 +102,7 @@ Firebase Cloud Messaging itself has no per-message fee; supporting hosting, netw
 
 ### Revision verification
 
-Run `node --test backend/test/*.test.js` for backend and alert-grouping checks. `node backend/scripts/ui-revisions-check.cjs` runs mocked responsive browser checks using Playwright and Chromium (set `CHROMIUM_PATH` if needed). These checks do not connect to a production database or send emails.
+Run `node --test backend/test/*.test.js` for backend and alert-grouping checks. `node backend/scripts/ui-revisions-check.cjs` runs mocked responsive browser checks using Playwright and Chromium (set `CHROMIUM_PATH` if needed). `node backend/scripts/password-recovery-check.cjs` checks the direct login-to-code flow, missing identifiers, retries, resend and password reset. These checks do not connect to a production database or send emails.
 
 ## Phones on the same Wi-Fi
 
@@ -184,7 +184,7 @@ Home only selects rooms for viewing. Admins add missing classrooms from Monitori
 
 ### Password recovery
 
-Forgot Password asks for the registered PUP webmail and sends the six-digit code directly to that Outlook mailbox. There is no recovery Gmail setup. The project Gmail remains the sender through Vercel. Codes expire in 10 minutes and signed reset grants are single-use; successful password reset revokes old login sessions. Old Gmail-flow codes/tokens stop working after the switch, without a SQL update. See [backend email setup](backend/README.md#pup-webmail-password-recovery).
+Enter the admin username or student/faculty mobile number on the login form, then select Forgot Password. This immediately requests a six-digit code for the account’s saved PUP webmail and opens code verification; there is no separate email-entry step. An empty login identifier must be filled first. The API also accepts the previous email-based request for older installed apps. There is no recovery Gmail setup. The project Gmail remains the sender through Vercel. Codes expire in 10 minutes and signed reset grants are single-use; successful password reset revokes old login sessions. Old Gmail-flow codes/tokens stop working after the switch, without a SQL update. See [backend email setup](backend/README.md#pup-webmail-password-recovery).
 
 ## Repository layout and Vercel email delivery
 

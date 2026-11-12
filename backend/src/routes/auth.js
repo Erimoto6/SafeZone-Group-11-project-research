@@ -147,13 +147,24 @@ router.post('/change-password', requireAuth, limiter(10, 15), wrap(async (req, r
 // ---------------------------------------------------------------------------
 // Forgot password: 1) forgot  2) verify-code  3) reset
 // ---------------------------------------------------------------------------
-const lastRequest = new Map();      // web mail -> time of the last request (cooldown)
+const lastRequest = new Map();      // normalized login identifier -> cooldown
+function resetIdentity(body) {
+  const id=String(body?.identifier ?? body?.email ?? '').trim();
+  if(id.length>254)throw new HttpError(400,'Enter your username or registered mobile number.');
+  if(id.includes('@')){
+    if(!v.emailKind(id))throw new HttpError(400,'Enter your PUP web mail.');
+    return {column:'email',value:v.normEmail(id)};
+  }
+  if(/^[+\d\s-]+$/.test(id)&&v.validPhone(id))return {column:'phone',value:v.normPhone(id)};
+  if(v.validUsername(v.normUsername(id))&&!/^[+\d\s-]+$/.test(id))return {column:'username',value:v.normUsername(id)};
+  throw new HttpError(400,'Enter your username or registered mobile number.');
+}
 
 router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
-  const email = v.normEmail(req.body && req.body.email);
-  if (!v.emailKind(email)) throw new HttpError(400, 'Enter your PUP web mail.');
+  const identity=resetIdentity(req.body);
+  const requestKey=identity.column+':'+identity.value;
 
-  const wait = Math.ceil(((lastRequest.get(email) || 0) + RESEND_SECONDS * 1000 - Date.now()) / 1000);
+  const wait = Math.ceil(((lastRequest.get(requestKey) || 0) + RESEND_SECONDS * 1000 - Date.now()) / 1000);
   if (wait > 0) throw new HttpError(429, `Please wait ${wait} seconds before asking for a new code.`);
   try {
     await mail.ensureDeliveryAvailable();
@@ -161,17 +172,17 @@ router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
     console.error('Password reset email unavailable:', JSON.stringify(deliveryFailure(e)));
     throw new HttpError(503, 'Password reset email is temporarily unavailable. Please contact your administrator or try again later.');
   }
-  lastRequest.set(email, Date.now());
+  lastRequest.set(requestKey, Date.now());
   if (lastRequest.size > 5000) for (const [k, t] of lastRequest) if (Date.now() - t > 3600e3) lastRequest.delete(k);
 
   // Always give the same response; never reveal whether the PUP address is registered.
-  const reply = { ok: true, message: 'If this PUP webmail is registered, a password reset code has been requested for it.' };
+  const reply = { ok: true, message: 'If this account is registered, a password reset code has been requested for its PUP webmail.' };
   let u;
   const code = String(crypto.randomInt(100000, 1000000));
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [rows] = await conn.query('SELECT id,email FROM users WHERE email=? AND is_active=1 FOR UPDATE',[email]);
+    const [rows] = await conn.query(`SELECT id,email FROM users WHERE ${identity.column}=? AND is_active=1 FOR UPDATE`,[identity.value]);
     u=rows[0];
     if (u) {
       await conn.query('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL',[u.id]);
@@ -195,17 +206,18 @@ router.post('/forgot', limiter(10, 15), wrap(async (req, res) => {
 }));
 
 router.post('/verify-code', limiter(30, 15), wrap(async (req, res) => {
-  const email = v.normEmail(req.body && req.body.email);
+  const identity=resetIdentity(req.body);
   const code = String(req.body && req.body.code != null ? req.body.code : '').trim();
   if (!/^\d{6}$/.test(code)) throw new HttpError(400, 'Enter the 6-digit code.');
   const bad = new HttpError(400, 'That code is not correct or has expired. Send a new code.');
 
   const [rows] = await pool.query(
-    `SELECT r.id, r.code_hash, r.user_id FROM password_resets r JOIN users u ON u.id = r.user_id
-     WHERE u.email = ? AND u.is_active = 1 AND r.used_at IS NULL AND r.verified_at IS NULL AND r.expires_at > NOW()
-     ORDER BY r.id DESC LIMIT 1`, [email]);
+    `SELECT r.id, r.code_hash, r.user_id, u.email AS reset_email FROM password_resets r JOIN users u ON u.id = r.user_id
+     WHERE u.${identity.column} = ? AND u.is_active = 1 AND r.used_at IS NULL AND r.verified_at IS NULL AND r.expires_at > NOW()
+     ORDER BY r.id DESC LIMIT 1`, [identity.value]);
   const r = rows[0];
   if (!r) throw bad;
+  const email=r.reset_email;
 
   // Use up one try first (in one step), so fast parallel guessing cannot get more than 5 tries.
   const [claim] = await pool.query('UPDATE password_resets SET attempts = attempts + 1 WHERE id = ? AND attempts < ?', [r.id, RESET_TRIES]);

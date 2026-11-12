@@ -6,9 +6,10 @@ async function fixture(role){
  let clock=Date.now(),rows=new Map(),nextId=1,snapshot=null;
  const user={id:7,role,username:role==='admin'?'admin':null,email:role==='admin'?'admin@pup.edu.ph':'student@iskolarngbayan.pup.edu.ph',email_kind:role==='admin'?'faculty':'student',phone:'09123456789',is_active:1,token_version:0,password_hash:await bcrypt.hash('Original1',4)};
  const sent=[],errors=[],notifications=[],mailState={preflightError:null,sendError:null};
+ const matchesIdentity=(q,value)=>{const column=q.match(/WHERE (?:u\.)?(email|phone|username)\s*=/)?.[1];return user[column]===value;};
  const query=async(sql,args=[])=>{
   const q=sql.replace(/\s+/g,' ');
-  if(q.startsWith('SELECT id,email FROM users'))return [[...(user.email===args[0]&&user.is_active?[{id:user.id,email:user.email}]:[])]];
+  if(q.startsWith('SELECT id,email FROM users'))return [[...(matchesIdentity(q,args[0])&&user.is_active?[{id:user.id,email:user.email}]:[])]];
   if(q.startsWith('SELECT email FROM users WHERE id'))return [[...(user.id===args[0]&&user.is_active?[{email:user.email}]:[])]];
   if(q.startsWith('SELECT * FROM users WHERE id'))return [[...(user.id===Number(args[0])&&user.is_active?[{...user}]:[])]];
   if(q.startsWith('SELECT * FROM users WHERE email'))return [[...(user.email===args[0]&&user.is_active?[{...user}]:[])]];
@@ -16,7 +17,7 @@ async function fixture(role){
   if(q.startsWith('INSERT INTO password_resets')){const id=nextId++;rows.set(id,{id,user_id:args[0],code_hash:args[1],expires_at:clock+args[2]*60000,attempts:0,verified_at:null,used_at:null});return [{insertId:id}];}
   if(q.startsWith('INSERT INTO notification_log')){notifications.push(args);return [{}];}
   if(q.startsWith('UPDATE users SET last_login_at'))return [{}];
-  if(q.startsWith('SELECT r.id, r.code_hash')){const matches=[...rows.values()].filter(r=>user.email===args[0]&&user.is_active&&!r.used_at&&!r.verified_at&&r.expires_at>clock).sort((a,b)=>b.id-a.id);return [matches.slice(0,1).map(r=>({...r}))];}
+  if(q.startsWith('SELECT r.id, r.code_hash')){const matches=[...rows.values()].filter(r=>matchesIdentity(q,args[0])&&user.is_active&&!r.used_at&&!r.verified_at&&r.expires_at>clock).sort((a,b)=>b.id-a.id);return [matches.slice(0,1).map(r=>({...r,reset_email:user.email}))];}
   if(q.startsWith('UPDATE password_resets SET attempts')){const r=rows.get(args[0]);if(!r||r.attempts>=args[1])return [{affectedRows:0}];r.attempts++;return [{affectedRows:1}];}
   if(q.startsWith('UPDATE password_resets SET verified_at')){rows.get(args[0]).verified_at=clock;return [{affectedRows:1}];}
   if(q.startsWith('UPDATE password_resets SET used_at')){const r=rows.get(args[0]);if(!r||r.user_id!==args[1]||!r.verified_at||r.used_at||r.verified_at<=clock-args[2]*60000)return [{affectedRows:0}];r.used_at=clock;return [{affectedRows:1}];}
@@ -84,5 +85,23 @@ test('reset delivery diagnostics preserve safe relay codes/status without loggin
   assert.equal(f.notifications.at(-1)[4],'failed');
   assert.deepEqual(JSON.parse(f.notifications.at(-1)[5]),{code:'RELAY_AUTH',relayStatus:401});
   const logs=f.errors.join(' ');assert(!logs.includes('PRIVATE_SMTP_PAYLOAD'));assert(!logs.includes(f.user.email));
+ }finally{await f.close();}
+});
+
+for(const role of ['admin','viewer'])test(`${role} requests a code directly using the login identifier without exposing or accepting a recipient`,async()=>{
+ const f=await fixture(role);try{
+  const identifier=role==='admin'?'ADMIN':'+63 912-345-6789';
+  assert.equal((await f.call('/forgot',{identifier:''})).status,400);
+  assert.equal((await f.call('/forgot',{identifier:"admin' OR 1=1"})).status,400);assert.equal(f.sent.length,0);
+  const response=await f.call('/forgot',{identifier,email:'attacker@pup.edu.ph'});assert.equal(response.status,200);
+  assert.equal(f.sent.at(-1).to,f.user.email);assert(!JSON.stringify(response.body).includes(f.user.email));
+  const canonical=role==='admin'?'admin':'09123456789';
+  assert.equal((await f.call('/forgot',{identifier:canonical})).status,429);
+  const unknown=await f.call('/forgot',{identifier:role==='admin'?'unknown-admin':'09999999999'});assert.deepEqual(unknown.body,response.body);
+  assert.equal((await f.call('/verify-code',{identifier:role==='admin'?'unknown-admin':'09999999999',code:f.sent[0].code})).status,400);
+  const verified=await f.call('/verify-code',{identifier:canonical,code:f.sent[0].code,email:'attacker@pup.edu.ph'});
+  assert.equal(verified.status,200);assert.equal(jwt.verify(verified.body.resetToken,SECRET).emailHash,crypto.createHash('sha256').update(f.user.email).digest('hex'));
+  assert.equal((await f.call('/reset',{resetToken:verified.body.resetToken,newPassword:'Changed123'})).status,200);
+  assert(await bcrypt.compare('Changed123',f.user.password_hash));
  }finally{await f.close();}
 });
