@@ -582,14 +582,11 @@ select option{background:var(--surface);color:var(--ink)}
 
 .topbar .logo-themed{background:var(--surface);border-radius:50%;padding:3px}
 
-.chips .archive-button{background:var(--brand-soft);color:var(--nav-active);border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;min-height:40px;padding:6px 12px;flex-shrink:0}
+.alert-toolbar{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
+.alerts-context .alert-toolbar .chips{flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin:0;padding:0 0 4px;gap:4px;scrollbar-width:thin}
+.alerts-context .alert-toolbar .chips button{font-size:12px;padding:6px}
+.alert-toolbar>.archive-button{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:var(--brand-soft);color:var(--nav-active);font-size:12px;font-weight:600;white-space:nowrap}
 .archive-button .i{width:18px;height:18px}
-.alerts-context .chips{flex-wrap:wrap;overflow-x:visible}
-@media(max-width:430px){
-  .alerts-context .chips{gap:4px}
-  .alerts-context .chips button{font-size:12px;padding:6px}
-  .alerts-context .archive-button .i{display:none}
-}
 
 /* QA: readable course names in both the picker and the selected value. */
 span.f{font-size:12px;font-weight:600;color:var(--muted)}

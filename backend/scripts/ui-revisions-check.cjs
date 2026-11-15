@@ -18,6 +18,7 @@ assert(!await page.locator('main').innerText().then(t=>/electricity|kWh/i.test(t
  assert(await page.locator('.fan-control-card').evaluate(el=>{const status=el.querySelector('.s-val').getBoundingClientRect(),toggle=el.querySelector('[role=switch]').getBoundingClientRect(),card=el.getBoundingClientRect();return toggle.left>status.right && toggle.right<=card.right;}));
 } if(screen==='alerts'){
 assert(await page.locator('.archive-button').evaluate(el=>{const button=el.getBoundingClientRect(),screen=el.closest('main').getBoundingClientRect();return button.left>=screen.left && button.right<=screen.right;}),'archive button remains fully visible');
+assert(await page.locator('.alert-toolbar').evaluate(el=>{const archive=el.querySelector('.archive-button').getBoundingClientRect(),filters=el.querySelector('.chips').getBoundingClientRect();return archive.left>=filters.right && Math.abs(archive.top-filters.top)<=1;}),'Archive stays on the right of filters without wrapping');
 assert(await page.locator('.alert-time-block').first().evaluate(el=>el.querySelector('.alert').getBoundingClientRect().top-el.querySelector('h4').getBoundingClientRect().bottom<=5),'alert timestamp sits close to its card');
 if(width===390 && theme==='light' && role==='admin')await page.screenshot({path:'/tmp/safezone-alert-spacing.png'});
 assert.equal(await page.getByRole('button',{name:'Archive alert',exact:true}).count(),1);const css=await page.locator('.alert.normal,.alert.warning').first().evaluate(el=>getComputedStyle(el).borderLeftWidth);assert.equal(css,'1px');assert.notEqual(await page.locator('h4 time').evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)')}if(screen==='settings'){
@@ -129,7 +130,7 @@ async function checkAlertsArchive(page){
  ]);
  await page.getByRole('button',{name:'Current alerts',exact:true}).waitFor();
  assert.equal(await page.locator('.alert-list-actions').count(),0);
- assert.equal(await page.locator('.chips [data-act=alertView]').count(),1);
+ assert.equal(await page.locator('.alert-toolbar>[data-act=alertView]').count(),1);
  await Promise.all([
   page.waitForResponse(response=>response.url().includes('/api/alerts?') && new URL(response.url()).searchParams.get('archived')==='0'),
   page.getByRole('button',{name:'Current alerts',exact:true}).click()
