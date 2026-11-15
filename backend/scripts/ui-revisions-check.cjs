@@ -177,7 +177,7 @@ async function checkQaReport(page){
   }
   await page.evaluate(()=>uiTest.auth('vLogin'));
   const loginLogo=page.locator('.logo-'+theme);assert(await loginLogo.isVisible());
-  assert((await loginLogo.getAttribute('src')).startsWith('images/'+theme+'%20mode.png?'));
+  assert((await loginLogo.getAttribute('src')).startsWith('images/dark%20mode.png?'));
   assert(await loginLogo.evaluate(img=>img.complete && img.naturalWidth>0),'supplied logo loads');
   await page.locator('#v-login-form [type=submit]').click();assert.equal(await page.locator('#err').innerText(),'Mobile number is required.');
   await page.locator('#phone').fill('09abc123');assert.equal(await page.locator('#phone').inputValue(),'09123');

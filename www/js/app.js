@@ -4,9 +4,9 @@
 /* =====================================================================
    CONFIG: edit these first
    ===================================================================== */
-// Use the supplied artwork consistently with the selected theme.
+// Use the supplied pink artwork in both themes.
 const FEATURES = { fanEnergy: false }; // Retained for restoring the fan-energy view later.
-const LOGOS = { light: 'images/light%20mode.png?v=safezone-logo-20261116', dark: 'images/dark%20mode.png?v=safezone-logo-20261116' };
+const LOGOS = { light: 'images/dark%20mode.png?v=pink-logo-20261116', dark: 'images/dark%20mode.png?v=pink-logo-20261116' };
 
 // Button names on the start screen. Change the wording here.
 const LABELS = { viewer: 'Student / Faculty', control: 'Admin' };
