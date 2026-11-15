@@ -456,7 +456,7 @@ function ventCard(control) {
        ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
     : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>`;
   return `<article class="card sensor ${control && admin?'fan-control-card':''}"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Exhaust fan</div>
-    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note fan-count">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p><div class="fan-card-controls">${foot}</div></article>`;
+    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note fan-count">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p><div class="fan-card-controls">${foot}</div>${control && admin ? '<button class="btn soft small fan-installation" data-act="fanInstallation">Installation type</button>' : ''}</article>`;
 }
 
 function cards(control = false) { return `<div class="grid2">${sensorCard('temp')}${sensorCard('hum')}${sensorCard('co2')}${ventCard(control)}</div>`; }
@@ -625,9 +625,10 @@ function metricChips() {
 function monitorView() {
   const k = S.mon.metric; const m = METRICS[k]; const live = S.mon.view === 'live';
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
+  const controls = `<div class="monitor-room-context">${roomBar(true)}</div><div class="monitor-utilities ${FEATURES.fanEnergy?'':'fan-only'}">${ventCard(true)}${FEATURES.fanEnergy?powerCard(false,true):''}</div>${seg}`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
-    return `<div class="monitor-room-context">${roomBar(true)}${seg}</div><div class="monitor-utilities ${FEATURES.fanEnergy?'':'fan-only'}">${ventCard(true)}${FEATURES.fanEnergy?powerCard(false,true):''}</div>${metricChips()}
+    return `${controls}${metricChips()}
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>${monitoringLinks()}`;
   }
@@ -635,19 +636,20 @@ function monitorView() {
   const min = Math.min(...h.vals), max = Math.max(...h.vals), avg = h.vals.reduce((a, b) => a + b, 0) / h.vals.length;
   const over = h.vals.filter(v => v >= S.limits[k].limit).length;
   const rc = `<div class="mini-chips" role="group" aria-label="Time range">${[['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']].map(([id, l]) => `<button data-act="range" data-v="${id}" aria-pressed="${r === id}">${l}</button>`).join('')}</div>`;
-  return `<div class="monitor-room-context">${roomBar(true)}${seg}</div>${metricChips()}${rc}
+  return `${controls}${metricChips()}${rc}
     <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${chartSVG(h.vals, h.labels, k, 'neutral', 'hist')}${legend(k)}</section>
     <div class="stats"><div class="stat"><span>Lowest</span><b>${h.vals.length?fmt(k,min):'—'}</b></div><div class="stat"><span>Average</span><b>${h.vals.length?fmt(k,avg):'—'}</b></div><div class="stat"><span>Highest</span><b>${h.vals.length?fmt(k,max):'—'}</b></div></div>
     <p class="note">Simulated samples received during this browser session only; up to 40 recent readings per room are retained. Earlier history is not available. Actual conditions vary with weather, occupancy and ventilation.</p><p class="note">${!h.vals.length?'No recorded samples yet.':over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>${monitoringLinks()}`;
 }
 
-const DEVICE_NAMES = {exhaust_fan:'Exhaust fan',esp8266:'NodeMCU V3 ESP8266',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
+const DEVICE_NAMES = {exhaust_fan:'Exhaust fan',esp8266:'Microcontroller',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
+const deviceLabel = d => d.type === 'esp8266' ? d.label.replace(/NodeMCU V3 ESP8266/gi, 'Microcontroller') : d.label;
 const FAN_NAMES = {unspecified:'Not specified',wall:'Wall-mounted',window:'Window-mounted',ceiling:'Ceiling-mounted',inline:'Inline duct'};
 function statusView() {
   const devices = (cur().devices || []).filter(d => d.type !== 'light' && (FEATURES.fanEnergy || d.type !== 'power_meter'));
   return `<h2>Room devices</h2><p class="sub">Configured devices for ${esc(cur().name)}.</p>${roomBar()}
     <div class="list">${devices.map(d => `<div class="row"><span class="r-ico">${I[d.type === 'light' ? 'bulb' : d.type === 'exhaust_fan' ? 'fan' : 'device']}</span>
-      <div class="r-txt"><b>${esc(d.label)}</b><span>${d.quantity} × ${esc(DEVICE_NAMES[d.type])}${d.type === 'exhaust_fan' ? ' · ' + esc(FAN_NAMES[d.fanType] || 'Not specified') : ''}${d.wattsPerDevice ? ' · ' + d.wattsPerDevice + ' W each' : ''}</span></div>
+      <div class="r-txt"><b>${esc(deviceLabel(d))}</b><span>${d.quantity} × ${esc(DEVICE_NAMES[d.type])}${d.type === 'exhaust_fan' ? ' · ' + esc(FAN_NAMES[d.fanType] || 'Not specified') : ''}${d.wattsPerDevice ? ' · ' + d.wattsPerDevice + ' W each' : ''}</span></div>
       <span class="pill">${d.type === 'exhaust_fan' ? (S.vent.on ? 'Running' : 'Off') : d.type === 'light' ? d.activeQuantity + ' on' : 'Configured'}</span></div>`).join('') || '<p class="empty">No devices configured.</p>'}</div>`;
 }
 
@@ -967,7 +969,7 @@ const formKey = form => form.dataset.draftKey || form.id;
 function readDeviceRows() {
   return Array.from(document.querySelectorAll('.device-editor'), row => ({
     type:row.querySelector('[data-device="type"]').value,
-    label:row.querySelector('[data-device="label"]').value,
+    label:(() => { const input = row.querySelector('[data-device="label"]'); return input.value === input.dataset.displayLabel ? input.dataset.originalLabel : input.value; })(),
     quantity:Number(row.querySelector('[data-device="quantity"]').value),
     activeQuantity:0,
     wattsPerDevice:Number(row.querySelector('[data-device="wattsPerDevice"]').value),
@@ -1130,7 +1132,7 @@ function defaultDevices() { return [
 function deviceRows(devices) {
   return devices.map((d,i)=>`<section class="device-editor" ${!FEATURES.fanEnergy && d.type==='power_meter'?'hidden':''} data-index="${i}" aria-labelledby="device-title-${i}"><h3 class="device-editor-title" id="device-title-${i}">Device ${i+1}</h3><div class="device-editor-body">
     <label class="f">Device<select data-device="type" name="device-${i}-type">${Object.entries(DEVICE_NAMES).filter(([key])=>FEATURES.fanEnergy||key!=='power_meter'||d.type==='power_meter').map(([key,name])=>`<option value="${key}" ${key===d.type?'selected':''}>${name}</option>`).join('')}</select></label>
-    <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(d.label)}" maxlength="100"></label>
+    <label class="f">Name<input type="text" data-device="label" name="device-${i}-label" value="${esc(deviceLabel(d))}" data-original-label="${esc(d.label)}" data-display-label="${esc(deviceLabel(d))}" maxlength="100"></label>
     <div class="fields3"><label class="f">Quantity<input data-device="quantity" name="device-${i}-quantity" type="number" min="1" max="100" value="${d.quantity}"></label>
     <label class="f" data-powered ${!FEATURES.fanEnergy||d.type!=='exhaust_fan'?'hidden':''}>Watts each<input data-device="wattsPerDevice" name="device-${i}-watts" type="number" min="0.1" max="2000" step="any" value="${d.wattsPerDevice}"></label>
     </div>
@@ -1146,7 +1148,7 @@ function roomsSheet() {
       <p class="flabel">Floor</p><div class="mini-chips" role="group" aria-label="Floor">${floorList().map(f=>`<button type="button" data-act="floor" data-v="${f}" aria-pressed="${f===floor}">${ord(f)}</button>`).join('')}</div>
       <label class="f">Room number<input type="number" id="rn" aria-label="Room number" value="${edit?roomNo(edit):nextRoomNumber(floor)||''}" min="${floor*100+1}" max="${floor*100+12}"></label>
       <p class="hint" id="rnhint">${floorHint(floor)}</p>
-      <div class="room-device-heading"><p class="section-label">Devices</p><p class="note">Configure exhaust fans and the NodeMCU V3 ESP8266 with its sensors.</p></div>
+      <div class="room-device-heading"><p class="section-label">Devices</p><p class="note">Configure exhaust fans and the Microcontroller with its sensors.</p></div>
       <div id="device-groups" class="stack">${deviceRows(devices||[])}</div>
       <button type="button" class="btn soft small" data-act="addDevice">+ Add device</button>
       <button type="submit" class="btn small">${edit?'Save room':'Add room'}</button>
@@ -1189,6 +1191,14 @@ const ACTS = {
         <button class="switch" role="switch" aria-checked="${dark}" aria-label="Dark mode" data-act="theme"><span></span></button></div></div>
       <button class="btn soft" data-act="account">Account Settings</button>
       <button class="btn soft" data-act="logout">Log out</button></div>`);
+  },
+  fanInstallation() {
+    if (S.role !== 'admin' || S.screen !== 'monitor') return;
+    const room = cur(), fans = (room.devices || []).filter(d => d.type === 'exhaust_fan');
+    openSheet('Exhaust fan installation', `<p class="sub">Placement in ${esc(room.name)}.</p>
+      ${fans.length ? `<form id="fan-installation-form" data-room-id="${room.id}" class="stack">
+        ${fans.map((d,i) => `<label class="f">${esc(d.label)} — installation type<select name="fan-${i}" data-fan-placement="${i}">${Object.entries(FAN_NAMES).map(([key,name]) => `<option value="${key}" ${key === (d.fanType || 'unspecified') ? 'selected' : ''}>${name}</option>`).join('')}</select></label>`).join('')}
+        <button type="submit" class="btn small">Save installation type</button></form>` : '<p class="note">No exhaust fans configured. Add an exhaust fan in Settings → Room configuration → Edit room.</p>'}`);
   },
   metric(v) { S.mon.metric = v; render(); },
   view(v) { S.mon.view = v; render(); },
@@ -1395,6 +1405,15 @@ document.addEventListener('submit', async e => {
       const edit = Number(form.dataset.edit), person = S.users[edit];
       await api('/sms-recipients' + (person ? '/' + person.id : ''), person ? 'PATCH' : 'POST', { name: value('sn'), role: value('sr'), phone: value('sp') });
       await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient saved');
+    } else if (id === 'fan-installation-form') {
+      if (S.role !== 'admin') return;
+      const room = S.rooms.find(r => r.id === form.dataset.roomId);
+      if (!room) throw new Error('This room is no longer available.');
+      let fanIndex = 0;
+      const devices = room.devices.map(d => d.type === 'exhaust_fan'
+        ? {...d, fanType: form.querySelector(`[data-fan-placement="${fanIndex++}"]`).value} : {...d});
+      await api('/rooms/' + room.id, 'PATCH', {devices});
+      await refreshData(); closeSheet(); render(); toast('Installation type saved');
     } else if (id === 'room-form') {
       const roomId=form.dataset.roomId;
       const no=Number(value('rn'));
@@ -1442,7 +1461,9 @@ document.addEventListener('change', e => {
     const row=e.target.closest('.device-editor'), type=e.target.value;
     row.querySelector('[data-fan]').hidden=type!=='exhaust_fan';
     row.querySelector('[data-powered]').hidden=!FEATURES.fanEnergy||type!=='exhaust_fan';
-    row.querySelector('[data-device="label"]').value=DEVICE_NAMES[type];
+    const labelInput = row.querySelector('[data-device="label"]');
+    labelInput.value=DEVICE_NAMES[type];
+    delete labelInput.dataset.originalLabel; delete labelInput.dataset.displayLabel;
     if(type==='exhaust_fan')row.querySelector('[data-device="wattsPerDevice"]').value=40;
   }
   if(e.target.id==='overview-floor'){S.overviewFloor=e.target.value;render();}
