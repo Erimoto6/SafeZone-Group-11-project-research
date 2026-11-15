@@ -4,9 +4,9 @@
 /* =====================================================================
    CONFIG: edit these first
    ===================================================================== */
-// Supplied artwork: theme-aware by default; student login uses fixed pink.
+// Use the supplied artwork consistently with the selected theme.
 const FEATURES = { fanEnergy: false }; // Retained for restoring the fan-energy view later.
-const LOGOS = { red: 'images/light%20mode.png', pink: 'images/dark%20mode.png' };
+const LOGOS = { light: 'images/light%20mode.png?v=safezone-logo-20261116', dark: 'images/dark%20mode.png?v=safezone-logo-20261116' };
 
 // Button names on the start screen. Change the wording here.
 const LABELS = { viewer: 'Student / Faculty', control: 'Admin' };
@@ -337,9 +337,7 @@ const P = {
 };
 const I = new Proxy({}, { get: (_, k) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[k] || ''}</svg>` });
 
-const logo = (px, pinkOnly = false) => pinkOnly
-  ? `<img class="logo" src="${LOGOS.pink}" alt="SafeZone logo" style="width:${px}px;height:${px}px">`
-  : `<span class="logo logo-themed" style="width:${px}px;height:${px}px"><img class="logo-light" src="${LOGOS.red}" alt="SafeZone logo"><img class="logo-dark" src="${LOGOS.pink}" alt="SafeZone logo"></span>`;
+const logo = px => `<span class="logo logo-themed" style="width:${px}px;height:${px}px"><img class="logo-light" src="${LOGOS.light}" alt="SafeZone logo"><img class="logo-dark" src="${LOGOS.dark}" alt="SafeZone logo"></span>`;
 
 /* =====================================================================
    ALERTS & VENTILATION LOGIC
@@ -747,7 +745,7 @@ function settingsView() {
           <button data-act="trigger" data-v="warning" aria-pressed="${trig === 'warning'}">Yellow (Warning)</button>
           <button data-act="trigger" data-v="exceeded" aria-pressed="${trig === 'exceeded'}">Red (Danger)</button></div></div>
     </div>
-    <div style="margin-top:16px"><button class="btn" data-act="save">Save changes</button></div>
+    <div class="settings-save"><button class="btn" data-act="save">Save changes</button></div>
     <p class="section-label">Shared demo tools</p>
     <p class="note">Everyone connected to this server can see the selected rooms change. Hardware and SMS are not connected.</p>
     <label class="f">Rooms to affect<select id="sim-scope" aria-label="Rooms to affect">
@@ -929,7 +927,7 @@ function vDoneView() {
 
 function vLoginView() {
   return `<div class="splash auth">${authBack('vWelcome')}<div class="auth-in">
-    ${logo(96, true)}
+    ${logo(96)}
     <h2>Log in</h2>
     <p class="tag-line" style="margin-bottom:20px">Use your mobile number and password.</p>
     ${noteLine()}

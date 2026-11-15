@@ -20,7 +20,12 @@ assert(!await page.locator('main').innerText().then(t=>/electricity|kWh/i.test(t
 assert(await page.locator('.archive-button').evaluate(el=>{const button=el.getBoundingClientRect(),screen=el.closest('main').getBoundingClientRect();return button.left>=screen.left && button.right<=screen.right;}),'archive button remains fully visible');
 assert(await page.locator('.alert-time-block').first().evaluate(el=>el.querySelector('.alert').getBoundingClientRect().top-el.querySelector('h4').getBoundingClientRect().bottom<=5),'alert timestamp sits close to its card');
 if(width===390 && theme==='light' && role==='admin')await page.screenshot({path:'/tmp/safezone-alert-spacing.png'});
-assert.equal(await page.getByRole('button',{name:'Archive alert',exact:true}).count(),1);const css=await page.locator('.alert.normal,.alert.warning').first().evaluate(el=>getComputedStyle(el).borderLeftWidth);assert.equal(css,'1px');assert.notEqual(await page.locator('h4 time').evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)')}if(screen==='users'){
+assert.equal(await page.getByRole('button',{name:'Archive alert',exact:true}).count(),1);const css=await page.locator('.alert.normal,.alert.warning').first().evaluate(el=>getComputedStyle(el).borderLeftWidth);assert.equal(css,'1px');assert.notEqual(await page.locator('h4 time').evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)')}if(screen==='settings'){
+ assert(await page.locator('.room-configuration').evaluate(el=>el.getBoundingClientRect().height<=240),'room configuration has compact spacing');
+ assert(await page.locator('.room-config-actions button').evaluateAll(buttons=>buttons.every(el=>el.getBoundingClientRect().height>=44)),'room actions retain touch targets');
+ if(width===390 && theme==='light')await page.screenshot({path:'/tmp/safezone-settings-compact.png'});
+}
+if(screen==='users'){
 assert.equal(await page.locator('nav.nav').count(),0,'Manage Users hides bottom navigation');
 await page.getByRole('button',{name:'Back to settings',exact:true}).click();
 await page.locator('main[data-s=settings]').waitFor();
@@ -169,6 +174,9 @@ async function checkQaReport(page){
    assert.equal(registration.courseCode,'BSBA-HRM');assert.equal(registration.section,'4-3');assert.equal(registration.phone,'09123456789');
   }
   await page.evaluate(()=>uiTest.auth('vLogin'));
+  const loginLogo=page.locator('.logo-'+theme);assert(await loginLogo.isVisible());
+  assert((await loginLogo.getAttribute('src')).startsWith('images/'+theme+'%20mode.png?'));
+  assert(await loginLogo.evaluate(img=>img.complete && img.naturalWidth>0),'supplied logo loads');
   await page.locator('#v-login-form [type=submit]').click();assert.equal(await page.locator('#err').innerText(),'Mobile number is required.');
   await page.locator('#phone').fill('09abc123');assert.equal(await page.locator('#phone').inputValue(),'09123');
   await page.locator('#v-login-form [type=submit]').click();assert.match(await page.locator('#err').innerText(),/11-digit/);
