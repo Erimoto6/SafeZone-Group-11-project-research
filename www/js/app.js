@@ -50,13 +50,22 @@ const COURSES = {
 };
 const courseName = code => COURSES[code] || 'Course not set';
 function profileFields(prefix,profile={}) {
-  return `<label class="f" for="${prefix}-course">Course</label><select id="${prefix}-course" aria-label="Course"><option value="">Choose your course</option>${Object.entries(COURSES).map(([code,name])=>`<option value="${code}" ${profile.courseCode===code?'selected':''}>${name} (${code})</option>`).join('')}</select>
-    <label class="f" for="${prefix}-section">Section</label><input type="text" id="${prefix}-section" aria-label="Section" maxlength="40" placeholder="Enter your section, e.g. 1-1" value="${esc(profile.section || '')}">`;
+  return `<span class="f" id="${prefix}-course-label">Course</span><input type="hidden" id="${prefix}-course" value="${esc(profile.courseCode || '')}">
+    <details class="course-picker" data-course-prefix="${prefix}"><summary aria-labelledby="${prefix}-course-label ${prefix}-course-name"><span id="${prefix}-course-name">${profile.courseCode ? esc(courseName(profile.courseCode)) : 'Choose your course'}</span>${I.chevd}</summary>
+      <div class="course-options" role="group" aria-label="Available courses">${Object.entries(COURSES).map(([code,name])=>`<button type="button" data-act="chooseCourse" data-v="${code}" aria-pressed="${profile.courseCode===code}">${name} (${code})</button>`).join('')}</div></details>
+    <label class="f" for="${prefix}-section">Section</label><input type="text" id="${prefix}-section" aria-label="Section" maxlength="40" pattern="[1-9]-[1-9]" placeholder="Year-section, e.g. 4-3" value="${esc(profile.section || '')}" aria-describedby="${prefix}-section-help"><p class="hint" id="${prefix}-section-help">Use one digit for the year and one for the section, separated by a hyphen (e.g. 4-3).</p>`;
+}
+function syncCoursePickers() {
+  document.querySelectorAll('.course-picker').forEach(picker => {
+    const prefix = picker.dataset.coursePrefix, value = document.getElementById(prefix + '-course').value;
+    document.getElementById(prefix + '-course-name').textContent = COURSES[value] || 'Choose your course';
+    picker.querySelectorAll('[data-act="chooseCourse"]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.v === value)));
+  });
 }
 function readProfile(prefix) {
   const courseCode=$('#'+prefix+'-course').value,section=$('#'+prefix+'-section').value.trim();
   if(!Object.hasOwn(COURSES,courseCode))throw new Error('Choose your course.');
-  if(!section||section.length>40)throw new Error('Enter your section (up to 40 characters).');
+  if(!/^[1-9]-[1-9]$/.test(section))throw new Error('Enter a valid year-section, e.g. 4-3. Use one digit on each side of the hyphen.');
   return {courseCode,section};
 }
 
@@ -270,8 +279,16 @@ function validateAdminForm(form) {
 const normEmail = x => String(x).trim().toLowerCase();
 // 'student' | 'faculty' | null. Only the two PUP web mail domains are accepted (no other domains or subdomains).
 const emailKind = x => {
-  const m = normEmail(x).match(/^[a-z0-9][a-z0-9._-]*@([a-z0-9.-]+)$/);
-  return !m ? null : m[1] === WEBMAIL.student ? 'student' : m[1] === WEBMAIL.faculty ? 'faculty' : null;
+  const email = normEmail(x), parts = email.split('@');
+  if (email.length > 120 || parts.length !== 2 || !/^[a-z0-9][a-z0-9._-]*$/i.test(parts[0]) || parts[0].endsWith('.') || parts[0].includes('..') || parts[0].length > 64) return null;
+  return parts[1] === WEBMAIL.student ? 'student' : parts[1] === WEBMAIL.faculty ? 'faculty' : null;
+};
+const webmailError = x => {
+  const email = normEmail(x), local = email.split('@')[0];
+  if (!email) return 'PUP webmail is required.';
+  if (email.length > 120 || local.length > 64 || !/^[a-z0-9][a-z0-9._-]*@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email) || local.endsWith('.') || email.includes('..')) return 'Enter a valid email address.';
+  if (!emailKind(email)) return 'Use a PUP webmail (@iskolarngbayan.pup.edu.ph or @pup.edu.ph).';
+  return '';
 };
 const emailHint = `Students: @${WEBMAIL.student}. Faculty: @${WEBMAIL.faculty}.`;                 // plain text, for messages
 const emailHintHtml = `Students: @${WEBMAIL.student}<br>Faculty: @${WEBMAIL.faculty}`;           // two lines, for hints under a field
@@ -812,7 +829,7 @@ function aboutView() {
   return `<div style="text-align:center;padding:6px 0 18px">${logo(88)}<div class="wordmark" style="font-size:26px">SafeZone</div><p class="sub">Safer and healthier indoor environments for everyone.</p>
       <span class="tag" style="margin:10px 0 0">${admin ? 'Admin guide' : 'Student / Faculty guide'}</span></div>
     <div class="list">
-      ${d('info', 'System Overview', 'Learn how SafeZone works', overview, true)}
+      ${d('info', 'System Overview', 'Learn how SafeZone works', overview)}
       ${d('sliders', 'Features', admin ? 'What you can do as an admin' : 'What you can do in the app', features)}
       ${d('mail', 'Contact', 'For inquiries or support', `Email us at <b>${esc(CONTACT.email)}</b>.`)}
     </div>`;
@@ -845,8 +862,8 @@ const noteLine = () => S.notice ? `<p class="okmsg" role="status">${esc(S.notice
 const pwField = (id, ph, auto) => `<div class="field">${I.lock}<input type="password" id="${id}" placeholder="${ph}" aria-label="${ph}" autocomplete="${auto}"><button type="button" class="eye" data-act="pw" data-v="${id}" aria-label="Show password">${I.eye}</button></div>`;
 const textField = (ic, id, ph, type, extra) => `<div class="field">${I[ic]}<input type="${type}" id="${id}" placeholder="${ph}" aria-label="${ph}" ${extra || ''}></div>`;
 const rulesList = (field = 'rp') => `<ul class="rules" id="${field==='rp'?'rules':'rules-'+field}" data-password-for="${field}" aria-label="Password rules">${pwRules('').map(([t, ok]) => `<li class="${ok ? 'ok' : ''}">${I.check}${t}</li>`).join('')}</ul>`;
-const emailInput = (id, val) => `<div class="field">${I.mail}<input type="email" id="${id}" inputmode="email" placeholder="PUP web mail" aria-label="PUP web mail" autocapitalize="none" autocomplete="email" value="${esc(val || '')}"></div>`;
-const phoneInput = () => `<div class="field">${I.phone}<input type="tel" id="phone" inputmode="numeric" placeholder="09XXXXXXXXX" aria-label="Mobile number" autocomplete="tel" value="${esc(S.reg.phone)}"></div>`;
+const emailInput = (id, val) => `<div class="field">${I.mail}<input type="email" id="${id}" inputmode="email" placeholder="PUP web mail" aria-label="PUP web mail" autocapitalize="none" autocomplete="email" maxlength="120" value="${esc(val || '')}"></div>`;
+const phoneInput = () => `<div class="field">${I.phone}<input type="tel" id="phone" inputmode="numeric" maxlength="11" pattern="09[0-9]{9}" placeholder="09XXXXXXXXX" aria-label="Mobile number" autocomplete="tel" value="${esc(S.reg.phone || '')}"></div>`;
 
 /* ---------- Student side: access, register (phone), password, done, login ---------- */
 function vWelcomeView() {
@@ -892,9 +909,9 @@ function vReg2View() {
     <form id="v-reg2-form" style="width:100%" novalidate>
       <label class="flabel" for="rp">Password</label>
       ${pwField('rp', 'Password', 'new-password')}
-      ${rulesList()}
       <label class="flabel" for="rc">Confirm Password</label>
       ${pwField('rc', 'Confirm password', 'new-password')}
+      ${rulesList()}
       ${errLine()}
       <button class="btn" type="submit">Create Account</button>
     </form>
@@ -973,9 +990,9 @@ function fpNewView() {
     <form id="fp-new-form" style="width:100%" novalidate>
       <label class="flabel" for="rp">New Password</label>
       ${pwField('rp', 'New password', 'new-password')}
-      ${rulesList()}
       <label class="flabel" for="rc">Confirm Password</label>
       ${pwField('rc', 'Confirm password', 'new-password')}
+      ${rulesList()}
       ${errLine()}
       <button class="btn" type="submit">Update password</button>
     </form>
@@ -1046,7 +1063,7 @@ function render() {
   const AUTH = { splash: splashView, login: loginView, vWelcome: vWelcomeView, vLogin: vLoginView, vReg1: vReg1View, vReg2: vReg2View, vDone: vDoneView, fpCode: fpCodeView, fpNew: fpNewView, fpDone: fpDoneView };
   view.innerHTML = AUTH[S.screen] ? AUTH[S.screen]() : shell();
   document.querySelectorAll('#screen details[data-keep-open]').forEach(d=>{if(expanded.has(d.dataset.keepOpen))d.open=expanded.get(d.dataset.keepOpen);});
-  restoreDrafts(); captureEnabled=true;
+  restoreDrafts(); syncCoursePickers(); captureEnabled=true;
   const sc = $('#screen'); if (sc) sc.scrollTop = top;
 }
 
@@ -1063,7 +1080,7 @@ function openSheet(title, html) {
   const prev = $('#sheet-root .sheet'); const keep = prev && prev.getAttribute('aria-label') === title ? prev.querySelector('.sheet-content').scrollTop : 0;
   $('#sheet-root').innerHTML = `<div class="overlay" data-act="closeSheet" data-overlay="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-top"><div class="grab"></div>
     <div class="sheet-head"><h2>${esc(title)}</h2><button class="x" data-act="closeSheet" aria-label="Close">${I.x}</button></div></div><div class="sheet-content">${html}</div></div></div>`;
-  restoreDrafts();
+  restoreDrafts(); syncCoursePickers();
   const sh = $('#sheet-root .sheet'); if (sh) { sh.setAttribute('tabindex', '-1'); sh.focus({ preventScroll: true }); sh.querySelector('.sheet-content').scrollTop = keep; }
 }
 const closeSheet = () => { captureDrafts(); $('#sheet-root').innerHTML = ''; };
@@ -1191,20 +1208,27 @@ function accountSheet() {
     <label class="f">Username<input type="text" value="${esc(me.username)}" disabled></label></div>
     <p class="section-label">PUP web mail</p>
     <form id="email-form" class="stack" novalidate>
-      ${emailInput('ae', me.email || '')}
-      <p class="note" style="margin:0">Your account, login, and password recovery email. Reset codes are sent directly to this PUP webmail.<br>${emailHintHtml}</p>
+      ${emailInput('ae', me.email || '')}<p class="err" data-form-error role="alert"></p>
+      <p class="note" style="margin:0">PUP webmail is for registration, login, and password recovery. Reset codes will be sent to your PUP email.</p>
       <button class="btn small" type="submit">Save web mail</button>
     </form>
     <p class="note">Password reset codes are sent to this saved PUP webmail. Check Outlook Inbox and Junk; mark SafeZone messages as not junk if necessary.</p>
     ${me.role==='viewer' && me.kind==='student'?`<p class="section-label">Course and section</p><form id="student-profile-form" class="stack" novalidate>${profileFields('account',S.studentProfile || {})}<button class="btn small" type="submit">Save course and section</button></form>`:''}
     <p class="section-label">Change password</p>
-    <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password">${rulesList('np')}<input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password"><button class="btn small" type="submit">Update password</button></form>`);
+    <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password">${rulesList('np')}<button class="btn small" type="submit">Update password</button></form>`);
 }
 
 /* =====================================================================
    ACTIONS
    ===================================================================== */
 const ACTS = {
+  chooseCourse(v, el) {
+    if (!Object.hasOwn(COURSES, v)) return;
+    const picker = el.closest('.course-picker');
+    document.getElementById(picker.dataset.coursePrefix + '-course').value = v;
+    picker.closest('form').dataset.dirty = '1';
+    syncCoursePickers(); picker.open = false; picker.querySelector('summary').focus();
+  },
   role(v) {
     S.authError = ''; S.notice = ''; S.reg = { phone: '' };
     S.screen = v === 'student' ? 'vWelcome' : 'login'; render();
@@ -1399,6 +1423,7 @@ document.addEventListener('submit', async e => {
   e.preventDefault();
   const form = e.target, id = form.id;
   const button = form.querySelector('button[type="submit"]');
+  if (id === 'email-form') form.querySelector('[data-form-error]').textContent = '';
   if (button && button.disabled) return;
   if (button) button.disabled = true;
   const value = id => $('#' + id).value;
@@ -1411,6 +1436,8 @@ document.addEventListener('submit', async e => {
   };
   try {
     if (id === 'login-form' || id === 'v-login-form') {
+      if (id === 'v-login-form' && !value('phone')) throw new Error('Mobile number is required.');
+      if (id === 'v-login-form' && !/^09\d{9}$/.test(value('phone'))) throw new Error('Enter an 11-digit mobile number starting with 09.');
       await signedIn(await api('/auth/login', 'POST', {
         identifier: value(id === 'login-form' ? 'u' : 'phone').trim(), password: value('pw'), as: id === 'login-form' ? 'admin' : 'viewer'
       }));
@@ -1452,6 +1479,8 @@ document.addEventListener('submit', async e => {
     } else if (id === 'student-profile-form') {
       const result=await api('/auth/me/student-profile','PUT',readProfile('account'));S.studentProfile=result.profile;toast('Course and section saved');
     } else if (id === 'email-form') {
+      const problem = webmailError(value('ae'));
+      if (problem) throw new Error(problem);
       const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
       S.me = mapUser(data.user); toast('Web mail saved');
     } else if (id === 'pw-form') {
@@ -1471,6 +1500,7 @@ document.addEventListener('submit', async e => {
 
 // Live tick marks on the password rules while typing.
 document.addEventListener('input', e => {
+  if (e.target.id === 'phone') e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 11);
   const adminForm = e.target.closest('#admin-form');
   if (adminForm?.dataset.validated === 'true') validateAdminForm(adminForm);
   if(e.target.form)e.target.form.dataset.dirty='1';

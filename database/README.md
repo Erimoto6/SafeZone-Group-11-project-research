@@ -6,7 +6,7 @@ Shared simulated readings are stored here; physical sensor integration is not in
 | Table | What it holds |
 |---|---|
 | `users` | every account (admins and students/faculty), passwords as bcrypt hashes |
-| `student_profiles` | student course code and free-text section, linked to the account |
+| `student_profiles` | student course code and section, linked to the account (new values use year-section, e.g. 4-3) |
 | `account_recovery` | legacy recovery Gmail records (not used by current PUP reset flow) |
 | `password_resets` | forgot-password codes (hashed), expiry and tries |
 | `rooms` | 43 classrooms across four floors on the 1st floor, plus any rooms an admin adds (201..., 301..., 401...) |

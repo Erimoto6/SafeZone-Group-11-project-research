@@ -162,7 +162,7 @@ Every active admin can use Manage Users → Student Accounts → trash icon and 
 
 ## Student course and section
 
-Install migration 09. `POST /api/auth/register` requires `courseCode` and `section` for student PUP addresses. Course codes: BSA, BSIT, BSBA-MM, BSBA-HRM, BSP, BSECE, BSIE. Only supported codes are accepted. Section is free text up to 40 characters, trimmed, whitespace-normalized and uppercased. Profile insertion and account creation share one transaction. Faculty accounts do not require a student profile.
+Install migration 09. `POST /api/auth/register` requires `courseCode` and `section` for student PUP addresses. Course codes: BSA, BSIT, BSBA-MM, BSBA-HRM, BSP, BSECE, BSIE. Only supported codes are accepted. Section must use a numeric year-section such as `4-3`: one digit from 1–9 on each side of a hyphen. Leading/trailing whitespace is trimmed. Existing saved profiles are preserved; new registrations and profile updates enforce this format. Profile insertion and account creation share one transaction. Faculty accounts do not require a student profile.
 
 Authenticated students use `GET /api/auth/me/student-profile` and `PUT /api/auth/me/student-profile` to read/update their own profile. The admin user list includes stored course/section. Existing accounts without a profile return null fields and appear under Course/Section not set. No current account is forced to re-register. Student profile records cascade on account deletion. Until migration 09 exists, user-list/profile reads fall back to empty profile data so existing accounts remain accessible.
 

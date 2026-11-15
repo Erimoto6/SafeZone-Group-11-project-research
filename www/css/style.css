@@ -590,3 +590,16 @@ select option{background:var(--surface);color:var(--ink)}
   .alerts-context .chips button{font-size:12px;padding:6px}
   .alerts-context .archive-button .i{display:none}
 }
+
+/* QA: readable course names in both the picker and the selected value. */
+span.f{font-size:12px;font-weight:600;color:var(--muted)}
+.course-picker{width:100%;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;text-align:left}
+.course-picker>summary{display:flex;align-items:center;gap:8px;list-style:none;padding:11px 12px;min-height:48px;font-size:13px;cursor:pointer}
+.course-picker>summary::-webkit-details-marker{display:none}
+.course-picker>summary span{flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+.course-picker>summary svg{flex-shrink:0;width:18px;height:18px}
+.course-options{max-height:260px;overflow-y:auto;border-top:1px solid var(--line);padding:4px}
+.course-options button{display:block;width:100%;min-height:44px;padding:10px;text-align:left;white-space:normal;overflow-wrap:anywhere;line-height:1.5;font-size:13px;border-radius:8px}
+.course-options button[aria-pressed="true"]{background:var(--brand-soft);color:var(--nav-active);font-weight:600}
+#email-form [data-form-error]:empty{display:none}
+#email-form [data-form-error]{margin:0}

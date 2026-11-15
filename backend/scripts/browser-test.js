@@ -35,7 +35,7 @@ let server,browser;
   const logout=async()=>{await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('button',{name:'Log out',exact:true}).click();};
   await page.clock.install();
   await page.goto('http://127.0.0.1:'+server.address().port);
-  await act('role','student');await act('to','vReg1');await fill('email',mail);await fill('phone',phone);await page.locator('#reg-course').selectOption('BSIT');await fill('reg-section','1-1');await submit('v-reg1-form');
+  await act('role','student');await act('to','vReg1');await fill('email',mail);await fill('phone',phone);await page.locator('.course-picker summary').click();await page.locator('[data-act=chooseCourse][data-v=BSIT]').click();await fill('reg-section','1-1');await submit('v-reg1-form');
   await fill('rp',password);await fill('rc',password);await submit('v-reg2-form');await page.getByRole('heading',{name:'Account Created!',exact:true}).waitFor();
   const [[user]]=await pool.query('SELECT password_hash FROM users WHERE email=?',[mail]);assert(user.password_hash.startsWith('$2'));
   console.log('PASS: browser registration stores bcrypt account in MySQL');
