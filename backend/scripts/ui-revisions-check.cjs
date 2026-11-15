@@ -44,7 +44,7 @@ assert.equal(await page.locator('table').count(),0);assert(await page.locator('#
  assert.match(await page.locator('.account-card').innerText(),/legacy@/);
  await page.locator('.student-breadcrumb [data-act=studentCourses]').click();
  assert.equal(await page.locator('.student-delete').count(),0);
-} }await page.evaluate(()=>{uiTest.screen('monitor');uiTest.history()});await checkMonitoring(page,role);assert.match(await page.locator('main').innerText(),/browser session only/);assert(await page.locator('main').evaluate(el=>Boolean(el.querySelector('.chart').compareDocumentPosition(el.querySelector('.monitor-links'))&Node.DOCUMENT_POSITION_FOLLOWING)));await page.evaluate(()=>uiTest.account());assert(await page.locator('#np').evaluate(el=>el.nextElementSibling.matches('.rules')));await page.locator('#np').fill('Abc123');assert.equal(await page.locator('#rules-np li.ok').count(),3)}await page.evaluate(()=>uiTest.setup('admin'));analyticsFail=true;await page.evaluate(()=>uiTest.screen('analytics'));assert.match(await page.locator('[role=alert]').innerText(),/history could not load/i);analyticsFail=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await page.locator('.temperature-rank').first().waitFor();await checkRoomConfiguration(page);await checkMainAdmin(page);await checkAdminPassword(page);await page.setViewportSize({width:390,height:844});await page.locator('[data-act=view][data-v=live]').click();assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'live Monitoring fits a typical phone screen');await page.evaluate(()=>uiTest.manual(true));assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'manual fan controls fit a typical phone screen');await page.screenshot({path:'/tmp/safezone-monitor-compact.png'});assert.deepEqual(errors,[]);console.log('PASS: admin/student screens in both themes at 320/390/768/1280; Monitoring order, menu links, placement in room configuration, controller preservation, theme logos, Manage Users navigation, password errors and removal dialogs');}finally{await browser.close();server.close()}})().catch(e=>{console.error(e);server.close();process.exitCode=1});
+} }await page.evaluate(()=>{uiTest.screen('monitor');uiTest.history()});await checkMonitoring(page,role);assert.match(await page.locator('main').innerText(),/browser session only/);assert(await page.locator('main').evaluate(el=>Boolean(el.querySelector('.chart').compareDocumentPosition(el.querySelector('.monitor-links'))&Node.DOCUMENT_POSITION_FOLLOWING)));await page.evaluate(()=>uiTest.account());assert(await page.locator('#np').evaluate(el=>el.nextElementSibling.matches('.rules')));await page.locator('#np').fill('Abc123');assert.equal(await page.locator('#rules-np li.ok').count(),3)}await page.evaluate(()=>uiTest.setup('admin'));analyticsFail=true;await page.evaluate(()=>uiTest.screen('analytics'));assert.match(await page.locator('[role=alert]').innerText(),/history could not load/i);analyticsFail=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await page.locator('.temperature-rank').first().waitFor();await checkAlertsArchive(page);await checkRoomConfiguration(page);await checkMainAdmin(page);await checkAdminPassword(page);await page.setViewportSize({width:390,height:844});await page.locator('[data-act=view][data-v=live]').click();assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'live Monitoring fits a typical phone screen');await page.evaluate(()=>uiTest.manual(true));assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'manual fan controls fit a typical phone screen');await page.screenshot({path:'/tmp/safezone-monitor-compact.png'});assert.deepEqual(errors,[]);console.log('PASS: admin/student screens in both themes at 320/390/768/1280; Monitoring order, menu links, placement in room configuration, controller preservation, theme logos, Manage Users navigation, password errors and removal dialogs');}finally{await browser.close();server.close()}})().catch(e=>{console.error(e);server.close();process.exitCode=1});
 
 async function checkMonitoring(page,role){
  const selectors=['.roombar','.monitor-utilities','.seg','.mini-chips','.chart','.monitor-links'];
@@ -110,4 +110,21 @@ async function checkAdminPassword(page){
  assert.equal(await page.locator('#admin-errors').innerText(),'Password cannot contain spaces.');
  page.off('request',track);
  await page.evaluate(()=>uiTest.screen('monitor'));
+}
+
+async function checkAlertsArchive(page){
+ await page.evaluate(()=>{uiTest.setup('admin');uiTest.screen('alerts')});
+ assert(!/Simulated readings · SMS delivery is not connected/.test(await page.locator('main').innerText()));
+ assert.equal(await page.locator('.archive-tabs').count(),0);
+ await Promise.all([
+  page.waitForResponse(response=>response.url().includes('/api/alerts?') && new URL(response.url()).searchParams.get('archived')==='1'),
+  page.getByRole('button',{name:'Archive',exact:true}).click()
+ ]);
+ await page.getByRole('button',{name:'Current alerts',exact:true}).waitFor();
+ assert.match(await page.locator('.alert-list-actions').innerText(),/Archived alerts/);
+ await Promise.all([
+  page.waitForResponse(response=>response.url().includes('/api/alerts?') && new URL(response.url()).searchParams.get('archived')==='0'),
+  page.getByRole('button',{name:'Current alerts',exact:true}).click()
+ ]);
+ await page.getByRole('button',{name:'Archive',exact:true}).waitFor();
 }
