@@ -582,7 +582,11 @@ select option{background:var(--surface);color:var(--ink)}
 
 .topbar .logo-themed{background:var(--surface);border-radius:50%;padding:3px}
 
-.alert-list-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 6px}
-.alert-list-actions>span{font-size:13px;font-weight:600;color:var(--muted)}
-.archive-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;min-height:44px;padding:8px 12px;flex-shrink:0}
+.chips .archive-button{background:var(--brand-soft);color:var(--nav-active);border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;min-height:40px;padding:6px 12px;flex-shrink:0}
 .archive-button .i{width:18px;height:18px}
+.alerts-context .chips{flex-wrap:wrap;overflow-x:visible}
+@media(max-width:430px){
+  .alerts-context .chips{gap:4px}
+  .alerts-context .chips button{font-size:12px;padding:6px}
+  .alerts-context .archive-button .i{display:none}
+}
