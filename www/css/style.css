@@ -580,7 +580,6 @@ select option{background:var(--surface);color:var(--ink)}
 #admin-form [data-form-error]:empty{display:none}
 #admin-form [data-form-error] ul{margin:0;padding-left:18px}
 
-.topbar .logo-themed{background:var(--surface);border-radius:50%;padding:3px}
 
 .alert-toolbar{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
 .alerts-context .alert-toolbar .chips{flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin:0;padding:0 0 4px;gap:4px;scrollbar-width:thin}
