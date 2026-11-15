@@ -239,6 +239,34 @@ const pwRules = x => [
   ['Include a letter and a number', /[A-Za-z]/.test(x) && /\d/.test(x)],
   ['No spaces', x.length > 0 && !/\s/.test(x)]
 ];
+const passwordError = password => {
+  if (!password) return 'Password is required.';
+  if (password.length < 6) return 'Password: use at least 6 characters.';
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return 'Password: include a letter and a number.';
+  if (/\s/.test(password)) return 'Password cannot contain spaces.';
+  if (new TextEncoder().encode(password).length > 72) return 'Password: use at most 72 bytes.';
+  return '';
+};
+function validateAdminForm(form) {
+  const checks = [
+    ['an', value => value.trim().length >= 2 && value.trim().length <= 100, 'Enter a full name from 2 to 100 characters.'],
+    ['au', value => /^[a-z0-9._-]{3,20}$/i.test(value.trim()), 'Username must contain 3–20 letters, numbers, dots, dashes or underscores.'],
+    ['aem', emailKind, 'Enter a valid PUP webmail.'],
+    ['ap', validPhone, 'Enter a valid Philippine mobile number.'],
+    ['rp', value => !passwordError(value), passwordError(form.querySelector('#rp').value)]
+  ];
+  const errors = [];
+  for (const [id, valid, message] of checks) {
+    const input = form.querySelector('#' + id), invalid = !valid(input.value);
+    input.setAttribute('aria-invalid', String(invalid));
+    if (invalid) input.setAttribute('aria-describedby', 'admin-errors');
+    else input.removeAttribute('aria-describedby');
+    if (invalid) errors.push({id, message});
+  }
+  form.querySelector('[data-form-error]').innerHTML = errors.length
+    ? `<ul>${errors.map(error => `<li>${esc(error.message)}</li>`).join('')}</ul>` : '';
+  return errors;
+}
 const normEmail = x => String(x).trim().toLowerCase();
 // 'student' | 'faculty' | null. Only the two PUP web mail domains are accepted (no other domains or subdomains).
 const emailKind = x => {
@@ -427,6 +455,7 @@ const LIVE = new Set(['home', 'alerts', 'monitor', 'status', 'rooms', 'analytics
 const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users', students: 'Student Accounts', rooms: 'Classroom Overview', analytics: 'Temperature Analytics' };
 
 function nav() {
+  if (S.screen === 'users') return '';
   const items = S.role === 'admin'
     ? [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['status', 'Devices', 'device'], ['settings', 'Settings', 'sliders']]
     : [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['about', 'About', 'info']];
@@ -435,9 +464,9 @@ function nav() {
 }
 
 function topbar() {
-  const home = S.screen === 'home'; const back = ['rooms','analytics'].includes(S.screen)?'monitor':S.screen==='students'?'users': ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
-  return `<header class="topbar">${home
-    ? `${logo(34)}<h1>SafeZone</h1>`
+  const home = S.screen === 'home'; const primary = ['home','alerts','monitor','status','settings'].includes(S.screen); const back = ['rooms','analytics'].includes(S.screen)?'monitor':S.screen==='students'?'users': ['about', 'users'].includes(S.screen) && S.role === 'admin' ? 'settings' : 'home';
+  return `<header class="topbar">${primary
+    ? `${logo(34)}<h1>${home ? 'SafeZone' : TITLES[S.screen]}</h1>`
     : `<button data-act="${S.screen==='students' && S.studentCourse!==null?'studentsBack':'go'}" data-v="${back}" aria-label="${S.screen==='students' && S.studentCourse!==null?(S.studentSection!==null?'Back to sections':'Back to courses'):'Back to '+back}">${I.back}</button><h1>${TITLES[S.screen]}</h1>`}
     <button data-act="menu" aria-label="Menu">${I.menu}</button></header>`;
 }
@@ -1084,7 +1113,7 @@ function usersView() {
       ${textField('phone', 'ap', 'Mobile number (09XXXXXXXXX)', 'tel', 'inputmode="numeric" autocomplete="off"')}
       ${pwField('rp', 'Password for the new admin', 'new-password')}
       ${rulesList()}
-      <p class="err" data-form-error role="alert"></p>
+      <div class="err" data-form-error role="alert" id="admin-errors"></div>
       <button class="btn small" type="submit">Add admin</button>
     </form>`;
 }
@@ -1290,7 +1319,7 @@ Object.assign(ACTS, {
     if (!S.me?.isMainAdmin) return;
     const admin = S.accounts.find(a => String(a.id) === v && a.role === 'admin' && !a.isMainAdmin && String(a.id) !== String(S.me.id));
     if (!admin) return;
-    openSheet('Remove admin permanently?', `<p>Permanently remove <b>${esc(admin.username)}</b>?</p><p class="note">The account, reset codes and linked SMS contact will be deleted. Their existing sessions will stop working.</p><div class="stack"><button class="btn" data-act="confirmAdminRemove" data-v="${admin.id}">Remove admin permanently</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
+    openSheet('Remove admin?', `<div class="admin-remove-confirm"><p>Remove <b>${esc(admin.username)}</b> permanently?</p><p class="note">This deletes the account, reset codes and linked SMS contact, and ends their active sessions. This cannot be undone.</p><div class="confirm-actions"><button class="btn soft small" data-act="closeSheet">Cancel</button><button class="btn danger small" data-act="confirmAdminRemove" data-v="${admin.id}">Remove admin</button></div></div>`);
   },
   async confirmAdminRemove(v, el) {
     if (!S.me?.isMainAdmin || el.disabled) return;
@@ -1376,7 +1405,8 @@ document.addEventListener('submit', async e => {
   const value = id => $('#' + id).value;
   const passwords = () => {
     const password = value('rp');
-    if (!pwRules(password).every(r => r[1])) throw new Error('Password must meet all the listed rules.');
+    const problem = passwordError(password);
+    if (problem) throw new Error(problem);
     if ($('#rc') && password !== value('rc')) throw new Error('The two passwords do not match.');
     return password;
   };
@@ -1400,11 +1430,9 @@ document.addEventListener('submit', async e => {
       await api('/auth/reset', 'POST', { resetToken: S.reset.resetToken, newPassword: passwords() });
       S.resetSide = S.reset.side; S.reset = null; S.authError = ''; S.screen = 'fpDone'; render();
     } else if (id === 'admin-form') {
-      const name=value('an').trim(),username=value('au').trim();
-      if(name.length<2||name.length>100)throw new Error('Enter a full name from 2 to 100 characters.');
-      if(!/^[a-z0-9._-]{3,20}$/i.test(username))throw new Error('Username must contain 3–20 letters, numbers, dots, dashes or underscores.');
-      if(!emailKind(value('aem')))throw new Error('Enter a valid PUP webmail.');
-      if(!validPhone(value('ap')))throw new Error('Enter a valid Philippine mobile number.');
+      form.dataset.validated = 'true';
+      const errors = validateAdminForm(form);
+      if (errors.length) { form.querySelector('#' + errors[0].id).focus(); return; }
       await api('/admin/users', 'POST', { fullName: value('an'), username: value('au'), email: value('aem'), phone: value('ap'), password: passwords() });
       await refreshData(); S.screen = 'users'; render(); toast('Admin account created');
     } else if (id === 'sms-form') {
@@ -1428,7 +1456,8 @@ document.addEventListener('submit', async e => {
       const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
       S.me = mapUser(data.user); toast('Web mail saved');
     } else if (id === 'pw-form') {
-      if (!pwRules(value('np')).every(rule=>rule[1])) throw new Error('New password must meet all the listed rules.');
+      const problem = passwordError(value('np'));
+      if (problem) throw new Error(problem);
       if (value('np') !== value('cp')) throw new Error('The two passwords do not match.');
       const data = await api('/auth/change-password', 'POST', { currentPassword: value('current-pw'), newPassword: value('np') });
       token = data.token; sessionStorage.setItem('safezone.token', token); closeSheet(); toast('Password updated');
@@ -1443,6 +1472,8 @@ document.addEventListener('submit', async e => {
 
 // Live tick marks on the password rules while typing.
 document.addEventListener('input', e => {
+  const adminForm = e.target.closest('#admin-form');
+  if (adminForm?.dataset.validated === 'true') validateAdminForm(adminForm);
   if(e.target.form)e.target.form.dataset.dirty='1';
   if(/^(temp|hum|co2)-(warn|limit)$/.test(e.target.id))settingsDirty=true;
   if(e.target.id==='email' && $('#registration-profile'))$('#registration-profile').hidden=emailKind(e.target.value)==='faculty';
