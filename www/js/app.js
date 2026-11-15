@@ -668,7 +668,7 @@ function metricChips() {
 function monitorView() {
   const k = S.mon.metric; const m = METRICS[k]; const live = S.mon.view === 'live';
   const seg = `<div class="seg" role="group" aria-label="View"><button data-act="view" data-v="live" aria-pressed="${live}">Real-time</button><button data-act="view" data-v="history" aria-pressed="${!live}">History</button></div>`;
-  const controls = `<div class="monitor-room-context">${roomBar(true)}</div><div class="monitor-utilities ${FEATURES.fanEnergy?'':'fan-only'}">${ventCard(true)}${FEATURES.fanEnergy?powerCard(false,true):''}</div>${seg}`;
+  const controls = `<div class="monitor-room-context">${roomBar(true)}</div>${S.role === 'admin' ? `<div class="monitor-utilities ${FEATURES.fanEnergy?'':'fan-only'}">${ventCard(true)}${FEATURES.fanEnergy?powerCard(false,true):''}</div>` : ''}${seg}`;
   if (live) {
     const labels = S.buf.t.map(t => tSec(new Date(t)));
     return `${controls}${metricChips()}
