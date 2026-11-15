@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const { HttpError, wrap } = require('../http');
 const v = require('../validate');
-const { requireAdmin, publicUser } = require('../auth');
+const { requireAdmin, publicUser, isMainAdmin } = require('../auth');
 const { createUser, getUser } = require('../users');
 
 const router = express.Router();
@@ -55,6 +55,25 @@ router.delete('/users/:id', wrap(async (req, res) => {
     await conn.commit();
     res.json({ok:true});
   } catch(e) { await conn.rollback();throw e; } finally {conn.release();}
+}));
+
+// Only the code-designated Main Admin may remove other administrators.
+router.delete('/admins/:id', wrap(async (req, res) => {
+  if (!isMainAdmin(req.user)) throw new HttpError(403, 'Only the Main Admin can remove admins.');
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(400, 'Choose a valid admin account.');
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[target]] = await conn.query('SELECT id,role,username FROM users WHERE id=? FOR UPDATE', [id]);
+    if (!target) throw new HttpError(404, 'Admin account not found.');
+    if (target.role !== 'admin') throw new HttpError(400, 'Only admin accounts can be removed here.');
+    if (isMainAdmin(target) || Number(target.id) === Number(req.user.id)) throw new HttpError(403, 'The Main Admin account cannot be removed.');
+    await conn.query('DELETE FROM sms_recipients WHERE user_id=?', [id]);
+    await conn.query('DELETE FROM users WHERE id=?', [id]);
+    await conn.commit();
+    res.json({ok:true});
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }));
 
 module.exports = router;

@@ -171,3 +171,9 @@ Authenticated students use `GET /api/auth/me/student-profile` and `PUT /api/auth
 The temporary Account Settings test-email button has been removed after successful delivery testing. The authenticated diagnostic endpoint remains available for backend troubleshooting: `POST /api/auth/me/test-webmail` ignores request-supplied recipients and uses the account's current registered PUP email. It is limited to three requests per account per 15 minutes. No reset codes, verification records or recovery settings are created or changed.
 
 The relay supports only Gmail, `@pup.edu.ph` and `@iskolarngbayan.pup.edu.ph` recipients. The test action accepts PUP recipients only and uses fixed content/subject. The project Gmail remains the sender. A successful API response means SMTP acceptance, not inbox arrival: the user must check Outlook Inbox and Junk for **SafeZone PUP webmail delivery test**. PUP delivery has been confirmed for this deployment; the active reset flow now uses the registered PUP address. No SQL migration or new secrets are required.
+
+### Main Admin
+
+The existing admin account with username `admin` is the Main Admin, designated in `src/auth.js`. No new account, password change or database migration is required. Restart the backend after updating, then log in again to see the Main Admin label in Manage Users. Only this account can remove other admins; it cannot remove itself. Regular admins retain their existing permissions, including adding admins and deleting student accounts. The server enforces deletion permissions on every request and deleted accounts lose access immediately. Password recovery is unchanged.
+
+`DELETE /api/admin/admins/:id` removes an admin account and its linked SMS and recovery records. Only the Main Admin can use this route; the existing student deletion route remains limited to students.

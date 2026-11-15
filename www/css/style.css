@@ -506,12 +506,9 @@ select option{background:var(--surface);color:var(--ink)}
 .alert-frequency-rank{align-items:flex-start}.alert-frequency-rank .rank-room small{line-height:1.6}
 
 /* Compact controls retain readable type and touch targets. */
-.fan-installation{grid-column:2;grid-row:1;margin:0;min-height:44px;font-size:12px;padding:6px}
 .monitor-utilities.fan-only .fan-control-card .s-head{grid-column:1}
 .monitor-utilities .fan-card-controls .switch{flex-shrink:0}
 .seg button,.mini-chips button{min-height:44px}
-#fan-installation-form{margin-top:12px}
-#fan-installation-form select{display:block;width:100%;min-height:44px;margin-top:6px}
 .settings-layout .section-label{margin-top:16px}
 .settings-layout .room-configuration{padding:12px;margin-top:14px}
 .account-card dl{margin-top:10px;gap:10px}
@@ -519,3 +516,37 @@ select option{background:var(--surface);color:var(--ink)}
 @media(max-width:360px){
   .monitor-utilities.fan-only .fan-control-card{column-gap:10px;grid-template-columns:minmax(0,1fr) minmax(100px,auto)}
 }
+
+.admin-delete{flex:0 0 44px;min-height:44px;color:var(--bad)}
+
+/* Keep primary screens compact; long lists and small phones can still scroll. */
+.screen{padding:10px 12px 12px}
+.roombar{margin:8px 0}
+.monitor-room-context{margin-bottom:0}
+.monitor-room-context .roombar{margin:0 0 8px}
+.roompick{padding:6px 10px;gap:8px}
+.rp-ico{width:34px;height:34px;border-radius:10px}
+.rp-txt b{font-size:15px}
+.addroom{gap:2px}.addroom .plus{width:34px;height:34px}
+.monitor-utilities{margin-bottom:8px}
+.monitor-utilities>.card{padding:10px 12px}
+.monitor-utilities.fan-only .fan-control-card{row-gap:2px}
+.monitor-utilities.fan-only .fan-control-card .s-head{grid-column:1;grid-row:1}
+.monitor-utilities.fan-only .fan-control-card .s-val{margin:0;font-size:25px}
+.monitor-utilities.fan-only .fan-control-card .fan-card-controls{grid-row:1/4;gap:6px}
+.seg{padding:3px;margin-bottom:8px}
+.seg button{padding:6px}
+.mini-chips{gap:6px;margin:0 0 8px}
+.legend{margin-top:4px;gap:12px}
+.chart-head{margin-bottom:2px}
+.monitor-links{gap:6px;margin-top:8px}
+.monitor-links .card{padding:8px 10px;gap:8px}
+.monitor-links small{margin-top:1px;line-height:1.3}
+.sensor{min-height:104px;gap:4px}
+.live{margin:6px 0 8px}
+.banner{padding:10px 12px;margin-top:8px}
+.legend-card{margin-top:10px;padding:10px 12px}
+.legend-card .lg{padding:4px 0}
+.section-label,.settings-layout .section-label{margin-top:12px}
+.account-group{margin:12px 0}.account-group-heading{margin-bottom:8px}
+.account-card-list,.student-browse-list{gap:8px}

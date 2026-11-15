@@ -397,7 +397,7 @@ function history(k, range) {
 function chartSVG(vals, labels, k, cls, id) {
   if(!vals.length)return '<p class="empty">Waiting for recorded readings.</p>';
   const m = METRICS[k]; const th = S.limits[k];
-  const W = 340, H = 190, L = 42, R = 10, T = 12, B = 26;
+  const W = 340, H = 150, L = 42, R = 10, T = 12, B = 26;
   let lo = Math.min(m.axis[0], ...vals), hi = Math.max(m.axis[1], ...vals, th.limit);
   lo = Math.floor(lo / m.step) * m.step; hi = Math.ceil(hi / m.step) * m.step;
   const x = i => L + (W - L - R) * (vals.length > 1 ? i / (vals.length - 1) : 0.5);
@@ -410,9 +410,9 @@ function chartSVG(vals, labels, k, cls, id) {
   const line = 'M' + pts.join(' L');
   const area = `${line} L${x(vals.length - 1).toFixed(1)},${H - B} L${x(0).toFixed(1)},${H - B} Z`;
   const ref = (v, c) => (v > lo && v < hi) ? `<line class="${c}" x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>` : '';
-  const n = labels.length; const idx = [0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1];
-  const anchors = ['start', 'middle', 'middle', 'end'];
-  const xl = idx.map((ix, j) => `<text class="ax" x="${j === 0 ? L : j === 3 ? W - R : x(ix).toFixed(1)}" y="${H - 7}" text-anchor="${anchors[j]}">${esc(labels[ix] || '')}</text>`).join('');
+  const n = labels.length; const idx = [...new Set([0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1])];
+  const anchors = idx.map((_, j) => j === 0 ? 'start' : j === idx.length - 1 ? 'end' : 'middle');
+  const xl = idx.map((ix, j) => `<text class="ax" x="${j === 0 ? L : j === idx.length - 1 ? W - R : x(ix).toFixed(1)}" y="${H - 7}" text-anchor="${anchors[j]}">${esc(labels[ix] || '')}</text>`).join('');
   return `<svg class="chart ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${m.label} trend chart">
     <defs><linearGradient id="g-${id}" x1="0" y1="0" x2="0" y2="1"><stop class="stopc" offset="0" stop-opacity=".28"/><stop class="stopc" offset="1" stop-opacity="0"/></linearGradient></defs>
     ${grid}${ref(th.warn, 'wrn')}${ref(th.limit, 'lim')}
@@ -456,7 +456,7 @@ function ventCard(control) {
        ${auto ? '<p class="s-note">Automatic mode</p>' : '<button class="linkbtn" data-act="auto">Manual. Switch to automatic</button>'}`
     : `<span class="chip ${on ? 'normal' : 'idle'}">${auto ? 'Automatic' : 'Manual'}</span>`;
   return `<article class="card sensor ${control && admin?'fan-control-card':''}"><div class="s-head"><span class="ico ico-fan ${on ? 'spin' : ''}">${I.fan}</span>Exhaust fan</div>
-    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note fan-count">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p><div class="fan-card-controls">${foot}</div>${control && admin ? '<button class="btn soft small fan-installation" data-act="fanInstallation">Installation type</button>' : ''}</article>`;
+    <div class="s-val">${on ? 'ON' : 'OFF'}</div><p class="s-note fan-count">${(cur().devices || []).filter(d => d.type === 'exhaust_fan').reduce((n,d) => n+d.quantity,0)} exhaust fan(s)</p><div class="fan-card-controls">${foot}</div></article>`;
 }
 
 function cards(control = false) { return `<div class="grid2">${sensorCard('temp')}${sensorCard('hum')}${sensorCard('co2')}${ventCard(control)}</div>`; }
@@ -1043,7 +1043,7 @@ const closeSheet = () => { captureDrafts(); $('#sheet-root').innerHTML = ''; };
 function userCards(title, people, admin = false, removable = false) {
   const emailText = email => esc(email).replace(/@/g,'@<wbr>').replace(/\./g,'.<wbr>');
   return `<section class="account-group"><div class="account-group-heading"><h3>${esc(title)}</h3><span class="account-count">${people.length}</span></div><div class="account-card-list">${people.map(a=>`<article class="account-card">
-    <div class="account-card-heading"><div class="account-card-identity"><strong>${admin?esc(a.name):emailText(a.email)}</strong>${admin?`<p>${esc(a.username || '')}</p>`:''}</div>${removable?`<button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button>`:''}</div>
+    <div class="account-card-heading"><div class="account-card-identity"><strong>${admin?esc(a.name):emailText(a.email)}</strong>${admin?`<p>${esc(a.username || '')}${a.isMainAdmin ? ' · Main Admin' : ''}</p>`:''}</div>${removable===true?`<button type="button" class="x student-delete" title="Delete student" data-act="studentRemove" data-v="${a.id}" aria-label="Delete student ${esc(a.email)}">${I.trash}</button>`:''}${admin && S.me?.isMainAdmin && !a.isMainAdmin && String(a.id)!==String(S.me.id) ? `<button type="button" class="x admin-delete" data-act="adminRemove" data-v="${a.id}" aria-label="Remove admin ${esc(a.username)}">${I.trash}</button>` : ''}</div>
     <dl>${admin?`<div><dt>PUP webmail</dt><dd>${emailText(a.email)}</dd></div>`:''}<div><dt>Mobile</dt><dd>${esc(showPhone(a.phone))}</dd></div>${removable?`<div><dt>Account status</dt><dd>${a.active===false?'Inactive':'Active'}</dd></div>`:''}</dl>
   </article>`).join('') || '<p class="empty">No accounts in this group.</p>'}</div></section>`;
 }
@@ -1192,14 +1192,6 @@ const ACTS = {
       <button class="btn soft" data-act="account">Account Settings</button>
       <button class="btn soft" data-act="logout">Log out</button></div>`);
   },
-  fanInstallation() {
-    if (S.role !== 'admin' || S.screen !== 'monitor') return;
-    const room = cur(), fans = (room.devices || []).filter(d => d.type === 'exhaust_fan');
-    openSheet('Exhaust fan installation', `<p class="sub">Placement in ${esc(room.name)}.</p>
-      ${fans.length ? `<form id="fan-installation-form" data-room-id="${room.id}" class="stack">
-        ${fans.map((d,i) => `<label class="f">${esc(d.label)} — installation type<select name="fan-${i}" data-fan-placement="${i}">${Object.entries(FAN_NAMES).map(([key,name]) => `<option value="${key}" ${key === (d.fanType || 'unspecified') ? 'selected' : ''}>${name}</option>`).join('')}</select></label>`).join('')}
-        <button type="submit" class="btn small">Save installation type</button></form>` : '<p class="note">No exhaust fans configured. Add an exhaust fan in Settings → Room configuration → Edit room.</p>'}`);
-  },
   metric(v) { S.mon.metric = v; render(); },
   view(v) { S.mon.view = v; render(); },
   range(v) { S.mon.range = v; render(); },
@@ -1294,6 +1286,20 @@ Object.assign(ACTS, {
   studentCourse(v) {if(S.role!=='admin')return;S.studentCourse=v;S.studentSection=null;render();const screen=$('#screen');if(screen)screen.scrollTop=0;},
   studentSection(v) {if(S.role!=='admin'||S.studentCourse===null)return;S.studentSection=v;render();const screen=$('#screen');if(screen)screen.scrollTop=0;},
   studentsBack() {if(S.role!=='admin')return;if(S.studentSection!==null)S.studentSection=null;else S.studentCourse=null;render();},
+  adminRemove(v) {
+    if (!S.me?.isMainAdmin) return;
+    const admin = S.accounts.find(a => String(a.id) === v && a.role === 'admin' && !a.isMainAdmin && String(a.id) !== String(S.me.id));
+    if (!admin) return;
+    openSheet('Remove admin permanently?', `<p>Permanently remove <b>${esc(admin.username)}</b>?</p><p class="note">The account, reset codes and linked SMS contact will be deleted. Their existing sessions will stop working.</p><div class="stack"><button class="btn" data-act="confirmAdminRemove" data-v="${admin.id}">Remove admin permanently</button><button class="btn soft" data-act="closeSheet">Cancel</button></div>`);
+  },
+  async confirmAdminRemove(v, el) {
+    if (!S.me?.isMainAdmin || el.disabled) return;
+    el.disabled = true;
+    try {
+      await api('/admin/admins/' + encodeURIComponent(v), 'DELETE');
+      await refreshData(); closeSheet(); S.screen = 'users'; render(); toast('Admin account removed');
+    } finally { if (el.isConnected) el.disabled = false; }
+  },
   studentRemove(v) {
     if(S.role!=='admin')return;
     const student=S.accounts.find(a=>String(a.id)===v && a.role==='viewer' && a.kind==='student');
@@ -1405,15 +1411,6 @@ document.addEventListener('submit', async e => {
       const edit = Number(form.dataset.edit), person = S.users[edit];
       await api('/sms-recipients' + (person ? '/' + person.id : ''), person ? 'PATCH' : 'POST', { name: value('sn'), role: value('sr'), phone: value('sp') });
       await refreshData(); S.pendingDel = ''; smsSheet(); toast('Recipient saved');
-    } else if (id === 'fan-installation-form') {
-      if (S.role !== 'admin') return;
-      const room = S.rooms.find(r => r.id === form.dataset.roomId);
-      if (!room) throw new Error('This room is no longer available.');
-      let fanIndex = 0;
-      const devices = room.devices.map(d => d.type === 'exhaust_fan'
-        ? {...d, fanType: form.querySelector(`[data-fan-placement="${fanIndex++}"]`).value} : {...d});
-      await api('/rooms/' + room.id, 'PATCH', {devices});
-      await refreshData(); closeSheet(); render(); toast('Installation type saved');
     } else if (id === 'room-form') {
       const roomId=form.dataset.roomId;
       const no=Number(value('rn'));
