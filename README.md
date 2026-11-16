@@ -20,7 +20,7 @@ Keep the detailed [backend instructions](backend/README.md) and [database instru
 
 You need Node.js/npm, MySQL or MariaDB (for example, XAMPP), and a browser. Android packaging also needs the root project's Capacitor dependencies, Android Studio and an Android project.
 
-1. Follow [database/README.md](database/README.md) and run SQL files **01 through 10 in order** for a new database. Change the database-user password placeholder privately before running file 01. The initial seed creates 43 classrooms across four floors; it does not create an admin account.
+1. Follow [database/README.md](database/README.md) and run SQL files **01 through 11 in order** for a new database. Change the database-user password placeholder privately before running file 01. The initial seed creates 43 classrooms across four floors; it does not create an admin account.
 2. Open a terminal in `backend` and install dependencies:
 
    ```powershell
@@ -56,8 +56,9 @@ The `admin / safezone` demo login is not enabled on this branch. Accounts previo
    | `database/08-recovery-gmail.sql` | Legacy recovery schema, retained for compatibility |
    | `database/09-student-profiles.sql` | Student course and section |
    | `database/10-alert-archives.sql` | Per-account alert archive bookmarks |
+   | `database/11-simulation-history.sql` | Persistent minute summaries for History ranges |
 
-   Run missing migrations in numerical order as the database administrator through phpMyAdmin or Workbench. If shared simulations already work and 05/06 are missing, run **05, then 06**. This UI revision adds migration **10**. If 01–09 are already installed, run only `database/10-alert-archives.sql` against the database used by the running backend. Current alerts continue to work before migration 10; Archive becomes available after it is installed. Do not recreate the database or rerun the original setup/seed files for an existing installation.
+   Run missing migrations in numerical order as the database administrator through phpMyAdmin or Workbench. If shared simulations already work and 05/06 are missing, run **05, then 06**. Saved History requires migration **11**. If 01–10 are installed, run only `database/11-simulation-history.sql` and restart the backend. If 01–09 are already installed, run only `database/10-alert-archives.sql` against the database used by the running backend. Current alerts continue to work before migration 10; Archive becomes available after it is installed. Do not recreate the database or rerun the original setup/seed files for an existing installation.
 4. From `backend`, run `npm ci`, `npm run check-db`, then `npm start`. Open http://localhost:3000/ and press Ctrl+F5.
 5. For an installed Android app, sync the frontend and rebuild/reinstall the APK as described below. Pulling source code does not update an already installed APK.
 
@@ -88,7 +89,7 @@ To verify sharing, sign in as an admin in one browser and a student/faculty memb
 - **Temperature Analytics:** rooms ranked by recorded temperature limit-alert count for the last 7 days, last 30 days or all time. Shows the count, days with alerts and latest event; ties use latest event then room number. Archived alerts are included; warnings and other metrics are excluded. Counts use stored event severity, not current thresholds, and include existing demo events. This measures event frequency, not duration, current temperature or a normalized rate. Rooms without limit alerts are omitted. No new migration is needed.
 - **Alerts:** selected-room date/time timeline with separate event cards, muted timestamps and neutral borders. Current and Archive each show up to the latest 200 matching records. Archive bookmarks belong to the signed-in account; archiving/restoring does not delete or change original alert records. Run migration 10 to enable it.
 - **Accounts and Settings:** account cards replace account tables; Student Accounts opens course buttons, then section buttons, then the profiles for that section. Back returns one level. Accounts without profile details remain under Course not set / Section not set. Password rules appear below the password and confirmation fields and update while typing. Admin input is validated in the browser and again by the API.
-- **Graphs:** temperature, humidity and CO₂ charts use samples received during the browser session, retaining at most 40 recent samples per room. Closing/reloading the app clears those chart samples. The time windows filter available samples; earlier readings are not invented. Persistent historical reporting remains future work; `reading_hourly` is reserved for it.
+- **Graphs:** Real-time keeps 40 browser samples. History queries saved server summaries for the selected room/metric and the actual last 6 hours, 24 hours or 7 days. A fixed time axis displays the entire chosen window, with dates for longer periods. Statistics use all recorded samples, weighted by sample count; plotted points are grouped into 1-, 5- or 30-minute averages. Migration 11 enables saving future demo ticks. The app reports available dates, empty periods and errors rather than inventing older readings. Eight days are retained, and browser reloads/Reset do not erase saved History.
 
 ### Electricity feature retained for later
 
@@ -222,3 +223,7 @@ PUP webmail delivery has been confirmed through Outlook. Account Settings no lon
 Registration and Account Settings use a wrapping course picker with the existing seven courses. New or updated student sections must use a numeric year-section such as `4-3`; letters, incomplete sections and multiple section digits are rejected in both the browser and API. Existing profile rows are preserved. Student/faculty login accepts an 11-digit `09` mobile number; the input blocks letters and extra digits and reports empty/incomplete values. Institutional webmail validation rejects malformed local parts and look-alike domains, and Account Settings explains where recovery codes are sent. Password/confirmation fields appear together with the live rules below. System Overview starts collapsed.
 
 Checks: `node --test backend/test/*.test.js` and `node backend/scripts/ui-revisions-check.cjs` (Chromium). Browser checks cover both themes at 320, 390, 768 and 1280 pixels, registration/login and email updates through mocked API responses, invalid inputs, status labels, course names, and About expand/collapse. Live SMTP delivery was not reconfigured or exercised; its existing automated tests remain passing. No new database migration is required.
+
+### Enable saved Monitoring History
+
+After pulling this revision, run `database/11-simulation-history.sql` once in phpMyAdmin/Workbench as the database administrator on the database used by the running backend, then restart the backend. Keep the current database, accounts and `.env`. No history exists for readings that were never saved. The backend records new demo ticks even with the app closed; charts accumulate real six-hour/day/week coverage over time. This does not connect Firebase or physical hardware.

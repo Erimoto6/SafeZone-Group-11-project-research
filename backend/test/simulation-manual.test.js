@@ -11,6 +11,7 @@ function simulator({metric='co2',mode='manual',trigger='exceeded'}={}) {
  state.start_value=state[metric];
  const events=[];
  const query=async(sql,p=[])=>{
+  if(sql.startsWith('INSERT INTO simulation_history')||sql.startsWith('DELETE FROM simulation_history'))return [{}];
   if(sql.startsWith('INSERT IGNORE')||sql.startsWith('UPDATE electricity_usage'))return [{}];
   if(sql.startsWith('SELECT metric'))return [Object.entries(limits).map(([metric,t])=>({metric,warn_value:t.warn,limit_value:t.limit}))];
   if(sql.startsWith('SELECT setting_value'))return [[{setting_value:trigger}]];

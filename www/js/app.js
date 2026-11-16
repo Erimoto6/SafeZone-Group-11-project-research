@@ -95,6 +95,7 @@ const S = {
   role: null,                 // null | 'student' (Student / Faculty) | 'admin'
   screen: 'splash',           // splash | vWelcome | vReg1 | vReg2 | vDone | vLogin | login | home | alerts | monitor | status | settings | about
   mon: { view: 'live', metric: 'temp', range: '6h' },
+  savedHistory: {key:'',data:null,loading:false,error:'',fetchedAt:0},
   alertFilter: 'all', alertView: 'active', archiveAvailable: false, overviewFloor: 'all', studentCourse: null, studentSection: null,
   temperatureAnalytics: {range:'7d',data:null,loading:false,error:'',fetchedAt:0},
   rooms: [],                  // every room has its own readings, levels and fan. Built in init().
@@ -163,6 +164,7 @@ function signOut() {
   alertWatermarks.clear(); S.syncError = ''; S.simSelected = []; S.simScope = 'current'; S.configRoomId = null;
   S.alertView='active';S.archiveAvailable=false;S.studentCourse=null;S.studentSection=null;
   S.temperatureAnalytics={range:'7d',data:null,loading:false,error:'',fetchedAt:0};
+  S.savedHistory={key:'',data:null,loading:false,error:'',fetchedAt:0};
   S.screen = 'splash'; S.reg = { phone: '' }; S.reset = null; S.studentProfile = null; closeSheet();
 }
 const mapUser = u => ({ ...u, name: u.fullName || u.username || 'Unnamed user' });
@@ -388,6 +390,7 @@ async function pollShared() {
     if (token !== session || !S.role || requestedRoom!==S.roomId || requestedView!==S.alertView) return;
     S.archiveAvailable=alerts.archiveAvailable===true;
     applyShared(shared, alerts.alerts); S.syncError = '';
+    if(S.screen==='monitor'&&S.mon.view==='history')void loadHistory();
     if(S.screen==='analytics'&&!S.temperatureAnalytics.loading&&Date.now()-S.temperatureAnalytics.fetchedAt>=30000)void loadTemperatureAnalytics();
     if (LIVE.has(S.screen)) render();
     else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
@@ -425,25 +428,36 @@ function makeRoom(cfg) {
   return r;
 }
 
-/* History includes only samples received during this browser session. */
+/* The live buffer stays small; History loads saved server summaries. */
 function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-function history(k, range) {
-  const buf=cur().buf, cutoff=Date.now()-({'6h':6,'24h':24,'7d':168}[range]||6)*3600000;
-  const vals=[],labels=[];
-  buf.t.forEach((ts,i)=>{if(ts>=cutoff && Number.isFinite(Number(buf[k][i]))){vals.push(Number(buf[k][i]));labels.push(tShort(new Date(ts)));}});
-  return {vals,labels};
+const historyKey = () => [S.roomId,S.mon.metric,S.mon.range].join(':');
+let historyRequest=0;
+async function loadHistory(force=false) {
+  const key=historyKey(),previous=S.savedHistory;
+  if(previous.key===key && (previous.loading || (!force && (previous.data || previous.error) && Date.now()-previous.fetchedAt<30000)))return;
+  const state=S.savedHistory={key,data:previous.key===key?previous.data:null,loading:true,error:'',fetchedAt:0};
+  const request=++historyRequest,session=token;
+  if(S.screen==='monitor'&&S.mon.view==='history')render();
+  try {
+    const data=await api('/simulation/history?roomId='+encodeURIComponent(S.roomId)+'&metric='+S.mon.metric+'&range='+S.mon.range);
+    if(request!==historyRequest||token!==session||historyKey()!==key)return;
+    state.data=data;state.fetchedAt=Date.now();
+  } catch(error) {if(request===historyRequest&&token===session&&historyKey()===key)state.error=error.message;}
+  finally {if(request===historyRequest&&token===session&&historyKey()===key){state.loading=false;state.fetchedAt=Date.now();if(S.screen==='monitor'&&S.mon.view==='history')render();}}
 }
+const historyTime = (time,range) => new Date(time).toLocaleString(undefined,range==='7d'?{month:'short',day:'numeric'}:range==='24h'?{month:'short',day:'numeric',hour:'numeric'}:{hour:'numeric',minute:'2-digit'});
+const historyDate = time => new Date(time).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 
 /* =====================================================================
    CHART (inline SVG)
    ===================================================================== */
-function chartSVG(vals, labels, k, cls, id) {
+function chartSVG(vals, labels, k, cls, id, window=null) {
   if(!vals.length)return '<p class="empty">Waiting for recorded readings.</p>';
   const m = METRICS[k]; const th = S.limits[k];
   const W = 340, H = 150, L = 42, R = 10, T = 12, B = 26;
   let lo = Math.min(m.axis[0], ...vals), hi = Math.max(m.axis[1], ...vals, th.limit);
   lo = Math.floor(lo / m.step) * m.step; hi = Math.ceil(hi / m.step) * m.step;
-  const x = i => L + (W - L - R) * (vals.length > 1 ? i / (vals.length - 1) : 0.5);
+  const x = i => L + (W - L - R) * (window ? (window.times[i]-window.from)/(window.to-window.from) : vals.length > 1 ? i / (vals.length - 1) : 0.5);
   const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
   let grid = '';
   for (let v = lo; v <= hi + 1e-9; v += m.step) {
@@ -453,13 +467,14 @@ function chartSVG(vals, labels, k, cls, id) {
   const line = 'M' + pts.join(' L');
   const area = `${line} L${x(vals.length - 1).toFixed(1)},${H - B} L${x(0).toFixed(1)},${H - B} Z`;
   const ref = (v, c) => (v > lo && v < hi) ? `<line class="${c}" x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>` : '';
-  const n = labels.length; const idx = [...new Set([0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1])];
+  const n = labels.length; const idx = window ? [] : [...new Set([0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1])];
   const anchors = idx.map((_, j) => j === 0 ? 'start' : j === idx.length - 1 ? 'end' : 'middle');
-  const xl = idx.map((ix, j) => `<text class="ax" x="${j === 0 ? L : j === idx.length - 1 ? W - R : x(ix).toFixed(1)}" y="${H - 7}" text-anchor="${anchors[j]}">${esc(labels[ix] || '')}</text>`).join('');
+  let xl = idx.map((ix, j) => `<text class="ax" x="${j === 0 ? L : j === idx.length - 1 ? W - R : x(ix).toFixed(1)}" y="${H - 7}" text-anchor="${anchors[j]}">${esc(labels[ix] || '')}</text>`).join('');
+  if(window)xl=Array.from({length:3},(_,i)=>`<text class="ax" x="${L+(W-L-R)*i/2}" y="${H-7}" text-anchor="${i===0?'start':i===2?'end':'middle'}">${esc(historyTime(window.from+(window.to-window.from)*i/2,window.range))}</text>`).join('');
   return `<svg class="chart ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${m.label} trend chart">
     <defs><linearGradient id="g-${id}" x1="0" y1="0" x2="0" y2="1"><stop class="stopc" offset="0" stop-opacity=".28"/><stop class="stopc" offset="1" stop-opacity="0"/></linearGradient></defs>
     ${grid}${ref(th.warn, 'wrn')}${ref(th.limit, 'lim')}
-    <path d="${area}" fill="url(#g-${id})"/><path class="line" d="${line}"/>${xl}</svg>`;
+    <path d="${area}" fill="url(#g-${id})"/><path class="line" d="${line}"/>${vals.length===1?`<circle cx="${x(0)}" cy="${y(vals[0])}" r="3" fill="var(--s)"/>`:''}${xl}</svg>`;
 }
 const legend = k => `<div class="legend"><span><i style="color:#E5B800"></i>Warning ${withUnit(k, S.limits[k].warn)}</span><span><i style="color:var(--bad)"></i>Limit ${withUnit(k, S.limits[k].limit)}</span></div>`;
 
@@ -675,14 +690,16 @@ function monitorView() {
       <section class="card chart-card" style="margin-top:0"><div class="chart-head"><h3>${m.label}: ${withUnit(k,S.reading[k])}</h3><span class="chip ${S.levels[k]}">${LV[S.levels[k]]}</span></div>
       ${chartSVG(S.buf[k], labels, k, S.levels[k], 'live')}${legend(k)}</section>${monitoringLinks()}`;
   }
-  const r = S.mon.range; const h = history(k, r);
-  const min = Math.min(...h.vals), max = Math.max(...h.vals), avg = h.vals.reduce((a, b) => a + b, 0) / h.vals.length;
-  const over = h.vals.filter(v => v >= S.limits[k].limit).length;
+  const r = S.mon.range, state=S.savedHistory.key===historyKey()?S.savedHistory:null, h=state?.data;
   const rc = `<div class="mini-chips" role="group" aria-label="Time range">${[['6h', 'Last 6 hours'], ['24h', 'Last 24 hours'], ['7d', 'Last 7 days']].map(([id, l]) => `<button data-act="range" data-v="${id}" aria-pressed="${r === id}">${l}</button>`).join('')}</div>`;
-  return `${controls}${metricChips()}${rc}
-    <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${chartSVG(h.vals, h.labels, k, 'neutral', 'hist')}${legend(k)}</section>
-    <div class="stats"><div class="stat"><span>Lowest</span><b>${h.vals.length?fmt(k,min):'—'}</b></div><div class="stat"><span>Average</span><b>${h.vals.length?fmt(k,avg):'—'}</b></div><div class="stat"><span>Highest</span><b>${h.vals.length?fmt(k,max):'—'}</b></div></div>
-    <p class="note">Simulated samples received during this browser session only; up to 40 recent readings per room are retained. Earlier history is not available. Actual conditions vary with weather, occupancy and ventilation.</p><p class="note">${!h.vals.length?'No recorded samples yet.':over ? `${over} reading${over > 1 ? 's' : ''} reached the limit in this period.` : 'No readings reached the limit in this period.'}</p>${monitoringLinks()}`;
+  const head=`${controls}${metricChips()}${rc}`;
+  if(state?.error)return `${head}<p class="note" role="alert">History could not load. ${esc(state.error)}</p><button class="btn soft small" data-act="historyRetry">Try again</button>${monitoringLinks()}`;
+  if(!h)return `${head}<p class="empty" role="status">Loading saved history…</p>${monitoringLinks()}`;
+  const vals=h.points.map(p=>p.value),times=h.points.map(p=>p.at);
+  return `${head}<p class="note history-window">${esc(historyDate(h.from))} – ${esc(historyDate(h.to))}</p>
+    <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${vals.length?chartSVG(vals,[],k,'neutral','hist',{times,from:h.from,to:h.to,range:r}):'<p class="empty">No saved readings in this period.</p>'}${legend(k)}</section>
+    <div class="stats"><div class="stat"><span>Lowest</span><b>${h.count?fmt(k,h.stats.min):'—'}</b></div><div class="stat"><span>Average</span><b>${h.count?fmt(k,h.stats.avg):'—'}</b></div><div class="stat"><span>Highest</span><b>${h.count?fmt(k,h.stats.max):'—'}</b></div></div>
+    <p class="note">Saved demo readings, summarized by minute. ${h.count?`${h.count.toLocaleString()} sample${h.count===1?'':'s'} available from ${esc(historyDate(h.firstAt))} to ${esc(historyDate(h.lastAt))}.`:'History starts collecting after saved history is enabled on the server.'} Older unsaved readings cannot be recovered.</p>${monitoringLinks()}`;
 }
 
 const DEVICE_NAMES = {exhaust_fan:'Exhaust fan',esp8266:'Microcontroller',temp_sensor:'Temperature sensor',hum_sensor:'Humidity sensor',co2_sensor:'CO₂ sensor',wifi:'Wi-Fi module',sms_module:'SMS module',power_meter:'Electricity meter'};
@@ -1242,9 +1259,10 @@ const ACTS = {
       ${admin ? '' : '<button class="btn soft" data-act="account">Account Settings</button>'}
       <button class="btn soft" data-act="logout">Log out</button></div>`);
   },
-  metric(v) { S.mon.metric = v; render(); },
-  view(v) { S.mon.view = v; render(); },
-  range(v) { S.mon.range = v; render(); },
+  async metric(v) { S.mon.metric = v; render(); if(S.mon.view==='history')await loadHistory(); },
+  async view(v) { S.mon.view = v; render(); if(v==='history')await loadHistory(); },
+  async range(v) { if(!['6h','24h','7d'].includes(v))return;S.mon.range = v; render(); await loadHistory(); },
+  async historyRetry() {await loadHistory(true);},
   filter(v) { S.alertFilter = v; render(); },
   pw(v, el) {
     const inp = $('#' + v); if (!inp) return;
@@ -1270,7 +1288,7 @@ const ACTS = {
   smsEdit(v) { S.pendingDel = ''; smsSheet(+v); },
   smsCancel() { S.pendingDel = ''; smsSheet(); },
   pickRoom() { pickSheet(); },
-  async room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId=v;S.alerts=[];S.unread=0;store.save();closeSheet();render();const selected=v,session=token;const result=await api(alertUrl(v));if(S.roomId===selected && token===session && S.role){S.alerts=result.alerts;S.archiveAvailable=result.archiveAvailable===true;render();} } },
+  async room(v) { if (S.rooms.some(r => r.id === v)) { S.roomId=v;S.alerts=[];S.unread=0;store.save();closeSheet();render();const selected=v,session=token;const result=await api(alertUrl(v));if(S.roomId===selected && token===session && S.role){S.alerts=result.alerts;S.archiveAvailable=result.archiveAvailable===true;render();if(S.screen==='monitor'&&S.mon.view==='history')await loadHistory();} } },
   addRoom(v) { if(S.role!=='admin'||S.screen!=='monitor')return; S.editingRoomId=null; S.addFloor=v?+v:cur().floor; roomsSheet(); },
   editRoom(v) { if(S.role!=='admin'||S.screen!=='settings')return; captureDrafts(); S.editingRoomId=v; S.addFloor=S.rooms.find(r=>r.id===v).floor; roomsSheet(); },
   addDevice() { $('#room-form').dataset.dirty='1'; const devices=readDeviceRows();devices.push({type:'exhaust_fan',label:'Exhaust fan',quantity:1,activeQuantity:0,wattsPerDevice:40,fanType:'unspecified'});$('#device-groups').innerHTML=deviceRows(devices); },
@@ -1307,6 +1325,7 @@ Object.assign(ACTS, {
     if (v === 'settings') { S.draftAuto = S.rooms.every(r => r.vent.mode === 'auto'); S.draftTrigger = S.fanTrigger; }
     render();
     if(v==='analytics')await loadTemperatureAnalytics();
+    if(v==='monitor'&&S.mon.view==='history')await loadHistory();
   },
   async analyticsRange(v) {if(!['7d','30d','all'].includes(v))return;S.temperatureAnalytics.range=v;S.temperatureAnalytics.data=null;await loadTemperatureAnalytics();},
   async analyticsRetry() {await loadTemperatureAnalytics();},

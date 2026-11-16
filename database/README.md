@@ -20,6 +20,7 @@ Shared simulated readings are stored here; physical sensor integration is not in
 | `device_status` | the Devices screen (NodeMCU V3 ESP8266, sensors, fan, Wi-Fi, SMS module, power meter) |
 | `reading_hourly` | optional hourly summaries for charts and reports (for later) |
 | `simulation_state` | shared demo readings, scenario and fan state for each room |
+| `simulation_history` | persistent minute summaries of demo ticks, retained for eight days |
 | `electricity_usage` | accumulated estimated exhaust fan energy (legacy lighting totals retained) |
 | `room_devices` | configured device groups, quantities, ratings and fan types |
 
@@ -38,7 +39,9 @@ Shared simulated readings are stored here; physical sensor integration is not in
 9. `09-student-profiles.sql` adds student course and section.
 10. `10-alert-archives.sql` adds per-account alert bookmarks. Run it as the database administrator on the database used by the running backend. Archive/restore changes bookmarks only, preserving alert history.
 
-For an existing database, run only missing migrations in numerical order as the database administrator. If 01–09 are already installed, this revision requires **only 10**. Keep existing accounts, configuration and `.env`; do not rerun the setup/seed files.
+11. `11-simulation-history.sql` adds saved demo History. It preserves existing data; new readings begin accumulating after installation. Restart the backend after updating.
+
+For an existing database, run only missing migrations in numerical order as the database administrator. If 01–10 are already installed, saved Monitoring History requires **only 11**. Keep existing accounts, configuration and `.env`; do not rerun the setup/seed files.
 The first admin account is NOT created here. You create it from the backend with `npm run create-admin`.
 
 ### Option A: XAMPP (easiest)

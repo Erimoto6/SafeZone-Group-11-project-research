@@ -2,6 +2,7 @@
 const { pool } = require('./db');
 const { HttpError } = require('./http');
 const inventory = require('./room-devices');
+const history = require('./simulation-history');
 const KEYS = ['temp', 'hum', 'co2'];
 const BASE = { temp: 27.4, hum: 58, co2: 827 };
 const COOLED = { temp: 26, hum: 54, co2: 600 };
@@ -129,6 +130,7 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
         [s.room_id,e.type,'Demo: ' + e.title,e.body,e.metric || null,e.value ?? null]);
       await conn.query(`UPDATE simulation_state SET temp=?,hum=?,co2=?,scenario=?,fan_on=?,temp_level=?,hum_level=?,co2_level=?,last_step_at=? WHERE room_id=?`,
         [s.temp,s.hum,s.co2,s.scenario,s.fan_on,s.temp_level,s.hum_level,s.co2_level,new Date(now),s.room_id]);
+      await history.record(conn,s,now);
     }
   });
 }
