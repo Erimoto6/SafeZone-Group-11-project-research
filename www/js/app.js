@@ -280,7 +280,7 @@ function validateAdminForm(form) {
     ['an', value => value.trim().length >= 2 && value.trim().length <= 100, 'Enter a full name from 2 to 100 characters.'],
     ['au', value => /^[a-z0-9._-]{3,20}$/i.test(value.trim()), 'Username must contain 3–20 letters, numbers, dots, dashes or underscores.'],
     ['aem', emailKind, 'Enter a valid PUP webmail.'],
-    ['ap', validPhone, 'Enter a valid Philippine mobile number.'],
+    ['ap', validPhone, 'Enter a valid mobile number.'],
     ['rp', value => !passwordError(value), passwordError(form.querySelector('#rp').value)]
   ];
   const errors = [];
@@ -1482,7 +1482,7 @@ document.addEventListener('submit', async e => {
     } else if (id === 'v-reg1-form') {
       const email = normEmail(value('email')), phone = normPhone(value('phone'));
       if (!emailKind(email)) throw new Error('Use your PUP web mail. ' + emailHint);
-      if (!validPhone(phone)) throw new Error('Enter a valid Philippine mobile number.');
+      if (!validPhone(phone)) throw new Error('Enter a valid mobile number.');
       S.reg = { email, phone, ...(emailKind(email)==='student'?readProfile('reg'):{}) }; S.authError = ''; S.screen = 'vReg2'; render();
     } else if (id === 'v-reg2-form') {
       await api('/auth/register', 'POST', { ...S.reg, password: passwords() });
