@@ -445,7 +445,7 @@ async function loadHistory(force=false) {
   } catch(error) {if(request===historyRequest&&token===session&&historyKey()===key)state.error=error.message;}
   finally {if(request===historyRequest&&token===session&&historyKey()===key){state.loading=false;state.fetchedAt=Date.now();if(S.screen==='monitor'&&S.mon.view==='history')render();}}
 }
-const historyTime = (time,range) => new Date(time).toLocaleString(undefined,range==='7d'?{month:'short',day:'numeric'}:range==='24h'?{month:'short',day:'numeric',hour:'numeric'}:{hour:'numeric',minute:'2-digit'});
+const historyTime = (time,range,seconds=false) => new Date(time).toLocaleString(undefined,range==='7d'?{month:'short',day:'numeric'}:range==='24h'?{month:'short',day:'numeric',hour:'numeric'}:{hour:'numeric',minute:'2-digit',...(seconds?{second:'2-digit'}:{})});
 const historyDate = time => new Date(time).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 
 /* =====================================================================
@@ -470,7 +470,7 @@ function chartSVG(vals, labels, k, cls, id, window=null) {
   const n = labels.length; const idx = window ? [] : [...new Set([0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1])];
   const anchors = idx.map((_, j) => j === 0 ? 'start' : j === idx.length - 1 ? 'end' : 'middle');
   let xl = idx.map((ix, j) => `<text class="ax" x="${j === 0 ? L : j === idx.length - 1 ? W - R : x(ix).toFixed(1)}" y="${H - 7}" text-anchor="${anchors[j]}">${esc(labels[ix] || '')}</text>`).join('');
-  if(window)xl=Array.from({length:3},(_,i)=>`<text class="ax" x="${L+(W-L-R)*i/2}" y="${H-7}" text-anchor="${i===0?'start':i===2?'end':'middle'}">${esc(historyTime(window.from+(window.to-window.from)*i/2,window.range))}</text>`).join('');
+  if(window)xl=Array.from({length:3},(_,i)=>`<text class="ax" x="${L+(W-L-R)*i/2}" y="${H-7}" text-anchor="${i===0?'start':i===2?'end':'middle'}">${esc(historyTime(window.from+(window.to-window.from)*i/2,window.range,window.to-window.from<300000))}</text>`).join('');
   return `<svg class="chart ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${m.label} trend chart">
     <defs><linearGradient id="g-${id}" x1="0" y1="0" x2="0" y2="1"><stop class="stopc" offset="0" stop-opacity=".28"/><stop class="stopc" offset="1" stop-opacity="0"/></linearGradient></defs>
     ${grid}${ref(th.warn, 'wrn')}${ref(th.limit, 'lim')}
@@ -696,8 +696,12 @@ function monitorView() {
   if(state?.error)return `${head}<p class="note" role="alert">History could not load. ${esc(state.error)}</p><button class="btn soft small" data-act="historyRetry">Try again</button>${monitoringLinks()}`;
   if(!h)return `${head}<p class="empty" role="status">Loading saved history…</p>${monitoringLinks()}`;
   const vals=h.points.map(p=>p.value),times=h.points.map(p=>p.at);
-  return `${head}<p class="note history-window">${esc(historyDate(h.from))} – ${esc(historyDate(h.to))}</p>
-    <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${vals.length?chartSVG(vals,[],k,'neutral','hist',{times,from:h.from,to:h.to,range:r}):'<p class="empty">No saved readings in this period.</p>'}${legend(k)}</section>
+  const first=times[0],last=times[times.length-1];
+  const plotFrom=times.length>1?first:Math.max(h.from,first-30000);
+  const plotTo=times.length>1?last:Math.min(h.to,first+30000);
+  const span=plotTo-plotFrom,plotRange=span>=48*3600000?'7d':span>=12*3600000?'24h':'6h';
+  return `${head}<p class="note history-window">Selected period: ${esc(historyDate(h.from))} – ${esc(historyDate(h.to))}</p>
+    <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${vals.length?'<p class="note history-coverage">Graph zoomed to the available recorded readings.</p>':''}${vals.length?chartSVG(vals,[],k,'neutral','hist',{times,from:plotFrom,to:plotTo,range:plotRange}):'<p class="empty">No saved readings in this period.</p>'}${legend(k)}</section>
     <div class="stats"><div class="stat"><span>Lowest</span><b>${h.count?fmt(k,h.stats.min):'—'}</b></div><div class="stat"><span>Average</span><b>${h.count?fmt(k,h.stats.avg):'—'}</b></div><div class="stat"><span>Highest</span><b>${h.count?fmt(k,h.stats.max):'—'}</b></div></div>
     <p class="note">Saved demo readings, summarized by minute. ${h.count?`${h.count.toLocaleString()} sample${h.count===1?'':'s'} available from ${esc(historyDate(h.firstAt))} to ${esc(historyDate(h.lastAt))}.`:'History starts collecting after saved history is enabled on the server.'} Older unsaved readings cannot be recovered.</p>${monitoringLinks()}`;
 }

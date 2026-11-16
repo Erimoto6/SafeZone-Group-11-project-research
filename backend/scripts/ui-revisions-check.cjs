@@ -241,4 +241,10 @@ async function checkSavedHistory(page){
  await page.locator('[data-act=range][data-v="6h"]').click();await page.getByText('No saved readings in this period.',{exact:true}).waitFor();
  assert.deepEqual(await page.locator('.stat b').allTextContents(),['—','—','—']);
  await page.unroute('**/api/simulation/history?**',empty);
+ const recent=route=>{const data=historyFixture(new URL(route.request().url()));const points=[{at:data.to-180000,value:800},{at:data.to-120000,value:1000},{at:data.to-60000,value:1200}];return route.fulfill({json:{...data,points,count:3,firstAt:points[0].at,lastAt:points[2].at,stats:{min:800,max:1200,avg:1000}}})};
+ await page.route('**/api/simulation/history?**',recent);
+ await page.locator('[data-act=range][data-v="24h"]').click();await page.getByText(/3 samples available/).waitFor();
+ assert(await page.locator('.chart .line').evaluate(el=>{const points=el.getAttribute('d').match(/[-+]?[0-9]*\.?[0-9]+/g).map(Number);const x=points.filter((_,i)=>i%2===0);return Math.max(...x)-Math.min(...x)>250}),'recent readings span the graph instead of being compressed at its right edge');
+ await page.screenshot({path:'/tmp/safezone-readable-history.png'});
+ await page.unroute('**/api/simulation/history?**',recent);
 }
