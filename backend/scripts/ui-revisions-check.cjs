@@ -9,7 +9,7 @@ if(['home','alerts','monitor','status','settings'].includes(screen)){
  assert(await page.locator('.topbar .logo-'+theme).isVisible());
  assert(!await page.locator('.topbar .logo-'+(theme==='light'?'dark':'light')).isVisible());
 }
-assert(!await page.locator('main').innerText().then(t=>/electricity|kWh/i.test(t)),screen+' energy hidden');assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),screen+' page overflow '+width);const overflow=await page.locator('main').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert(!overflow,screen+' main overflow '+width);assert.equal(await page.locator('.monitor-links').count(),screen==='monitor'?1:0);if(['rooms','analytics'].includes(screen)){await page.getByRole('button',{name:'Back to monitor',exact:true}).click();assert.equal(await page.locator('main').getAttribute('data-s'),'monitor');await page.evaluate(v=>uiTest.screen(v),screen);}if(screen==='rooms'){assert.equal(await page.locator('tbody tr').count(),43);assert.equal(await page.locator('.room-state-exceeded').count(),2);await page.selectOption('#overview-floor','4');assert.equal(await page.locator('tbody tr').count(),12);await page.selectOption('#overview-floor','all')}if(screen==='analytics'){
+assert(!await page.locator('main').innerText().then(t=>/electricity|kWh/i.test(t)),screen+' energy hidden');assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),screen+' page overflow '+width);const overflow=await page.locator('main').evaluate(el=>el.scrollWidth>el.clientWidth+1);assert(!overflow,screen+' main overflow '+width);assert.equal(await page.locator('.monitor-links').count(),screen==='monitor'?1:0);if(['rooms','analytics'].includes(screen)){await page.getByRole('button',{name:'Back to monitor',exact:true}).click();assert.equal(await page.locator('main').getAttribute('data-s'),'monitor');await page.evaluate(v=>uiTest.screen(v),screen);}if(screen==='rooms'){assert(!/Current simulated readings|Green: Normal/.test(await page.locator('main').innerText()));assert.equal(await page.locator('tbody tr').count(),43);assert.equal(await page.locator('.room-state-exceeded').count(),2);await page.selectOption('#overview-floor','4');assert.equal(await page.locator('tbody tr').count(),12);await page.selectOption('#overview-floor','all')}if(screen==='analytics'){
  assert.match(await page.locator('.temperature-rank').first().innerText(),/Room 102/);
  assert.equal(await page.locator('.temperature-rank .rank-reading b').first().innerText(),'8');
  await page.locator('[data-act=analyticsRange][data-v="30d"]').click();await page.getByText('No temperature limit alerts were recorded for this period.',{exact:true}).waitFor();
@@ -33,6 +33,15 @@ await page.locator('main[data-s=settings]').waitFor();
 assert.equal(await page.locator('nav.nav').count(),1,'back restores main navigation');
 await page.evaluate(()=>uiTest.screen('users'));
 assert.equal(await page.locator('table').count(),0);assert(await page.locator('#rp').evaluate(el=>el.closest('.field').nextElementSibling.matches('.rules')));await page.locator('#admin-form [type=submit]').click();await page.getByText('Enter a full name from 2 to 100 characters.',{exact:true}).waitFor();}if(screen==='students'){
+ assert.equal(await page.locator('nav.nav').count(),0,'Student Accounts hides bottom navigation');
+ assert.equal(await page.getByRole('button',{name:'Back to users',exact:true}).count(),1);
+ const context=page.locator('.student-page-context');
+ assert.equal(await context.evaluate(el=>getComputedStyle(el).position),'static');
+ const topBefore=await context.evaluate(el=>el.getBoundingClientRect().top);
+ await page.locator('main').evaluate(el=>{el.scrollTop=180});
+ if(await page.locator('main').evaluate(el=>el.scrollHeight>el.clientHeight+20))assert(await context.evaluate((el,top)=>el.getBoundingClientRect().top<top-20,topBefore),'Courses header scrolls with the list instead of overlaying course cards');
+ await page.locator('main').evaluate(el=>{el.scrollTop=0});
+ if(width===390 && theme==='light')await page.screenshot({path:'/tmp/safezone-student-accounts.png'});
  assert.equal(await page.locator('.student-delete').count(),0);
  assert.equal(await page.locator('[data-act=studentCourse][data-v=BSIT]').count(),1);
  await page.locator('.student-browse-list [data-act=studentCourse][data-v=BSIT]').click();
@@ -51,7 +60,7 @@ assert.equal(await page.locator('table').count(),0);assert(await page.locator('#
  assert.match(await page.locator('.account-card').innerText(),/legacy@/);
  await page.locator('.student-breadcrumb [data-act=studentCourses]').click();
  assert.equal(await page.locator('.student-delete').count(),0);
-} }await page.evaluate(async()=>{await uiTest.screen('monitor');await uiTest.history()});await checkMonitoring(page,role);assert.match(await page.locator('main').innerText(),/Saved demo readings/);assert(await page.locator('main').evaluate(el=>Boolean(el.querySelector('.chart').compareDocumentPosition(el.querySelector('.monitor-links'))&Node.DOCUMENT_POSITION_FOLLOWING)));await page.evaluate(()=>uiTest.account());assert(await page.locator('#cp').evaluate(el=>el.nextElementSibling.matches('.rules')));await page.locator('#np').fill('Abc123');assert.equal(await page.locator('#rules-np li.ok').count(),3)}await page.evaluate(()=>uiTest.setup('admin'));analyticsFail=true;await page.evaluate(()=>uiTest.screen('analytics'));assert.match(await page.locator('[role=alert]').innerText(),/history could not load/i);analyticsFail=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await page.locator('.temperature-rank').first().waitFor();await checkSavedHistory(page);await checkQaReport(page);await checkAlertsArchive(page);await checkRoomConfiguration(page);await checkMainAdmin(page);await checkAdminPassword(page);await page.setViewportSize({width:390,height:844});await page.locator('[data-act=view][data-v=live]').click();assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'live Monitoring fits a typical phone screen');await page.evaluate(()=>uiTest.manual(true));assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'manual fan controls fit a typical phone screen');await page.screenshot({path:'/tmp/safezone-monitor-compact.png'});assert.deepEqual(errors,[]);console.log('PASS: admin/student screens in both themes at 320/390/768/1280; Monitoring order, menu links, placement in room configuration, controller preservation, theme logos, Manage Users navigation, password errors, removal dialogs and PDF QA scenarios');}finally{await browser.close();server.close()}})().catch(e=>{console.error(e);server.close();process.exitCode=1});
+} }await page.evaluate(async()=>{await uiTest.screen('monitor');await uiTest.history()});await checkMonitoring(page,role);assert.match(await page.locator('main').innerText(),/Saved demo readings/);assert(await page.locator('main').evaluate(el=>Boolean(el.querySelector('.chart').compareDocumentPosition(el.querySelector('.monitor-links'))&Node.DOCUMENT_POSITION_FOLLOWING)));await page.evaluate(()=>uiTest.account());assert(await page.locator('#cp').evaluate(el=>el.closest('.field').nextElementSibling.matches('.rules')));await page.locator('#np').fill('Abc123');assert.equal(await page.locator('#rules-np li.ok').count(),3);await checkPasswordVisibility(page);}await page.evaluate(()=>uiTest.setup('admin'));analyticsFail=true;await page.evaluate(()=>uiTest.screen('analytics'));assert.match(await page.locator('[role=alert]').innerText(),/history could not load/i);analyticsFail=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await page.locator('.temperature-rank').first().waitFor();await checkSavedHistory(page);await checkQaReport(page);await checkAlertsArchive(page);await checkRoomConfiguration(page);await checkMainAdmin(page);await checkAdminPassword(page);await page.setViewportSize({width:390,height:844});await page.locator('[data-act=view][data-v=live]').click();assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'live Monitoring fits a typical phone screen');await page.evaluate(()=>uiTest.manual(true));assert(await page.locator('main').evaluate(el=>el.scrollHeight<=el.clientHeight+1),'manual fan controls fit a typical phone screen');await page.screenshot({path:'/tmp/safezone-monitor-compact.png'});assert.deepEqual(errors,[]);console.log('PASS: admin/student screens in both themes at 320/390/768/1280; Monitoring order, menu links, placement in room configuration, controller preservation, theme logos, Manage Users navigation, password errors, removal dialogs and PDF QA scenarios');}finally{await browser.close();server.close()}})().catch(e=>{console.error(e);server.close();process.exitCode=1});
 
 async function checkMonitoring(page,role){
  const selectors=['.roombar',...(role==='admin'?['.monitor-utilities']:[]),'.seg','.mini-chips','.chart','.monitor-links'];
@@ -247,4 +256,25 @@ async function checkSavedHistory(page){
  assert(await page.locator('.chart .line').evaluate(el=>{const points=el.getAttribute('d').match(/[-+]?[0-9]*\.?[0-9]+/g).map(Number);const x=points.filter((_,i)=>i%2===0);return Math.max(...x)-Math.min(...x)>250}),'recent readings span the graph instead of being compressed at its right edge');
  await page.screenshot({path:'/tmp/safezone-readable-history.png'});
  await page.unroute('**/api/simulation/history?**',recent);
+}
+
+async function checkPasswordVisibility(page){
+ for(const id of ['current-pw','np','cp']){
+  const input=page.locator('#'+id),button=page.locator('#pw-form [data-act=pw][data-v="'+id+'"]');
+  await input.fill('Check123');
+  assert(await input.evaluate(el=>parseFloat(getComputedStyle(el).outlineOffset)<0),'focus ring stays inside the input');
+  await button.click();assert.equal(await input.getAttribute('type'),'text');assert.equal(await input.inputValue(),'Check123');
+  assert.equal(await button.getAttribute('aria-label'),'Hide password');assert.equal(await button.getAttribute('aria-pressed'),'true');
+  await button.click();assert.equal(await input.getAttribute('type'),'password');assert.equal(await input.inputValue(),'Check123');
+  assert.equal(await button.getAttribute('aria-pressed'),'false');
+ }
+ await page.locator('#current-pw').fill('Current123');await page.locator('#np').fill('abc');await page.locator('#cp').fill('abc');
+ await page.locator('#pw-form [type=submit]').click();
+ assert.deepEqual(await page.locator('#change-password-errors li').allTextContents(),['Password: use at least 6 characters.','Password: include a letter and a number.']);
+ await page.locator('#np').fill('abcdef');assert.equal(await page.locator('#change-password-errors li').count(),2,'remaining password rule and mismatched confirmation are both shown');
+ await page.locator('#np').fill('abcdef1');await page.locator('#cp').fill('abcdef1');
+ assert.equal(await page.locator('#change-password-errors li').count(),0,'correcting both rules clears the inline errors');
+ if(await page.evaluate(()=>innerWidth===390 && document.documentElement.dataset.theme==='light')){
+  await page.locator('#np').focus();await page.screenshot({path:'/tmp/safezone-password-controls.png'});
+ }
 }
