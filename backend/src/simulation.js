@@ -106,8 +106,7 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
           const ceiling = normal ? t.warn : t.limit;
           const epsilon = Number.EPSILON * Math.max(1, Math.abs(ceiling)) * 16;
           s[k] = ceiling - s[k] <= step + epsilon ? ceiling : s[k] + step;
-          // Finish a single demo run at the limit, then recover on later ticks.
-          if (s[k] >= t.limit) s.scenario = null;
+          // Keep the source active at the limit until ventilation clears it or Reset is used.
         } else {
           const target = s.fan_on ? Math.min(COOLED[k], t.warn - (t.limit - t.warn) / 2) : BASE[k];
           s[k] += (target - s[k]) * 0.18;
@@ -119,9 +118,10 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
         s[k + '_level'] = next;
       }
       const worst = Math.max(...KEYS.map(k => rank[s[k + '_level']]));
+      if (oldFan && worst === 0) s.scenario = null;
       if (s.vent_mode === 'auto') {
         if (worst >= need) s.fan_on = 1;
-        else if (worst === 0) { s.fan_on = 0; if (oldFan) s.scenario = null; }
+        else if (worst === 0) s.fan_on = 0;
       }
       if (!!s.fan_on !== oldFan) events.push({ type: 'ventilation', title: s.fan_on ? 'Ventilation Activated' : 'Ventilation Stopped', body: 'Shared demo fan state changed. No hardware command was sent.' });
       if (worst === 0 && previousWorst > 0) events.push({ type: 'normal', title: 'System Normal', body: 'All shared demo readings are back within the configured limits.' });
