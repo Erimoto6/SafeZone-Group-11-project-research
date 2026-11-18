@@ -18,7 +18,7 @@ const RESET_MINUTES = 10;        // how long a reset code works
 const RESET_TRIES = 5;           // wrong guesses allowed per code
 const RESEND_SECONDS = 30;       // wait before asking for another code
 // Shown on the About screen.
-const CONTACT = { email: 'safezone@yourschool.edu' };
+const CONTACT = { email: 'safezone.project0@gmail.com' };
 
 // Starting limits. Admins can change them in Settings.
 // These are placeholders: use the values from your paper / sensor calibration.
