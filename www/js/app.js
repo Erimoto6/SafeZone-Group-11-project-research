@@ -399,7 +399,7 @@ function applyShared(shared, alerts) {
 }
 let polling = false;
 async function pollShared() {
-  if (!token || !S.role || polling) return;
+  if (!token || !S.role || polling || !Number.isSafeInteger(Number(S.roomId)) || Number(S.roomId)<1) return;
   polling = true;
   const session = token; const requestedRoom=S.roomId,requestedView=S.alertView;
   try {
@@ -412,7 +412,7 @@ async function pollShared() {
     if (LIVE.has(S.screen)) render();
     else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
   } catch (err) {
-    if (token === session && S.role) {
+    if (token === session && S.role && requestedRoom===S.roomId && requestedView===S.alertView) {
       if (!S.syncError) toast('Shared readings could not refresh. Reconnecting…');
       S.syncError = err.message;
       if (LIVE.has(S.screen)) render();
@@ -873,7 +873,7 @@ function aboutView() {
 
 function shell() {
   const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView, students: studentsView, rooms: overviewView, analytics: analyticsView };
-  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
+  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${bodies[S.screen]()}</main>${nav()}`;
 }
 
 function splashView() {
