@@ -1,0 +1,1 @@
+ C:\\Users\\elain\\Desktop\\SafeZone\\SafeZone-Group-11-project-research\\flutter_app\\.dart_tool\\flutter_build\\b72adaa21b1b33fd2c3fc7893aee5cdf\\native_assets.json: 
