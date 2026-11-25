@@ -1,6 +1,6 @@
 # SafeZone backend (Node.js + MySQL)
 
-The API behind the app. It handles accounts, login, forgot password (by email), rooms, limits,
+The API behind the app. It handles accounts, login, forgot password (codes delivered to registered PUP webmail), rooms, limits,
 the SMS list and alerts, and stores everything in MySQL.
 It needs the database from `../database` to be set up first, including migrations `04-shared-simulations.sql`, `05-electricity-usage.sql` and `06-room-devices.sql`, in order. Existing users with shared simulations already installed should back up the database and run only 05 and 06 in phpMyAdmin as the database administrator. Keep the existing `.env`.
 
@@ -128,24 +128,13 @@ After Railway redeploys, request a reset for an existing account, check its Inbo
 
 The backend checks SMTP connectivity/authentication before accepting reset requests and reports a generic 503 error during an email outage without disclosing whether an account exists. Provider acceptance still does not guarantee inbox delivery; check the sender provider's logs and recipient spam filtering if a code is missing. Some Railway plans restrict outbound SMTP; check current plan support if connections time out, or use a transactional email provider through an HTTPS integration. The Vercel HTTPS relay described below is supported.
 
-## Verified recovery Gmail
+## PUP webmail password recovery
 
-Run `database/08-recovery-gmail.sql` after migration 07. It creates `account_recovery` and invalidates outstanding pre-upgrade password reset codes, preserving account/password data. Accounts start without a recovery Gmail.
+On the login form, enter the admin username or student/faculty mobile number and select Forgot Password. The app immediately calls `/auth/forgot` with that login `identifier` and opens code verification; users do not re-enter webmail. The server resolves the active account and sends a six-digit code to its saved PUP address. `/auth/verify-code` receives the same identifier plus code, and binds the reset grant to the account's actual PUP recipient. Both endpoints retain legacy `{email}` requests for previously installed apps. No recipient address is returned to the signed-out browser. Admins and students/faculty use the same code flow. Users no longer add or verify a separate recovery Gmail. Codes expire after 10 minutes, allow five guesses, and can be requested again after a 30-second cooldown. Code hashes and signed reset grants are bound to the PUP recipient; a successful reset consumes the grant and revokes previous login sessions.
 
-While logged in, open Account Settings, enter a personal recovery Gmail, request a code, and verify the code. Codes expire in 10 minutes, allow five attempts and have a 30-second resend cooldown. A replacement address stays pending until verified; the previous verified address remains usable. Completing a change invalidates existing password reset codes. Login email remains the PUP address. The forgot-password form accepts the PUP account email and sends only to the verified Gmail saved for that account; it never accepts an arbitrary reset recipient. Accounts without verified recovery Gmail need administrator assistance.
+The project Gmail `safezone.project0@gmail.com` remains only the sender through Vercel. It is not a user recovery account. Existing `account_recovery` rows are legacy data and are not read by reset requests. The old Gmail enrollment endpoints have been removed. No new database migration or secret is required for the switch: changed code hashing and a new reset-token channel reject pre-switch codes/grants. Existing passwords and login tokens remain valid until a user actually resets their password.
 
-The project sender `safezone.project0@gmail.com` is separate from users' recovery Gmail addresses. In the Railway backend service set:
-
-```env
-NODE_ENV=production
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=safezone.project0@gmail.com
-SMTP_PASS=YOUR_GOOGLE_APP_PASSWORD
-MAIL_FROM=SafeZone <safezone.project0@gmail.com>
-```
-
-Enable 2-Step Verification on the sender Google account, then create an App Password. Store the actual value only in Railway/private `.env`. Outbound SMTP must be permitted on the Railway plan; these code changes do not establish mail delivery by themselves. No PUP/Outlook sender credentials are needed.
+Use the Railway/Vercel relay variables described below. Users should check Outlook Inbox and Junk, mark the known SafeZone sender as not junk, and request a fresh code after the deployment. Microsoft may continue to add an EXTERNAL banner because the sender is outside PUP.
 
 ## Railway Trial: Vercel HTTPS email relay
 
@@ -161,9 +150,9 @@ EMAIL_RELAY_SECRET=THE_EXACT_SAME_NEW_SECRET_AS_VERCEL
 ```
 
 4. Deploy the latest backend with these variables. Old SMTP variables are ignored when relay configuration is present. Never put the relay secret or App Password in the public frontend.
-5. While logged in, open Account Settings, enter a recovery Gmail, request/enter the emailed code, then log out and test Forgot Password with the PUP account email. The new reset code arrives at the verified Gmail; after reset the old password should fail.
+5. While logged in, log out and choose Forgot Password, enter the PUP account email, receive the emailed code in Outlook, and complete verification. The new reset code arrives at the registered PUP address; after reset the old password should fail.
 
-No new database migration is required if migration 08 is installed. The relay accepts only an authenticated readiness check or a fixed six-digit reset/recovery template sent to one Gmail recipient. Railway remains responsible for authentication, rate limits, recipient ownership, generating/storing codes, verifying attempts/expiry and changing passwords. The public frontend calls Railway, not Vercel.
+No new database migration is required if migration 08 is installed. The relay accepts only an authenticated readiness check or a fixed six-digit reset/recovery template sent to one Gmail or PUP-domain recipient. An authenticated delivery-test action can also send fixed test content to a PUP address. Railway remains responsible for authentication, rate limits, recipient ownership, generating/storing codes, verifying attempts/expiry and changing passwords. The public frontend calls Railway, not Vercel.
 
 For failures inspect Railway Deploy Logs for `Recovery email delivery failed:`. `RELAY_AUTH` means the shared secrets do not match (or deployment protection returned 401). `RELAY_RESPONSE` means the endpoint returned HTML/non-JSON, often a wrong deployment URL or deployment protection. `RELAY_CONFIG` means the URL/secret is invalid; use HTTPS and the exact `/api/send-code` path. `RELAY_CONNECTION` means Vercel could not be reached within the timeout. `EAUTH`/`ETIMEDOUT` refer to Gmail delivery from Vercel. Never post secrets or codes in logs/chat.
 
@@ -173,6 +162,28 @@ Every active admin can use Manage Users → Student Accounts → trash icon and 
 
 ## Student course and section
 
-Install migration 09. `POST /api/auth/register` requires `courseCode` and `section` for student PUP addresses. Course codes: BSA, BSIT, BSBA-MM, BSBA-HRM, BSP, BSECE, BSIE. Only supported codes are accepted. Section is free text up to 40 characters, trimmed, whitespace-normalized and uppercased. Profile insertion and account creation share one transaction. Faculty accounts do not require a student profile.
+Install migration 09. `POST /api/auth/register` requires `courseCode` and `section` for student PUP addresses. Course codes: BSA, BSIT, BSBA-MM, BSBA-HRM, BSP, BSECE, BSIE. Only supported codes are accepted. Section must use a numeric year-section such as `4-3`: one digit from 1–9 on each side of a hyphen. Leading/trailing whitespace is trimmed. Existing saved profiles are preserved; new registrations and profile updates enforce this format. Profile insertion and account creation share one transaction. Faculty accounts do not require a student profile.
 
 Authenticated students use `GET /api/auth/me/student-profile` and `PUT /api/auth/me/student-profile` to read/update their own profile. The admin user list includes stored course/section. Existing accounts without a profile return null fields and appear under Course/Section not set. No current account is forced to re-register. Student profile records cascade on account deletion. Until migration 09 exists, user-list/profile reads fall back to empty profile data so existing accounts remain accessible.
+
+## Test delivery to registered PUP webmail
+
+The temporary Account Settings test-email button has been removed after successful delivery testing. The authenticated diagnostic endpoint remains available for backend troubleshooting: `POST /api/auth/me/test-webmail` ignores request-supplied recipients and uses the account's current registered PUP email. It is limited to three requests per account per 15 minutes. No reset codes, verification records or recovery settings are created or changed.
+
+The relay supports only Gmail, `@pup.edu.ph` and `@iskolarngbayan.pup.edu.ph` recipients. The test action accepts PUP recipients only and uses fixed content/subject. The project Gmail remains the sender. A successful API response means SMTP acceptance, not inbox arrival: the user must check Outlook Inbox and Junk for **SafeZone PUP webmail delivery test**. PUP delivery has been confirmed for this deployment; the active reset flow now uses the registered PUP address. No SQL migration or new secrets are required.
+
+### Main Admin
+
+The existing admin account with username `admin` is the Main Admin, designated in `src/auth.js`. No new account, password change or database migration is required. Restart the backend after updating, then log in again to see the Main Admin label in Manage Users. Only this account can remove other admins; it cannot remove itself. Regular admins retain their existing permissions, including adding admins and deleting student accounts. The server enforces deletion permissions on every request and deleted accounts lose access immediately. Password recovery is unchanged.
+
+`DELETE /api/admin/admins/:id` removes an admin account and its linked SMS and recovery records. Only the Main Admin can use this route; the existing student deletion route remains limited to students.
+
+### Demo readings and manual ventilation
+
+An active high-temperature, humidity or CO₂ demo rises through warning to the configured limit. With the fan OFF, it holds at that limit instead of recovering on its own. Switching the fan ON lowers readings; after all metrics return to normal the scenario ends. If a manual fan is switched OFF before recovery finishes, the active scenario rises again. Manual fans remain ON after recovery until an admin switches them off. Automatic mode still starts ventilation at the configured warning/danger threshold and stops once all readings are normal. Reset explicitly clears the demo and restores baseline readings. Restart the backend after updating and start a new demo; no database migration is needed.
+
+### Saved Monitoring History
+
+Install `../database/11-simulation-history.sql` once as the database administrator, then restart this backend. `GET /api/simulation/history?roomId=101&metric=co2&range=24h` requires a logged-in admin or viewer and returns real saved demo summaries for that room (use its database ID), metric (`temp`, `hum`, `co2`) and range (`6h`, `24h`, `7d`). The worker stores one summary per room/minute with sample sums/counts, exact observed minima/maxima and first/last timestamps in UTC milliseconds. Eight days are retained. Display buckets use 1/5/30-minute weighted averages; overall statistics use all samples in the selected window. Boundary minutes are included at minute resolution. Reset and browser reloads preserve saved history; room deletion cascades its summaries. No readings are backfilled or fabricated.
+
+Without migration 11, live demos continue and History returns a setup error. Recording retries after a minute if the table is added while running. The UI also handles empty history, errors, retries and stale requests when switching room/metric/range. Apply the SQL migration separately on the database used by this backend. Unit and browser checks use database/API fixtures; run database integration checks against a disposable MySQL database.

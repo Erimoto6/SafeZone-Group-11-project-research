@@ -2,6 +2,7 @@
 const { pool } = require('./db');
 const { HttpError } = require('./http');
 const inventory = require('./room-devices');
+const history = require('./simulation-history');
 const KEYS = ['temp', 'hum', 'co2'];
 const BASE = { temp: 27.4, hum: 58, co2: 827 };
 const COOLED = { temp: 26, hum: 54, co2: 600 };
@@ -106,8 +107,7 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
           const ceiling = normal ? t.warn : t.limit;
           const epsilon = Number.EPSILON * Math.max(1, Math.abs(ceiling)) * 16;
           s[k] = ceiling - s[k] <= step + epsilon ? ceiling : s[k] + step;
-          // Finish a single demo run at the limit, then recover on later ticks.
-          if (s[k] >= t.limit) s.scenario = null;
+          // Keep the source active at the limit until ventilation clears it or Reset is used.
         } else {
           const target = s.fan_on ? Math.min(COOLED[k], t.warn - (t.limit - t.warn) / 2) : BASE[k];
           s[k] += (target - s[k]) * 0.18;
@@ -119,9 +119,10 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
         s[k + '_level'] = next;
       }
       const worst = Math.max(...KEYS.map(k => rank[s[k + '_level']]));
+      if (oldFan && worst === 0) s.scenario = null;
       if (s.vent_mode === 'auto') {
         if (worst >= need) s.fan_on = 1;
-        else if (worst === 0) { s.fan_on = 0; if (oldFan) s.scenario = null; }
+        else if (worst === 0) s.fan_on = 0;
       }
       if (!!s.fan_on !== oldFan) events.push({ type: 'ventilation', title: s.fan_on ? 'Ventilation Activated' : 'Ventilation Stopped', body: 'Shared demo fan state changed. No hardware command was sent.' });
       if (worst === 0 && previousWorst > 0) events.push({ type: 'normal', title: 'System Normal', body: 'All shared demo readings are back within the configured limits.' });
@@ -129,6 +130,7 @@ async function advance(now = Date.now(), startedAt = now - 2000) {
         [s.room_id,e.type,'Demo: ' + e.title,e.body,e.metric || null,e.value ?? null]);
       await conn.query(`UPDATE simulation_state SET temp=?,hum=?,co2=?,scenario=?,fan_on=?,temp_level=?,hum_level=?,co2_level=?,last_step_at=? WHERE room_id=?`,
         [s.temp,s.hum,s.co2,s.scenario,s.fan_on,s.temp_level,s.hum_level,s.co2_level,new Date(now),s.room_id]);
+      await history.record(conn,s,now);
     }
   });
 }

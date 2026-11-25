@@ -10,7 +10,11 @@ if (!SECRET || SECRET.length < 32) {
   process.exit(1);
 }
 
+// The existing owner account is designated in server code, never by client input.
+const isMainAdmin = u => u?.role === 'admin' && String(u.username || '').toLowerCase() === 'admin';
+
 const publicUser = u => ({
+  isMainAdmin: isMainAdmin(u),
   id: u.id, active: Boolean(u.is_active), role: u.role, username: u.username, fullName: u.full_name,
   email: u.email, kind: u.email_kind, phone: u.phone,
   createdAt: u.created_at ? new Date(u.created_at).getTime() : null
@@ -39,4 +43,4 @@ const adminOnly = (req, res, next) =>
 
 const requireAdmin = [requireAuth, adminOnly];
 
-module.exports = { SECRET, publicUser, sign, requireAuth, requireAdmin };
+module.exports = { SECRET, publicUser, isMainAdmin, sign, requireAuth, requireAdmin };

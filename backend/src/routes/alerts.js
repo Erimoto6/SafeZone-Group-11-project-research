@@ -11,18 +11,61 @@ const METRICS = ['temp', 'hum', 'co2'];
 
 const cats = type => type === 'exceeded' ? ['exceeded', 'message'] : type === 'warning' ? ['message'] : ['system'];
 const alertJson = r => ({
-  id: r.id, roomId: r.room_id, room: r.room_no ? 'Room ' + r.room_no : null, type: r.type, title: r.title, body: r.body,
+  id: r.id, archived: Boolean(r.archived_at), roomId: r.room_id, room: r.room_no ? 'Room ' + r.room_no : null, type: r.type, title: r.title, body: r.body,
   metric: r.metric, value: r.reading_value, sms: r.sms_sent > 0, smsSent: r.sms_sent, cats: cats(r.type), ts: Number(r.ts)
 });
 
 router.get('/', requireAuth, require('../poll-limit'), wrap(async (req, res) => {
   const roomId = req.query.roomId ? Number(req.query.roomId) : null;
+  if(roomId!==null && (!Number.isSafeInteger(roomId)||roomId<1))throw new HttpError(400,'Choose a valid room.');
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
-  const [rows] = await pool.query(
-    `SELECT a.*, r.room_no, UNIX_TIMESTAMP(a.created_at) * 1000 AS ts
-     FROM alerts a LEFT JOIN rooms r ON r.id = a.room_id
-     WHERE (? IS NULL OR a.room_id = ?) ORDER BY a.id DESC LIMIT ?`, [roomId, roomId, limit]);
-  res.json({ alerts: rows.map(alertJson) });
+  const archived=['1','true'].includes(req.query.archived);
+  try {
+    const [rows]=await pool.query(`SELECT a.*,r.room_no,ar.archived_at,UNIX_TIMESTAMP(a.created_at)*1000 AS ts
+      FROM alerts a LEFT JOIN rooms r ON r.id=a.room_id
+      LEFT JOIN alert_archives ar ON ar.alert_id=a.id AND ar.user_id=?
+      WHERE (? IS NULL OR a.room_id=?) AND ar.alert_id IS ${archived?'NOT ':''}NULL
+      ORDER BY a.id DESC LIMIT ?`,[req.user.id,roomId,roomId,limit]);
+    res.json({alerts:rows.map(alertJson),archiveAvailable:true});
+  } catch(e) {
+    if(e.code!=='ER_NO_SUCH_TABLE')throw e;
+    // Existing installations keep working before migration 10 is applied.
+    const [rows]=archived?[[]]:await pool.query(`SELECT a.*,r.room_no,UNIX_TIMESTAMP(a.created_at)*1000 AS ts
+      FROM alerts a LEFT JOIN rooms r ON r.id=a.room_id WHERE (? IS NULL OR a.room_id=?) ORDER BY a.id DESC LIMIT ?`,[roomId,roomId,limit]);
+    res.json({alerts:rows.map(alertJson),archiveAvailable:false});
+  }
+}));
+
+// Count stored temperature limit alerts across every classroom, including archived alerts.
+router.get('/temperature-analytics',requireAuth,wrap(async(req,res)=>{
+  const range=req.query.range===undefined?'7d':req.query.range;
+  if(!['7d','30d','all'].includes(range))throw new HttpError(400,'Choose 7 days, 30 days or all time.');
+  const days=range==='7d'?7:30;
+  const [rows]=await pool.query(`SELECT r.id,r.room_no,r.floor_no,COUNT(a.id) AS alert_count,
+    COUNT(DISTINCT DATE(a.created_at)) AS alert_days,MAX(UNIX_TIMESTAMP(a.created_at))*1000 AS last_alert_at
+    FROM rooms r LEFT JOIN alerts a ON a.room_id=r.id AND a.metric='temp' AND a.type='exceeded'
+      ${range==='all'?'':'AND a.created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? DAY)'}
+    WHERE r.room_no NOT IN (108,205,210,307,309)
+    GROUP BY r.id,r.room_no,r.floor_no
+    ORDER BY alert_count DESC,last_alert_at DESC,r.room_no ASC`,range==='all'?[]:[days]);
+  const rooms=rows.map(r=>({roomId:r.id,room:'Room '+r.room_no,floor:r.floor_no,
+    alertCount:Number(r.alert_count),alertDays:Number(r.alert_days),lastAlertAt:r.last_alert_at==null?null:Number(r.last_alert_at)}));
+  res.json({range,generatedAt:Date.now(),totalAlerts:rooms.reduce((sum,r)=>sum+r.alertCount,0),rooms});
+}));
+
+router.put('/archive',requireAuth,wrap(async(req,res)=>{
+  const {ids,archived}=req.body || {};
+  if(!Array.isArray(ids)||!ids.length||ids.length>200||ids.some(id=>!Number.isSafeInteger(id)||id<1)||typeof archived!=='boolean')throw new HttpError(400,'Choose valid alerts and an archive action.');
+  const unique=[...new Set(ids)],conn=await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows]=await conn.query('SELECT id FROM alerts WHERE id IN (?) LOCK IN SHARE MODE',[unique]);
+    if(rows.length!==unique.length)throw new HttpError(404,'One or more alerts no longer exist.');
+    if(archived)await conn.query('INSERT IGNORE INTO alert_archives (user_id,alert_id) VALUES ?',[unique.map(id=>[req.user.id,id])]);
+    else await conn.query('DELETE FROM alert_archives WHERE user_id=? AND alert_id IN (?)',[req.user.id,unique]);
+    await conn.commit();res.json({ok:true});
+  }catch(e){await conn.rollback();if(e.code==='ER_NO_SUCH_TABLE')throw new HttpError(503,'Alert archiving is temporarily unavailable. Please contact your administrator.');throw e;}
+  finally{conn.release();}
 }));
 
 // Used by the future alert service (not by the app).

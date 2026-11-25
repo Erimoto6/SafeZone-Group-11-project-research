@@ -53,16 +53,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 }
 #view{display:flex;flex-direction:column;flex:1;min-height:0}
 
-/* ---------- Manage Users: spreadsheet-style tables ---------- */
-.users-group{margin:18px 0;min-width:0}
-.users-table-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);-webkit-overflow-scrolling:touch}
-.users-table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}
-.users-table caption{text-align:left;padding:12px;font-size:15px;font-weight:700;color:var(--ink);background:var(--surface)}
-.users-table th,.users-table td{padding:10px 12px;border-top:1px solid var(--line);border-right:1px solid var(--line);white-space:nowrap}
-.users-table th:last-child,.users-table td:last-child{border-right:0}
-.users-table th{background:var(--surface-2);font-weight:700}
-.users-table tbody tr:nth-child(even){background:var(--surface-2)}
-.users-table tbody tr:hover{background:var(--brand-soft)}
+
 .device-editor{margin:0;padding:12px;border:1px solid var(--line);border-radius:12px;min-width:0;width:100%;background:var(--surface)}
 .device-editor legend{font-weight:700;padding:0 5px;font-size:13px}
 [hidden]{display:none!important}
@@ -78,7 +69,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 .topbar button{color:#fff;width:40px;height:40px;display:grid;place-items:center;border-radius:12px}
 .topbar button:hover{background:rgba(255,255,255,.14)}
 .topbar :focus-visible{outline-color:#fff}
-.screen{flex:1;min-height:0;overflow-y:auto;padding:18px 16px 24px;-webkit-overflow-scrolling:touch}
+.screen{flex:1;min-height:0;overflow-y:auto;padding:12px 12px 18px;-webkit-overflow-scrolling:touch}
 .nav{display:grid;grid-template-columns:repeat(var(--n),1fr);background:var(--surface);border-top:1px solid var(--line);padding:6px 4px 8px}
 .nav button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;font-size:10.5px;font-weight:600;color:var(--muted);position:relative;border-radius:12px}
 .nav button[aria-current="page"]{color:var(--nav-active)}
@@ -90,12 +81,12 @@ h2{margin:0;font-size:19px;font-weight:700;letter-spacing:-.1px}
 .sub{margin:3px 0 0;color:var(--muted);font-size:13.5px}
 .live{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:10px 0 14px}
 .live i{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
-.section-label{font-size:12.5px;font-weight:700;color:var(--muted);margin:22px 4px 8px}
+.section-label{font-size:12.5px;font-weight:700;color:var(--muted);margin:16px 4px 8px}
 
 /* ---------- Cards & chips ---------- */
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:var(--shadow)}
-.sensor{display:flex;flex-direction:column;gap:6px;min-height:138px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px;box-shadow:var(--shadow)}
+.sensor{display:flex;flex-direction:column;gap:5px;min-height:116px}
 .s-head{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;font-weight:500}
 .ico{display:grid;place-items:center}
 .ico-temp{color:var(--c-temp)}.ico-hum{color:var(--c-hum)}.ico-co2{color:var(--c-co2)}.ico-fan{color:var(--c-fan)}
@@ -126,7 +117,7 @@ h2{margin:0;font-size:19px;font-weight:700;letter-spacing:-.1px}
 .switch[aria-checked="true"] span{transform:translateX(20px)}
 
 /* ---------- Alerts ---------- */
-.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin:0 -16px 12px;padding-left:16px;padding-right:16px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin:0 -12px 10px;padding-left:12px;padding-right:12px}
 .chips button{flex:none;padding:7px 15px;border-radius:999px;font-size:13px;font-weight:600;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
 .chips button[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff}
 .alert{display:flex;gap:12px;padding:13px 14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;margin-bottom:10px}
@@ -167,7 +158,7 @@ h2{margin:0;font-size:19px;font-weight:700;letter-spacing:-.1px}
 
 /* ---------- Lists (status, settings, about) ---------- */
 .list{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow)}
-.row{display:flex;align-items:center;gap:12px;padding:13px 14px;width:100%;text-align:left;border-bottom:1px solid var(--line);background:none}
+.row{display:flex;align-items:center;gap:12px;padding:10px 12px;width:100%;text-align:left;border-bottom:1px solid var(--line);background:none}
 .row:last-child{border-bottom:0}
 .r-ico{width:36px;height:36px;border-radius:11px;background:var(--brand-soft);color:var(--nav-active);display:grid;place-items:center;flex:none}
 .r-txt{flex:1;min-width:0}
@@ -178,7 +169,7 @@ h2{margin:0;font-size:19px;font-weight:700;letter-spacing:-.1px}
 .pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
 details.row-d{border-bottom:1px solid var(--line)}
 details.row-d:last-child{border-bottom:0}
-details.row-d summary{list-style:none;display:flex;align-items:center;gap:12px;padding:13px 14px;cursor:pointer}
+details.row-d summary{list-style:none;display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer}
 details.row-d summary::-webkit-details-marker{display:none}
 details.row-d summary .chev{transition:transform .2s;color:var(--muted)}
 details.row-d[open] summary .chev{transform:rotate(90deg)}
@@ -363,13 +354,13 @@ select option{background:var(--surface);color:var(--ink)}
 .device-editor .fields3{row-gap:12px}
 
 /* Device cards use ordinary blocks so native fieldset sizing cannot widen the sheet. */
-.device-editor{padding:16px;border-radius:16px;overflow-wrap:anywhere}
+.device-editor{padding:12px;border-radius:16px;overflow-wrap:anywhere}
 .device-editor-title{margin:0 0 14px;font-size:14px;line-height:1.4;color:var(--ink)}
-.device-editor-body{gap:14px}
+.device-editor-body{gap:10px}
 .device-editor [data-light]{grid-column:1/-1}
 .device-editor .f select{display:block;line-height:1.4;border-radius:12px}
-#device-groups{gap:16px}
-#room-form{gap:14px}
+#device-groups{gap:10px}
+#room-form{gap:10px}
 #room-form .room-device-heading{margin-top:4px}
 #room-form .mini-chips{gap:8px}
 #room-form .mini-chips button{min-height:40px;min-width:52px}
@@ -385,7 +376,7 @@ select option{background:var(--surface);color:var(--ink)}
 .chart-head{flex-wrap:wrap;gap:8px}
 @media(max-width:360px){.card{padding:12px}.s-val{font-size:25px}.s-val small{font-size:12px}.s-head{font-size:12px;gap:6px}.roombar{gap:8px}}
 
-/* Theme-specific artwork; login logos use a single pink image. */
+/* Supplied light- and dark-mode artwork on every logo screen. */
 .logo-themed img{width:100%;height:100%;object-fit:contain}
 .logo-themed .logo-light{display:block}
 .logo-themed .logo-dark{display:none}
@@ -414,42 +405,226 @@ select option{background:var(--surface);color:var(--ink)}
 .alerts-context .section-label{margin:0}
 .alerts-context .chips{margin-bottom:10px}
 .alert-content{min-width:0;flex:1;overflow-wrap:anywhere}
-.monitor-utilities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px;align-items:stretch}
+.monitor-utilities{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px;align-items:stretch}
 .monitor-utilities>.card{margin:0;padding:14px;min-width:0}
 .monitor-utilities .s-val{font-size:26px;display:flex;align-items:baseline;flex-wrap:wrap;gap:3px;margin-top:12px}
 .monitor-utilities .s-val small{font-size:12px;margin-left:0}
 .monitor-utilities .s-head{font-size:12px;align-items:center}
 .monitor-utilities .s-note{font-size:11px;line-height:1.5;margin-bottom:10px}
 .monitor-utilities .linkbtn{font-size:11px;line-height:1.5;text-align:left}
-.monitor-room-context{position:sticky;top:-18px;background:var(--bg);z-index:3;padding-top:1px;padding-bottom:1px}
+.monitor-room-context{margin-bottom:10px}
 .student-accounts-link{width:100%;display:flex;align-items:center;gap:12px;text-align:left}
 .student-accounts-link span{flex:1;min-width:0}
 .student-accounts-link small{display:block;color:var(--muted);font-size:12px;margin-top:4px}
 .student-course{margin:12px 0;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
 .student-course>summary{font-size:13px;line-height:1.5;align-items:flex-start}
 .student-course .users-group{margin:0 10px 12px}
-.users-table-scroll{max-height:55vh;overflow:auto}
-.users-table thead{position:sticky;top:0;z-index:1}
 .student-delete{min-width:44px;min-height:44px;color:var(--bad)}
 #v-reg1-form select{max-width:100%;white-space:normal;font-size:13px}
 #registration-profile{margin-bottom:14px;text-align:left}
 #registration-profile[hidden]{display:none}
 
 /* Date-first alert log: day, indented time, then indented event descriptions. */
-.alert-day{margin:20px 0 28px}
+.alert-day{margin:14px 0 18px}
 .alert-day>h3{margin:0 0 6px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:18px;font-weight:750;letter-spacing:-.2px;color:var(--ink);line-height:1.45}
-.alert-time-block{display:block;margin:0 0 22px 16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
-.alert-time-block>h4{font-size:14px;font-weight:700;color:#fff;margin:0 0 12px;padding:0;line-height:1.5}
+.alert-time-block{display:block;margin:0 0 14px 12px;padding-bottom:0;border-bottom:0}
+.alert-time-block>h4{font-size:14px;font-weight:600;color:var(--muted);margin:0 0 12px;padding:0;line-height:1.5}
 .alert-time-block>h4 time{display:inline-block;position:relative;top:-3px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-variant-numeric:tabular-nums;padding:0;background:none;border-radius:0}
 .alert-time-events{margin-left:12px;min-width:0}
-.alert-time-events .alert{display:block;margin:0 0 12px;padding:14px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:14px;box-shadow:var(--shadow)}
-.alert-time-events .alert.exceeded{border-left-color:var(--bad)}
-.alert-time-events .alert.warning{border-left-color:var(--warn)}
-.alert-time-events .alert.normal{border-left-color:var(--ok)}
+.alert-time-events .alert{display:block;margin:0 0 12px;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
 .alert-time-events .alert:last-child{margin-bottom:0}
 .alert-time-events .alert p{margin:0;font-size:14px;color:var(--ink);line-height:1.65;font-weight:400}
 @media(max-width:360px){.alert-time-block{margin-left:8px}.alert-time-events{margin-left:8px}.alert-time-events .alert{padding:12px}}
 
 /* Use more of the Monitoring screen width without leaving a wide right gutter. */
-.screen[data-s="monitor"]{padding-right:8px}
+.screen[data-s="monitor"]{padding-right:12px}
 .monitor-utilities{width:100%}
+
+/* Classroom overview and consistent account cards */
+.monitor-utilities.fan-only{grid-template-columns:minmax(0,1fr)}
+.monitor-links{display:grid;gap:8px;margin:12px 0 0}
+.monitor-links .card{display:flex;align-items:center;gap:12px;text-align:left;margin:0;width:100%;min-width:0;color:var(--ink)}
+.monitor-links span{flex:1;min-width:0}.monitor-links b,.monitor-links small{display:block}
+.monitor-links small{font-size:12px;font-weight:400;color:var(--muted);margin-top:4px;line-height:1.5}
+.room-table-scroll{overflow:auto;max-height:60vh;margin-top:16px;border-radius:16px;border:1px solid var(--line);background:var(--surface)}
+.room-overview-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;text-align:left}
+.room-overview-table caption{text-align:left;padding:14px;font-weight:700}
+.room-overview-table thead{position:sticky;top:0;z-index:1}
+.room-overview-table th,.room-overview-table td{padding:14px 12px;white-space:nowrap}
+.room-overview-table thead th{background:var(--surface-2);font-size:12px}
+.room-overview-table tbody tr+tr>*{border-top:1px solid var(--line)}
+.room-state-normal th[scope=row]{color:var(--ok)}.room-state-warning th[scope=row]{color:var(--warn)}.room-state-exceeded th[scope=row]{color:var(--bad)}
+.chip.unknown{background:var(--idle-bg);color:var(--idle)}
+.analytics-summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin:16px 0}
+.analytics-summary>div{background:var(--surface);padding:16px;border:1px solid var(--line);border-radius:16px}
+.analytics-summary b{display:block;font-size:28px}.analytics-summary span{font-size:12px;color:var(--muted)}
+.temperature-rank{display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink)}
+.rank-number{color:var(--muted);font-size:13px;min-width:18px}.rank-room{flex:1;min-width:0}.rank-room small{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.rank-reading{display:grid;gap:6px;justify-items:end}.rank-reading b{font-size:17px}
+.alert-time-events .alert{display:flex;align-items:flex-start;gap:8px}.alert-content{flex:1;min-width:0}
+.alert-archive-action{flex-shrink:0;min-width:44px;min-height:44px;color:var(--muted)}
+.account-group{margin:20px 0}.account-group-heading{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.account-group-heading h3{font-size:15px;margin:0}.account-count{font-size:12px;border-radius:20px;background:var(--surface-2);padding:4px 10px;color:var(--muted)}
+.account-card-list{display:grid;gap:12px}.account-card{display:flex;align-items:flex-start;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;min-width:0}
+.account-card-main{flex:1;min-width:0}.account-card strong,.account-card dd{overflow-wrap:anywhere}.account-card strong{font-size:14px}.account-card p{font-size:13px;color:var(--muted);margin:6px 0}
+.account-card dl{margin:12px 0 0}.account-card dl>div{margin-top:8px}.account-card dt{color:var(--muted);font-size:11px}.account-card dd{font-size:13px;margin:3px 0 0}
+.settings-layout .section-label{font-weight:700;margin-top:24px}.settings-layout .list{border-radius:18px;box-shadow:var(--shadow)}
+.settings-layout .room-configuration{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:20px}
+#admin-form{padding:16px;border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+#pw-form .rules{margin:0 0 8px;font-size:12px}
+
+/* Student accounts: courses → sections → profiles */
+.student-page-context{position:static;padding:0 0 6px}
+.student-breadcrumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+.student-breadcrumb button{padding:8px 0;min-height:40px;color:var(--nav-active);font-weight:600;text-align:left}
+.student-breadcrumb [aria-current=page]{color:var(--ink);font-weight:700}
+.student-breadcrumb .i{width:14px;height:14px;flex-shrink:0}
+.student-browse-list{display:grid;gap:12px}
+.student-browse-button{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:12px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:16px;color:var(--ink)}
+.student-browse-label{flex:1;min-width:0}.student-browse-label b{display:block;font-size:15px;line-height:1.5}
+.student-browse-label small{display:block;font-size:12px;color:var(--muted);line-height:1.6;margin-top:4px}
+.student-browse-button>.i{flex-shrink:0;width:18px;height:18px;color:var(--muted)}
+.student-browse-button .account-count{font-size:11px;white-space:nowrap;padding:5px 8px}
+.student-stage-title{font-size:18px;line-height:1.5;margin:4px 0 12px}
+.account-card{display:block;padding:12px}
+.account-card-heading{display:flex;align-items:flex-start;gap:10px}
+.account-card-identity{flex:1;min-width:0}.account-card-identity strong{display:block;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.account-card-heading .student-delete{flex:0 0 44px;margin:-6px -6px 0 0}
+.account-card dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin:16px 0 0}
+.account-card dl>div{margin:0;min-width:0}.account-card dt{font-size:12px;line-height:1.5}.account-card dd{font-size:14px;line-height:1.6}
+.student-browse-button:focus-visible,.student-breadcrumb button:focus-visible{outline:2px solid var(--nav-active);outline-offset:3px}
+
+/* Place the Monitoring fan control beside its status. */
+.monitor-utilities.fan-only .fan-control-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(105px,auto);column-gap:16px;row-gap:6px;min-height:0}
+.monitor-utilities.fan-only .fan-control-card .s-head{grid-column:1/-1}
+.monitor-utilities.fan-only .fan-control-card .s-val{grid-column:1;grid-row:2;align-self:end;margin-top:4px}
+.monitor-utilities.fan-only .fan-control-card .fan-count{grid-column:1;grid-row:3;margin:0}
+.monitor-utilities.fan-only .fan-control-card .fan-card-controls{grid-column:2;grid-row:2/4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;max-width:125px;text-align:center}
+.fan-card-controls .linkbtn{text-align:center}.fan-card-controls .s-note{margin:0}
+.alert-frequency-rank .rank-reading small{font-size:11px;color:var(--muted);white-space:nowrap}
+.alert-frequency-rank .rank-reading b{font-size:24px;color:var(--nav-active)}
+.alert-frequency-rank{align-items:flex-start}.alert-frequency-rank .rank-room small{line-height:1.6}
+
+/* Compact controls retain readable type and touch targets. */
+.monitor-utilities.fan-only .fan-control-card .s-head{grid-column:1}
+.monitor-utilities .fan-card-controls .switch{flex-shrink:0}
+.seg button,.mini-chips button{min-height:44px}
+.settings-layout .section-label{margin-top:16px}
+.settings-layout .room-configuration{padding:12px;margin-top:14px}
+.account-card dl{margin-top:10px;gap:10px}
+.alert-time-events .alert p{line-height:1.5}
+@media(max-width:360px){
+  .monitor-utilities.fan-only .fan-control-card{column-gap:10px;grid-template-columns:minmax(0,1fr) minmax(100px,auto)}
+}
+
+.admin-delete{flex:0 0 44px;min-height:44px;color:var(--bad)}
+
+/* Keep primary screens compact; long lists and small phones can still scroll. */
+.screen{padding:10px 12px 12px}
+.roombar{margin:8px 0}
+.monitor-room-context{margin-bottom:0}
+.monitor-room-context .roombar{margin:0 0 8px}
+.roompick{padding:6px 10px;gap:8px}
+.rp-ico{width:34px;height:34px;border-radius:10px}
+.rp-txt b{font-size:15px}
+.addroom{gap:2px}.addroom .plus{width:34px;height:34px}
+.monitor-utilities{margin-bottom:8px}
+.monitor-utilities>.card{padding:10px 12px}
+.monitor-utilities.fan-only .fan-control-card{row-gap:2px}
+.monitor-utilities.fan-only .fan-control-card .s-head{grid-column:1;grid-row:1}
+.monitor-utilities.fan-only .fan-control-card .s-val{margin:0;font-size:25px}
+.monitor-utilities.fan-only .fan-control-card .fan-card-controls{grid-row:1/4;gap:6px}
+.seg{padding:3px;margin-bottom:8px}
+.seg button{padding:6px}
+.mini-chips{gap:6px;margin:0 0 8px}
+.legend{margin-top:4px;gap:12px}
+.chart-head{margin-bottom:2px}
+.monitor-links{gap:6px;margin-top:8px}
+.monitor-links .card{padding:8px 10px;gap:8px}
+.monitor-links small{margin-top:1px;line-height:1.3}
+.sensor{min-height:104px;gap:4px}
+.live{margin:6px 0 8px}
+.banner{padding:10px 12px;margin-top:8px}
+.legend-card{margin-top:10px;padding:10px 12px}
+.legend-card .lg{padding:4px 0}
+.section-label,.settings-layout .section-label{margin-top:12px}
+.account-group{margin:12px 0}.account-group-heading{margin-bottom:8px}
+.account-card-list,.student-browse-list{gap:8px}
+
+/* Compact tabs and alert timeline without shrinking text or touch targets. */
+.seg{padding:0;margin-bottom:6px}
+.seg button{padding:6px 10px;min-height:44px}
+.alerts-context{top:-10px;padding:0 0 2px}
+.alerts-context .roombar{margin:6px 0}
+.alerts-context .chips{margin-bottom:4px;padding-bottom:2px;gap:6px}
+.alerts-context .chips button{padding:6px 12px;min-height:40px}
+.screen[data-s="alerts"]>.note{margin:4px 0 0}
+.alert-day{margin:10px 0 12px}
+.alert-day>h3{margin-bottom:4px}
+.alert-time-block{margin:0 0 8px 8px}
+.alert-time-block>h4{margin-bottom:4px}
+.alert-time-block>h4 time{top:0}
+.alert-time-events{margin-left:6px}
+.alert-time-events .alert{padding:10px 12px;margin-bottom:8px;gap:6px}
+.admin-remove-confirm{display:grid;gap:12px;padding-top:2px}
+.admin-remove-confirm p{margin:0;line-height:1.5;overflow-wrap:anywhere}
+.admin-remove-confirm .note{font-size:13px}
+.confirm-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:4px}
+.confirm-actions .btn{min-height:44px}
+.btn.danger{background:#B3261E;color:#fff}
+.sheet-head{gap:10px;margin-bottom:8px}
+.sheet-head h2{line-height:1.3}
+.sheet-head .x{flex-shrink:0}
+#admin-form [aria-invalid="true"]{border-color:var(--bad)}
+#admin-form [data-form-error]{margin:0;font-size:12px;line-height:1.5}
+#admin-form [data-form-error]:empty{display:none}
+#admin-form [data-form-error] ul{margin:0;padding-left:18px}
+
+
+.alert-toolbar{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
+.alerts-context .alert-toolbar .chips{flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin:0;padding:0 0 4px;gap:4px;scrollbar-width:thin}
+.alerts-context .alert-toolbar .chips button{font-size:12px;padding:6px}
+.alert-toolbar>.archive-button{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:var(--brand-soft);color:var(--nav-active);font-size:12px;font-weight:600;white-space:nowrap}
+.archive-button .i{width:18px;height:18px}
+
+/* QA: readable course names in both the picker and the selected value. */
+span.f{font-size:12px;font-weight:600;color:var(--muted)}
+.course-picker{width:100%;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;text-align:left}
+.course-picker>summary{display:flex;align-items:center;gap:8px;list-style:none;padding:11px 12px;min-height:48px;font-size:13px;cursor:pointer}
+.course-picker>summary::-webkit-details-marker{display:none}
+.course-picker>summary span{flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+.course-picker>summary svg{flex-shrink:0;width:18px;height:18px}
+.course-options{max-height:260px;overflow-y:auto;border-top:1px solid var(--line);padding:4px}
+.course-options button{display:block;width:100%;min-height:44px;padding:10px;text-align:left;white-space:normal;overflow-wrap:anywhere;line-height:1.5;font-size:13px;border-radius:8px}
+.course-options button[aria-pressed="true"]{background:var(--brand-soft);color:var(--nav-active);font-weight:600}
+#email-form [data-form-error]:empty{display:none}
+#email-form [data-form-error]{margin:0}
+
+/* Compact Settings spacing while preserving 44px controls. */
+.settings-layout .section-label{margin:8px 2px 4px}
+.settings-layout>.sub{margin-bottom:6px}
+.settings-layout .row,.settings-layout details.row-d summary{padding:8px 10px;gap:10px;min-height:48px}
+.settings-layout .r-ico{width:32px;height:32px;border-radius:10px}
+.settings-layout .room-configuration{padding:10px;gap:4px;margin:10px 0}
+.settings-layout .room-configuration>.f{font-size:13px;line-height:1.4}
+.settings-layout .room-configuration>select{margin:0 0 6px;height:44px;padding-top:8px;padding-bottom:8px;font-size:14px}
+.settings-layout .room-config-actions{gap:8px;margin-top:2px}
+.settings-layout .room-config-actions .btn{padding:8px;min-height:44px}
+.settings-layout .fields{gap:8px;padding:0 10px 10px}
+.settings-layout .fields input{min-height:44px;padding:8px 10px}
+.settings-layout>.note{margin:4px 0 6px}
+.settings-layout .settings-save{margin-top:8px}
+.settings-layout .settings-save .btn{padding:10px;min-height:44px}
+.settings-layout>.stack{gap:8px}
+
+.history-window{margin:0 0 6px;font-size:11.5px}
+
+.history-coverage{margin:0 0 4px;font-size:11.5px}
+
+/* Keep textbox focus outlines inside scrollable dialogs. */
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:-3px}
+
+#pw-form [data-form-error]{margin:0;font-size:12px;line-height:1.5}
+#pw-form [data-form-error]:empty{display:none}
+#pw-form [data-form-error] ul{margin:0;padding-left:18px}
+#pw-form [aria-invalid="true"]{border-color:var(--bad)}

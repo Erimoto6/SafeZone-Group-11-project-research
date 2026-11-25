@@ -1,6 +1,6 @@
 # SafeZone
 
-SafeZone is a classroom monitoring app for temperature, humidity, carbon dioxide (CO₂), simulated exhaust fan operation and estimated electricity use. Admins configure rooms and thresholds, run simulations and manage accounts. Students and faculty view room readings and alerts.
+SafeZone is a classroom monitoring app for temperature, humidity, carbon dioxide (CO₂), simulated exhaust fan operation. Admins configure rooms and thresholds, run simulations and manage accounts. Students and faculty view room readings and alerts.
 
 This branch, **Test-ni-eleyn**, uses a shared Node.js/Express backend and MySQL/MariaDB database. The backend serves the browser app and API from the same address. An Android APK bundles the frontend and connects to that backend. Login, saved data and shared simulations require a running backend and database.
 
@@ -20,7 +20,7 @@ Keep the detailed [backend instructions](backend/README.md) and [database instru
 
 You need Node.js/npm, MySQL or MariaDB (for example, XAMPP), and a browser. Android packaging also needs the root project's Capacitor dependencies, Android Studio and an Android project.
 
-1. Follow [database/README.md](database/README.md) and run SQL files **01 through 06 in order** for a new database. Change the database-user password placeholder privately before running file 01. The initial seed creates Rooms 101–110; it does not create an admin account.
+1. Follow [database/README.md](database/README.md) and run SQL files **01 through 11 in order** for a new database. Change the database-user password placeholder privately before running file 01. The initial seed creates 43 classrooms across four floors; it does not create an admin account.
 2. Open a terminal in `backend` and install dependencies:
 
    ```powershell
@@ -52,8 +52,13 @@ The `admin / safezone` demo login is not enabled on this branch. Accounts previo
    | `database/04-shared-simulations.sql` | Shared simulation state |
    | `database/05-electricity-usage.sql` | Persistent estimated energy totals |
    | `database/06-room-devices.sql` | Configurable device groups |
+   | `database/07-classroom-roster.sql` | Classroom roster |
+   | `database/08-recovery-gmail.sql` | Legacy recovery schema, retained for compatibility |
+   | `database/09-student-profiles.sql` | Student course and section |
+   | `database/10-alert-archives.sql` | Per-account alert archive bookmarks |
+   | `database/11-simulation-history.sql` | Persistent minute summaries for History ranges |
 
-   Run missing migrations in numerical order as the database administrator through phpMyAdmin or Workbench. If shared simulations already work and 05/06 are missing, run **05, then 06**. If all migrations are installed, no new SQL is needed. Do not recreate the database or rerun the original setup/seed files for an existing installation.
+   Run missing migrations in numerical order as the database administrator through phpMyAdmin or Workbench. If shared simulations already work and 05/06 are missing, run **05, then 06**. Saved History requires migration **11**. If 01–10 are installed, run only `database/11-simulation-history.sql` and restart the backend. If 01–09 are already installed, run only `database/10-alert-archives.sql` against the database used by the running backend. Current alerts continue to work before migration 10; Archive becomes available after it is installed. Do not recreate the database or rerun the original setup/seed files for an existing installation.
 4. From `backend`, run `npm ci`, `npm run check-db`, then `npm start`. Open http://localhost:3000/ and press Ctrl+F5.
 5. For an installed Android app, sync the frontend and rebuild/reinstall the APK as described below. Pulling source code does not update an already installed APK.
 
@@ -78,15 +83,27 @@ Changing scenarios retains existing readings and ventilation mode. Use Reset rea
 
 To verify sharing, sign in as an admin in one browser and a student/faculty member in another browser or private window. Start a simulation as admin, choose the affected room in the other session and compare readings and alerts.
 
-## Estimated electricity
+## Application UI revisions
 
-Electricity displays accumulated **estimated kWh**, separately for exhaust fans. Fan quantities, configured wattages and simulated fan operating time determine the estimate:
+- **Classroom Overview:** floor filter and a table of room number, temperature, CO₂ and status. Status uses the more severe of temperature and CO₂ against the configured warning/limit. Missing data shows Awaiting data. The table header stays visible inside its scroll area.
+- **Temperature Analytics:** rooms ranked by recorded temperature limit-alert count for the last 7 days, last 30 days or all time. Shows the count, days with alerts and latest event; ties use latest event then room number. Archived alerts are included; warnings and other metrics are excluded. Counts use stored event severity, not current thresholds, and include existing demo events. This measures event frequency, not duration, current temperature or a normalized rate. Rooms without limit alerts are omitted. No new migration is needed.
+- **Alerts:** selected-room date/time timeline with separate event cards, muted timestamps and neutral borders. Current and Archive each show up to the latest 200 matching records. Archive bookmarks belong to the signed-in account; archiving/restoring does not delete or change original alert records. Run migration 10 to enable it.
+- **Accounts and Settings:** account cards replace account tables; Student Accounts opens course buttons, then section buttons, then the profiles for that section. Back returns one level. Accounts without profile details remain under Course not set / Section not set. Password rules appear below the password and confirmation fields and update while typing. Admin input is validated in the browser and again by the API.
+- **Graphs:** Real-time keeps 40 browser samples. History queries saved server summaries for the selected room/metric and the actual last 6 hours, 24 hours or 7 days. The selected query window is displayed above the graph. The graph zooms to the actual available readings with a matching time/date axis, so short demos remain readable; no older data is fabricated. Statistics use all recorded samples, weighted by sample count; plotted points are grouped into 1-, 5- or 30-minute averages. Migration 11 enables saving future demo ticks. The app reports available dates, empty periods and errors rather than inventing older readings. Eight days are retained, and browser reloads/Reset do not erase saved History.
 
-```text
-kWh = watts × operating milliseconds ÷ 3,600,000,000
-```
+### Electricity feature retained for later
 
-Totals persist in `electricity_usage`; backend downtime is excluded. Resetting simulated readings does not erase totals. Unconfigured appliances are excluded. This is not a measured energy reading, cost estimate or electricity bill.
+Electricity consumption, meter options and wattage inputs are hidden from the app. Set `FEATURES.fanEnergy` to `true` in `www/js/app.js` to restore the views, then update the asset cache version in `www/index.html` and rebuild the APK if applicable. The backend calculation code, device wattages and `electricity_usage` totals remain intact. They still represent estimated fan energy based on simulated operating time, not measured electricity.
+
+### Notification recommendations (follow-up)
+
+Push notifications and real SMS delivery are not implemented in this revision. The app currently polls while open. Firebase/hardware integration was deferred.
+
+Firebase Cloud Messaging itself has no per-message fee; supporting hosting, network access and implementation can still cost money. Arduino-based SMS requires a compatible cellular module, SIM and carrier messaging/load plan, plus maintenance. Push generally has lower recurring delivery costs when users have internet; SMS can reach users without mobile data but adds carrier costs per message or bundle. Use push as the primary option when internet access is expected, and assess SMS as a fallback using actual carrier quotes and expected alert volume. No paid notification subscription was added.
+
+### Revision verification
+
+Run `node --test backend/test/*.test.js` for backend and alert-grouping checks. `node backend/scripts/ui-revisions-check.cjs` runs mocked responsive browser checks using Playwright and Chromium (set `CHROMIUM_PATH` if needed). `node backend/scripts/password-recovery-check.cjs` checks the direct login-to-code flow, missing identifiers, retries, resend and password reset. These checks do not connect to a production database or send emails.
 
 ## Phones on the same Wi-Fi
 
@@ -166,9 +183,9 @@ The default roster includes 43 classrooms across four floors, excluding rooms 10
 
 Home only selects rooms for viewing. Admins add missing classrooms from Monitoring and edit existing rooms in Settings. Add/Edit validates room numbers 01–12 on each matching floor and excludes the clinic, offices and library; fully populated floors cannot add another classroom. No database migration is needed for this validation change.
 
-### Recovery Gmail
+### Password recovery
 
-After migration 07, run `database/08-recovery-gmail.sql` once. While logged in, each user can open Account Settings from the menu, enter their own recovery Gmail, and verify the emailed code. The PUP email remains their account/login address. Forgot Password takes that PUP address and sends only to the previously verified Gmail. Existing users must enroll before using this option; no address is automatically verified. Sender SMTP configuration is still required; see [backend email setup](backend/README.md#verified-recovery-gmail).
+Enter the admin username or student/faculty mobile number on the login form, then select Forgot Password. This immediately requests a six-digit code for the account’s saved PUP webmail and opens code verification; there is no separate email-entry step. An empty login identifier must be filled first. The API also accepts the previous email-based request for older installed apps. There is no recovery Gmail setup. The project Gmail remains the sender through Vercel. Codes expire in 10 minutes and signed reset grants are single-use; successful password reset revokes old login sessions. Old Gmail-flow codes/tokens stop working after the switch, without a SQL update. See [backend email setup](backend/README.md#pup-webmail-password-recovery).
 
 ## Repository layout and Vercel email delivery
 
@@ -188,13 +205,25 @@ Local checks: `npm ci --prefix backend`, `npm ci --prefix vercel-email-test`, th
 
 Dependencies, generated Android assets/build output, `.env` files, `.vercel` configuration and signing material are excluded from Git. Install dependencies locally rather than committing `node_modules`. Flutter development remains on the separate `flutter-version` branch.
 
-All admins can permanently delete a student from **Manage Users → Student Accounts → trash icon** after explicit confirmation. Active and previously deactivated students are listed with their status. Deletion frees the account email/phone for registration, revokes existing sessions, and deletes the linked SMS contact, recovery Gmail and password reset codes. Notification history remains detached from the account. Faculty/admin accounts cannot be deleted through this action. No additional database migration is needed.
+All admins can permanently delete a student from **Manage Users → Student Accounts → course → section → trash icon** after explicit confirmation. Active and previously deactivated students are listed with their status. Deletion frees the account email/phone for registration, revokes existing sessions, and deletes the linked SMS contact, recovery Gmail and password reset codes. Notification history remains detached from the account. Faculty/admin accounts cannot be deleted through this action. No additional database migration is needed.
 
 ## Room-focused interface and student profiles
 
 - Room selection groups classrooms into expandable floor sections, opening the selected room's floor. Dialog titles/close buttons remain fixed while the content scrolls. Settings uses separate Floor and Room selectors; configuring another room does not change the room being monitored.
 - Alerts load the selected room's latest 200 events, organize events newest-first by date, then time, with affected thresholds/fan updates beneath each time entry. Within each displayed minute, a threshold appears once using its most severe recorded event; dividers separate entries. Alerts show timestamped event sentences for the chosen room; live readings remain on Home and Monitoring. Toasts/badges concern new caution/danger events for the selected room, not every background fan update. Original database history is not deleted.
 - Monitoring places room selection above the Real-time/History tabs and shows fan and estimated electricity in two aligned cards with a reduced right-hand page gutter. Fan controls remain admin-only.
-- Student registration requires a full-name course selection and a free-text section. Existing students can add/change these in Account Settings. Admins open Manage Users → Student Accounts to browse grouped courses/sections and use the trash icon for permanent deletion after confirmation.
+- Student registration requires a full-name course selection and a numeric year-section such as `4-3`. Existing students can add/change these in Account Settings. Admins open Manage Users → Student Accounts to select a course, then a section, and use the trash icon for permanent deletion after confirmation.
 
 For course/section storage, run **`database/09-student-profiles.sql`** once on the database used by the app, after migration 08. It only creates a linked profile table; existing accounts/passwords remain unchanged and old profiles show as not set until students fill them in. Do not rerun the full setup. Core account access works before migration 09, but saving a profile/new student registration needs the table.
+
+PUP webmail delivery has been confirmed through Outlook. Account Settings no longer includes the temporary test-email button. Password reset codes are sent to the registered PUP address; check Outlook Inbox and Junk.
+
+### QA report revisions (November 16, 2026)
+
+Registration and Account Settings use a wrapping course picker with the existing seven courses. New or updated student sections must use a numeric year-section such as `4-3`; letters, incomplete sections and multiple section digits are rejected in both the browser and API. Existing profile rows are preserved. Student/faculty login accepts an 11-digit `09` mobile number; the input blocks letters and extra digits and reports empty/incomplete values. Institutional webmail validation rejects malformed local parts and look-alike domains, and Account Settings explains where recovery codes are sent. Password/confirmation fields appear together with the live rules below. System Overview starts collapsed.
+
+Checks: `node --test backend/test/*.test.js` and `node backend/scripts/ui-revisions-check.cjs` (Chromium). Browser checks cover both themes at 320, 390, 768 and 1280 pixels, registration/login and email updates through mocked API responses, invalid inputs, status labels, course names, and About expand/collapse. Live SMTP delivery was not reconfigured or exercised; its existing automated tests remain passing. No new database migration is required.
+
+### Enable saved Monitoring History
+
+After pulling this revision, run `database/11-simulation-history.sql` once in phpMyAdmin/Workbench as the database administrator on the database used by the running backend, then restart the backend. Keep the current database, accounts and `.env`. No history exists for readings that were never saved. The backend records new demo ticks even with the app closed; charts accumulate real six-hour/day/week coverage over time. This does not connect Firebase or physical hardware.

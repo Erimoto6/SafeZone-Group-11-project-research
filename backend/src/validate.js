@@ -7,9 +7,9 @@ const normEmail = x => String(x == null ? '' : x).trim().toLowerCase();
 
 // 'student' | 'faculty' | null. Only the two PUP web mail domains are accepted (no subdomains, no look-alikes).
 const emailKind = x => {
-  const m = normEmail(x).match(/^[a-z0-9][a-z0-9._-]*@([a-z0-9.-]+)$/);
-  if (!m) return null;
-  return m[1] === WEBMAIL.student ? 'student' : m[1] === WEBMAIL.faculty ? 'faculty' : null;
+  const email = normEmail(x), parts = email.split('@');
+  if (email.length > 120 || parts.length !== 2 || !/^[a-z0-9][a-z0-9._-]*$/i.test(parts[0]) || parts[0].endsWith('.') || parts[0].includes('..') || parts[0].length > 64) return null;
+  return parts[1] === WEBMAIL.student ? 'student' : parts[1] === WEBMAIL.faculty ? 'faculty' : null;
 };
 
 // Returns a message when the password is not allowed, or null when it is fine.
@@ -26,6 +26,5 @@ const normUsername = x => String(x == null ? '' : x).trim().toLowerCase();
 const validUsername = x => /^[a-z0-9._-]{3,20}$/.test(x);
 const cleanName = x => String(x == null ? '' : x).trim().replace(/\s+/g, ' ');
 
-const validRecoveryGmail = x => /^[a-z0-9][a-z0-9._+\-]*@gmail\.com$/.test(normEmail(x)) && normEmail(x).length <= 254;
 
-module.exports = { validRecoveryGmail, WEBMAIL, normPhone, validPhone, normEmail, emailKind, passwordProblem, normUsername, validUsername, cleanName };
+module.exports = { WEBMAIL, normPhone, validPhone, normEmail, emailKind, passwordProblem, normUsername, validUsername, cleanName };

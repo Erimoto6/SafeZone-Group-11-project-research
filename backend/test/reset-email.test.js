@@ -90,7 +90,7 @@ test('Railway uses HTTPS relay for recovery and reset without opening SMTP',asyn
   const mail=loadMail({...env,EMAIL_RELAY_URL:'https://example.vercel.app/api/send-code',EMAIL_RELAY_SECRET:secret},{verify:async()=>{throw Error('Railway SMTP must not be used');}}, {fetch});
   for(const purpose of ['recovery','reset'])assert.equal((await mail.sendResetCode('user@gmail.com','654321',10,purpose)).sent,true);
   assert.equal(messages.length,2);assert(requests.some(r=>r.action==='check'));assert.equal(requests.filter(r=>r.action==='check').length,1);
-  assert.match(messages[0].subject,/recovery Gmail/);assert.match(messages[1].subject,/password reset/);
+  assert.match(messages[0].subject,/recovery email/);assert.match(messages[1].subject,/password reset/);
   assert.equal(mail.lastCodes.size,0);
 });
 
@@ -113,4 +113,12 @@ test('Vercel setup failures preserve safe reason and HTTP status for diagnosis',
   const mail=loadMail(config,{}, {fetch:async()=>({ok:false,status:503,json:async()=>({code})})});
   await assert.rejects(mail.ensureDeliveryAvailable(),e=>e.code===code&&e.relayStatus===503);
  }
+});
+
+test('webmail delivery test uses HTTPS without creating recovery codes',async()=>{
+ const requests=[];
+ const mail=loadMail({NODE_ENV:'production',EMAIL_RELAY_URL:'https://example.vercel.app/api/send-code',EMAIL_RELAY_SECRET:'x'.repeat(40)}, {}, {fetch:async(url,options)=>{requests.push(JSON.parse(options.body));return {ok:true,status:200,json:async()=>({ok:true})};}});
+ assert.equal((await mail.sendWebmailTest('student@iskolarngbayan.pup.edu.ph')).sent,true);
+ assert.deepEqual(requests.at(-1),{action:'test',to:'student@iskolarngbayan.pup.edu.ph'});
+ assert.equal(mail.lastCodes.size,0);
 });

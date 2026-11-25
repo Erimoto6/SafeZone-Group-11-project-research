@@ -1,9 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),{createRequire}=require('node:module');
 const {COURSES,validateProfile}=require('../src/student-profile');
-test('all seven full course names and free-text sections are validated',()=>{
+test('all seven full course names and numeric year-section values are validated',()=>{
  assert.equal(Object.keys(COURSES).length,7);assert.equal(COURSES.BSP,'Bachelor of Science in Psychology');assert.equal(COURSES.BSIE,'Bachelor of Science in Industrial Engineering');
- for(const course of Object.keys(COURSES))assert.deepEqual(validateProfile(course,'  1-a  '),{courseCode:course,section:'1-A'});
- for(const section of ['', ' '.repeat(8),'a'.repeat(41),'A\nB'])assert.throws(()=>validateProfile('BSIT',section));
+ for(const course of Object.keys(COURSES))assert.deepEqual(validateProfile(course,'  4-3  '),{courseCode:course,section:'4-3'});
+ for(const section of ['', ' '.repeat(8),'a'.repeat(41),'A\nB','4-','43','4-33','4-a','0-1','1-0','1_2','1/2'])assert.throws(()=>validateProfile('BSIT',section));
  for(const code of ['OTHER','__proto__',null,['BSIT']])assert.throws(()=>validateProfile(code,'1-1'));
 });
 test('client course options match backend and alerts group only the selected room',()=>{
@@ -32,9 +32,12 @@ test('student signup stores profile and existing students can update only their 
   assert.equal((await call('/register','POST',account)).status,400);
   assert.equal((await call('/register','POST',{...account,courseCode:'BSIT',section:' 2-1 '})).status,201);
   assert.deepEqual(created.profile,{courseCode:'BSIT',section:'2-1'});
+  assert.equal((await call('/register','POST',{...account,email:'faculty@pup.edu.ph'})).status,201);
+  assert.equal(created.profile,null,'faculty registration does not require course or section');
+  assert.equal(created.kind,'faculty');
   assert.equal((await call('/me/student-profile','PUT',{courseCode:'BSP',section:'1-2'},'admin')).status,403);
-  assert.equal((await call('/me/student-profile','PUT',{courseCode:'BSIE',section:'2-a',userId:99})).status,200);
-  assert.deepEqual(profile,{courseCode:'BSIE',section:'2-A'});
+  assert.equal((await call('/me/student-profile','PUT',{courseCode:'BSIE',section:'2-3',userId:99})).status,200);
+  assert.deepEqual(profile,{courseCode:'BSIE',section:'2-3'});
  }finally{await new Promise(r=>server.close(r));}
 });
 
@@ -72,4 +75,16 @@ test('one entry per threshold per time block keeps the strongest event without c
  const base=new Date(2026,10,9,13).getTime();
  const alerts=[{id:1,ts:base+1000,roomId:1,type:'exceeded',metric:'hum',title:'Humidity'},{id:2,ts:base+2000,roomId:1,type:'warning',metric:'hum',title:'Humidity'},{id:3,ts:base+3000,roomId:1,type:'warning',metric:'temp',title:'Temperature'},{id:4,ts:base+61000,roomId:1,type:'warning',metric:'hum',title:'Humidity'}];
  const times=group(alerts,1)[0].times;assert.equal(times.length,2);assert.equal(times[0].items.length,1);assert.equal(times[1].items.length,2);assert.equal(times[1].items.find(a=>a.metric==='hum').id,1);assert.equal(alerts.length,4);
+});
+
+test('QA webmail validation rejects malformed addresses and personal or look-alike domains on both client and server',()=>{
+ const validation=require('../src/validate');
+ const source=fs.readFileSync(require.resolve('../../www/js/app.js'),'utf8');
+ const client=vm.runInNewContext(source.slice(source.indexOf('const normEmail ='),source.indexOf('const emailHint ='))+'\nemailKind',{WEBMAIL:validation.WEBMAIL});
+ for(const [email,kind] of [['student@iskolarngbayan.pup.edu.ph','student'],['Faculty.Name@PUP.EDU.PH','faculty'],['a@pup.edu.ph','faculty']]){
+  assert.equal(validation.emailKind(email),kind);assert.equal(client(email),kind);
+ }
+ for(const email of ['','person@gmail.com','person@yahoo.com','broken@','name..extra@pup.edu.ph','name.@pup.edu.ph','.name@pup.edu.ph','name@pup.edu.ph.evil','name@sub.pup.edu.ph','name@@pup.edu.ph','a'.repeat(65)+'@pup.edu.ph']){
+  assert.equal(validation.emailKind(email),null,email);assert.equal(client(email),null,email);
+ }
 });
