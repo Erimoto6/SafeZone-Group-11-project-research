@@ -474,7 +474,7 @@ select option{background:var(--surface);color:var(--ink)}
 #pw-form .rules{margin:0 0 8px;font-size:12px}
 
 /* Student accounts: courses → sections → profiles */
-.student-page-context{position:sticky;top:0;z-index:3;background:var(--bg);padding:0 0 12px}
+.student-page-context{position:static;padding:0 0 6px}
 .student-breadcrumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--muted);font-size:12px}
 .student-breadcrumb button{padding:8px 0;min-height:40px;color:var(--nav-active);font-weight:600;text-align:left}
 .student-breadcrumb [aria-current=page]{color:var(--ink);font-weight:700}
@@ -618,3 +618,13 @@ span.f{font-size:12px;font-weight:600;color:var(--muted)}
 .settings-layout>.stack{gap:8px}
 
 .history-window{margin:0 0 6px;font-size:11.5px}
+
+.history-coverage{margin:0 0 4px;font-size:11.5px}
+
+/* Keep textbox focus outlines inside scrollable dialogs. */
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:-3px}
+
+#pw-form [data-form-error]{margin:0;font-size:12px;line-height:1.5}
+#pw-form [data-form-error]:empty{display:none}
+#pw-form [data-form-error] ul{margin:0;padding-left:18px}
+#pw-form [aria-invalid="true"]{border-color:var(--bad)}

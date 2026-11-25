@@ -18,7 +18,7 @@ const RESET_MINUTES = 10;        // how long a reset code works
 const RESET_TRIES = 5;           // wrong guesses allowed per code
 const RESEND_SECONDS = 30;       // wait before asking for another code
 // Shown on the About screen.
-const CONTACT = { email: 'safezone@yourschool.edu' };
+const CONTACT = { email: 'safezone.project0@gmail.com' };
 
 // Starting limits. Admins can change them in Settings.
 // These are placeholders: use the values from your paper / sensor calibration.
@@ -250,20 +250,37 @@ const pwRules = x => [
   ['Include a letter and a number', /[A-Za-z]/.test(x) && /\d/.test(x)],
   ['No spaces', x.length > 0 && !/\s/.test(x)]
 ];
-const passwordError = password => {
-  if (!password) return 'Password is required.';
-  if (password.length < 6) return 'Password: use at least 6 characters.';
-  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return 'Password: include a letter and a number.';
-  if (/\s/.test(password)) return 'Password cannot contain spaces.';
-  if (new TextEncoder().encode(password).length > 72) return 'Password: use at most 72 bytes.';
-  return '';
+const passwordProblems = password => {
+  if (!password) return ['Password is required.'];
+  const errors=[];
+  if (password.length < 6) errors.push('Password: use at least 6 characters.');
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) errors.push('Password: include a letter and a number.');
+  if (/\s/.test(password)) errors.push('Password cannot contain spaces.');
+  if (new TextEncoder().encode(password).length > 72) errors.push('Password: use at most 72 bytes.');
+  return errors;
 };
+const passwordError = password => passwordProblems(password).join(' ');
+function validatePasswordChange(form) {
+  const current=form.querySelector('#current-pw'),next=form.querySelector('#np'),confirm=form.querySelector('#cp');
+  const errors=[];
+  if(!current.value)errors.push({id:'current-pw',message:'Current password is required.'});
+  errors.push(...passwordProblems(next.value).map(message=>({id:'np',message})));
+  if(!confirm.value)errors.push({id:'cp',message:'Confirm your new password.'});
+  else if(next.value!==confirm.value)errors.push({id:'cp',message:'The two passwords do not match.'});
+  for(const input of [current,next,confirm]){
+    const invalid=errors.some(error=>error.id===input.id);
+    input.setAttribute('aria-invalid',String(invalid));
+    input.setAttribute('aria-describedby',[input.id==='np'?'rules-np':'',invalid?'change-password-errors':''].filter(Boolean).join(' '));
+  }
+  form.querySelector('[data-form-error]').innerHTML=errors.length?`<ul>${errors.map(error=>`<li>${esc(error.message)}</li>`).join('')}</ul>`:'';
+  return errors;
+}
 function validateAdminForm(form) {
   const checks = [
     ['an', value => value.trim().length >= 2 && value.trim().length <= 100, 'Enter a full name from 2 to 100 characters.'],
     ['au', value => /^[a-z0-9._-]{3,20}$/i.test(value.trim()), 'Username must contain 3–20 letters, numbers, dots, dashes or underscores.'],
     ['aem', emailKind, 'Enter a valid PUP webmail.'],
-    ['ap', validPhone, 'Enter a valid Philippine mobile number.'],
+    ['ap', validPhone, 'Enter a valid mobile number.'],
     ['rp', value => !passwordError(value), passwordError(form.querySelector('#rp').value)]
   ];
   const errors = [];
@@ -382,7 +399,7 @@ function applyShared(shared, alerts) {
 }
 let polling = false;
 async function pollShared() {
-  if (!token || !S.role || polling) return;
+  if (!token || !S.role || polling || !Number.isSafeInteger(Number(S.roomId)) || Number(S.roomId)<1) return;
   polling = true;
   const session = token; const requestedRoom=S.roomId,requestedView=S.alertView;
   try {
@@ -395,7 +412,7 @@ async function pollShared() {
     if (LIVE.has(S.screen)) render();
     else { const bar = $('nav.nav'); if (bar) bar.outerHTML = nav(); }
   } catch (err) {
-    if (token === session && S.role) {
+    if (token === session && S.role && requestedRoom===S.roomId && requestedView===S.alertView) {
       if (!S.syncError) toast('Shared readings could not refresh. Reconnecting…');
       S.syncError = err.message;
       if (LIVE.has(S.screen)) render();
@@ -445,7 +462,7 @@ async function loadHistory(force=false) {
   } catch(error) {if(request===historyRequest&&token===session&&historyKey()===key)state.error=error.message;}
   finally {if(request===historyRequest&&token===session&&historyKey()===key){state.loading=false;state.fetchedAt=Date.now();if(S.screen==='monitor'&&S.mon.view==='history')render();}}
 }
-const historyTime = (time,range) => new Date(time).toLocaleString(undefined,range==='7d'?{month:'short',day:'numeric'}:range==='24h'?{month:'short',day:'numeric',hour:'numeric'}:{hour:'numeric',minute:'2-digit'});
+const historyTime = (time,range,seconds=false) => new Date(time).toLocaleString(undefined,range==='7d'?{month:'short',day:'numeric'}:range==='24h'?{month:'short',day:'numeric',hour:'numeric'}:{hour:'numeric',minute:'2-digit',...(seconds?{second:'2-digit'}:{})});
 const historyDate = time => new Date(time).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 
 /* =====================================================================
@@ -470,7 +487,7 @@ function chartSVG(vals, labels, k, cls, id, window=null) {
   const n = labels.length; const idx = window ? [] : [...new Set([0, Math.round((n - 1) / 3), Math.round(2 * (n - 1) / 3), n - 1])];
   const anchors = idx.map((_, j) => j === 0 ? 'start' : j === idx.length - 1 ? 'end' : 'middle');
   let xl = idx.map((ix, j) => `<text class="ax" x="${j === 0 ? L : j === idx.length - 1 ? W - R : x(ix).toFixed(1)}" y="${H - 7}" text-anchor="${anchors[j]}">${esc(labels[ix] || '')}</text>`).join('');
-  if(window)xl=Array.from({length:3},(_,i)=>`<text class="ax" x="${L+(W-L-R)*i/2}" y="${H-7}" text-anchor="${i===0?'start':i===2?'end':'middle'}">${esc(historyTime(window.from+(window.to-window.from)*i/2,window.range))}</text>`).join('');
+  if(window)xl=Array.from({length:3},(_,i)=>`<text class="ax" x="${L+(W-L-R)*i/2}" y="${H-7}" text-anchor="${i===0?'start':i===2?'end':'middle'}">${esc(historyTime(window.from+(window.to-window.from)*i/2,window.range,window.to-window.from<300000))}</text>`).join('');
   return `<svg class="chart ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${m.label} trend chart">
     <defs><linearGradient id="g-${id}" x1="0" y1="0" x2="0" y2="1"><stop class="stopc" offset="0" stop-opacity=".28"/><stop class="stopc" offset="1" stop-opacity="0"/></linearGradient></defs>
     ${grid}${ref(th.warn, 'wrn')}${ref(th.limit, 'lim')}
@@ -485,7 +502,7 @@ const LIVE = new Set(['home', 'alerts', 'monitor', 'status', 'rooms', 'analytics
 const TITLES = { alerts: 'Alerts', monitor: 'Monitoring', status: 'Device Status', settings: 'Settings', about: 'About', users: 'Manage Users', students: 'Student Accounts', rooms: 'Classroom Overview', analytics: 'Temperature Analytics' };
 
 function nav() {
-  if (S.screen === 'users') return '';
+  if (['users','students'].includes(S.screen)) return '';
   const items = S.role === 'admin'
     ? [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['status', 'Devices', 'device'], ['settings', 'Settings', 'sliders']]
     : [['home', 'Home', 'home'], ['alerts', 'Alerts', 'bell'], ['monitor', 'Monitoring', 'chart'], ['about', 'About', 'info']];
@@ -583,7 +600,7 @@ function overviewStatus(room,limits) {
 }
 function overviewView() {
   const rooms=S.rooms.filter(r=>S.overviewFloor==='all'||r.floor===Number(S.overviewFloor));
-  return `<p class="note">Current simulated readings. Status uses the more severe temperature or CO₂ level.</p><label class="f" for="overview-floor">Floor</label><select id="overview-floor"><option value="all">All floors</option>${floorList().map(f=>`<option value="${f}" ${String(f)===S.overviewFloor?'selected':''}>${floorName(f)}</option>`).join('')}</select><div class="room-table-scroll" role="region" aria-label="Classroom readings" tabindex="0"><table class="room-overview-table"><caption>Classroom environmental readings</caption><thead><tr><th scope="col">Room Number</th><th scope="col">Temperature</th><th scope="col">Carbon Dioxide (CO₂)</th><th scope="col">Status</th></tr></thead><tbody>${rooms.map(r=>{const status=overviewStatus(r,S.limits);return `<tr class="room-state-${status}"><th scope="row"><button class="linkbtn" data-act="monitorRoom" data-v="${r.id}">${esc(r.name)}</button></th><td>${r.observed&&r.reading.temp!=null?withUnit('temp',Number(r.reading.temp)):'—'}</td><td>${r.observed&&r.reading.co2!=null?withUnit('co2',Number(r.reading.co2)):'—'}</td><td><span class="chip ${status}">${status==='unknown'?'Awaiting data':LV[status]}</span></td></tr>`;}).join('')}</tbody></table></div><p class="note">Green: Normal · Yellow: Warning · Red: Danger. Open a room to view its charts.</p>`;
+  return `<label class="f" for="overview-floor">Floor</label><select id="overview-floor"><option value="all">All floors</option>${floorList().map(f=>`<option value="${f}" ${String(f)===S.overviewFloor?'selected':''}>${floorName(f)}</option>`).join('')}</select><div class="room-table-scroll" role="region" aria-label="Classroom readings" tabindex="0"><table class="room-overview-table"><caption>Classroom environmental readings</caption><thead><tr><th scope="col">Room Number</th><th scope="col">Temperature</th><th scope="col">Carbon Dioxide (CO₂)</th><th scope="col">Status</th></tr></thead><tbody>${rooms.map(r=>{const status=overviewStatus(r,S.limits);return `<tr class="room-state-${status}"><th scope="row"><button class="linkbtn" data-act="monitorRoom" data-v="${r.id}">${esc(r.name)}</button></th><td>${r.observed&&r.reading.temp!=null?withUnit('temp',Number(r.reading.temp)):'—'}</td><td>${r.observed&&r.reading.co2!=null?withUnit('co2',Number(r.reading.co2)):'—'}</td><td><span class="chip ${status}">${status==='unknown'?'Awaiting data':LV[status]}</span></td></tr>`;}).join('')}</tbody></table></div>`;
 }
 let analyticsRequest = 0;
 async function loadTemperatureAnalytics() {
@@ -696,8 +713,12 @@ function monitorView() {
   if(state?.error)return `${head}<p class="note" role="alert">History could not load. ${esc(state.error)}</p><button class="btn soft small" data-act="historyRetry">Try again</button>${monitoringLinks()}`;
   if(!h)return `${head}<p class="empty" role="status">Loading saved history…</p>${monitoringLinks()}`;
   const vals=h.points.map(p=>p.value),times=h.points.map(p=>p.at);
-  return `${head}<p class="note history-window">${esc(historyDate(h.from))} – ${esc(historyDate(h.to))}</p>
-    <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${vals.length?chartSVG(vals,[],k,'neutral','hist',{times,from:h.from,to:h.to,range:r}):'<p class="empty">No saved readings in this period.</p>'}${legend(k)}</section>
+  const first=times[0],last=times[times.length-1];
+  const plotFrom=times.length>1?first:Math.max(h.from,first-30000);
+  const plotTo=times.length>1?last:Math.min(h.to,first+30000);
+  const span=plotTo-plotFrom,plotRange=span>=48*3600000?'7d':span>=12*3600000?'24h':'6h';
+  return `${head}<p class="note history-window">Selected period: ${esc(historyDate(h.from))} – ${esc(historyDate(h.to))}</p>
+    <section class="card"><div class="chart-head"><h3>${m.label} (${m.unit})</h3></div>${vals.length?'<p class="note history-coverage">Graph zoomed to the available recorded readings.</p>':''}${vals.length?chartSVG(vals,[],k,'neutral','hist',{times,from:plotFrom,to:plotTo,range:plotRange}):'<p class="empty">No saved readings in this period.</p>'}${legend(k)}</section>
     <div class="stats"><div class="stat"><span>Lowest</span><b>${h.count?fmt(k,h.stats.min):'—'}</b></div><div class="stat"><span>Average</span><b>${h.count?fmt(k,h.stats.avg):'—'}</b></div><div class="stat"><span>Highest</span><b>${h.count?fmt(k,h.stats.max):'—'}</b></div></div>
     <p class="note">Saved demo readings, summarized by minute. ${h.count?`${h.count.toLocaleString()} sample${h.count===1?'':'s'} available from ${esc(historyDate(h.firstAt))} to ${esc(historyDate(h.lastAt))}.`:'History starts collecting after saved history is enabled on the server.'} Older unsaved readings cannot be recovered.</p>${monitoringLinks()}`;
 }
@@ -852,7 +873,7 @@ function aboutView() {
 
 function shell() {
   const bodies = { home: homeView, alerts: alertsView, monitor: monitorView, status: statusView, settings: settingsView, about: aboutView, users: usersView, students: studentsView, rooms: overviewView, analytics: analyticsView };
-  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${S.syncError ? `<p class="note" role="alert">Shared updates are unavailable. Displayed readings may be out of date. ${esc(S.syncError)}</p>` : ''}${bodies[S.screen]()}</main>${nav()}`;
+  return `${topbar()}<main class="screen" id="screen" data-s="${S.screen}">${bodies[S.screen]()}</main>${nav()}`;
 }
 
 function splashView() {
@@ -874,7 +895,7 @@ const authBack = to => `<button class="back" data-act="to" data-v="${to}">${I.ba
 const circle = ic => `<div class="circle">${I[ic]}</div>`;
 const errLine = () => `<p class="err" id="err" role="alert">${esc(S.authError)}</p>`;
 const noteLine = () => S.notice ? `<p class="okmsg" role="status">${esc(S.notice)}</p>` : '';
-const pwField = (id, ph, auto) => `<div class="field">${I.lock}<input type="password" id="${id}" placeholder="${ph}" aria-label="${ph}" autocomplete="${auto}"><button type="button" class="eye" data-act="pw" data-v="${id}" aria-label="Show password">${I.eye}</button></div>`;
+const pwField = (id, ph, auto) => `<div class="field">${I.lock}<input type="password" id="${id}" placeholder="${ph}" aria-label="${ph}" autocomplete="${auto}"><button type="button" class="eye" data-act="pw" data-v="${id}" aria-label="Show password" aria-controls="${id}" aria-pressed="false">${I.eye}</button></div>`;
 const textField = (ic, id, ph, type, extra) => `<div class="field">${I[ic]}<input type="${type}" id="${id}" placeholder="${ph}" aria-label="${ph}" ${extra || ''}></div>`;
 const rulesList = (field = 'rp') => `<ul class="rules" id="${field==='rp'?'rules':'rules-'+field}" data-password-for="${field}" aria-label="Password rules">${pwRules('').map(([t, ok]) => `<li class="${ok ? 'ok' : ''}">${I.check}${t}</li>`).join('')}</ul>`;
 const emailInput = (id, val) => `<div class="field">${I.mail}<input type="email" id="${id}" inputmode="email" placeholder="PUP web mail" aria-label="PUP web mail" autocapitalize="none" autocomplete="email" maxlength="120" value="${esc(val || '')}"></div>`;
@@ -1230,7 +1251,7 @@ function accountSheet() {
     <p class="note">Password reset codes are sent to this saved PUP webmail. Check Outlook Inbox and Junk; mark SafeZone messages as not junk if necessary.</p>
     ${me.role==='viewer' && me.kind==='student'?`<p class="section-label">Course and section</p><form id="student-profile-form" class="stack" novalidate>${profileFields('account',S.studentProfile || {})}<button class="btn small" type="submit">Save course and section</button></form>`:''}
     <p class="section-label">Change password</p>
-    <form id="pw-form" class="stack" novalidate><input type="password" id="current-pw" placeholder="Current password" aria-label="Current password" autocomplete="current-password"><input type="password" id="np" placeholder="New password" aria-label="New password" autocomplete="new-password"><input type="password" id="cp" placeholder="Confirm new password" aria-label="Confirm new password" autocomplete="new-password">${rulesList('np')}<button class="btn small" type="submit">Update password</button></form>`);
+    <form id="pw-form" class="stack" novalidate>${pwField('current-pw','Current password','current-password')}${pwField('np','New password','new-password')}${pwField('cp','Confirm new password','new-password')}${rulesList('np')}<div class="err" id="change-password-errors" data-form-error role="alert"></div><button class="btn small" type="submit">Update password</button></form>`);
 }
 
 /* =====================================================================
@@ -1267,7 +1288,7 @@ const ACTS = {
   pw(v, el) {
     const inp = $('#' + v); if (!inp) return;
     const show = inp.type === 'password'; inp.type = show ? 'text' : 'password';
-    el.innerHTML = show ? I.eyeoff : I.eye; el.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    el.innerHTML = show ? I.eyeoff : I.eye; el.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); el.setAttribute('aria-pressed', String(show));
   },
   async forgot(v,el) {
     if(el?.disabled)return;
@@ -1461,7 +1482,7 @@ document.addEventListener('submit', async e => {
     } else if (id === 'v-reg1-form') {
       const email = normEmail(value('email')), phone = normPhone(value('phone'));
       if (!emailKind(email)) throw new Error('Use your PUP web mail. ' + emailHint);
-      if (!validPhone(phone)) throw new Error('Enter a valid Philippine mobile number.');
+      if (!validPhone(phone)) throw new Error('Enter a valid mobile number.');
       S.reg = { email, phone, ...(emailKind(email)==='student'?readProfile('reg'):{}) }; S.authError = ''; S.screen = 'vReg2'; render();
     } else if (id === 'v-reg2-form') {
       await api('/auth/register', 'POST', { ...S.reg, password: passwords() });
@@ -1501,9 +1522,9 @@ document.addEventListener('submit', async e => {
       const data = await api('/auth/me/email', 'PUT', { email: value('ae') });
       S.me = mapUser(data.user); toast('Web mail saved');
     } else if (id === 'pw-form') {
-      const problem = passwordError(value('np'));
-      if (problem) throw new Error(problem);
-      if (value('np') !== value('cp')) throw new Error('The two passwords do not match.');
+      form.dataset.validated='true';
+      const errors=validatePasswordChange(form);
+      if(errors.length){form.querySelector('#'+errors[0].id).focus();return;}
       const data = await api('/auth/change-password', 'POST', { currentPassword: value('current-pw'), newPassword: value('np') });
       token = data.token; sessionStorage.setItem('safezone.token', token); closeSheet(); toast('Password updated');
     }
@@ -1518,6 +1539,8 @@ document.addEventListener('submit', async e => {
 // Live tick marks on the password rules while typing.
 document.addEventListener('input', e => {
   if (e.target.id === 'phone') e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 11);
+  const passwordForm=e.target.closest('#pw-form');
+  if(passwordForm?.dataset.validated==='true')validatePasswordChange(passwordForm);
   const adminForm = e.target.closest('#admin-form');
   if (adminForm?.dataset.validated === 'true') validateAdminForm(adminForm);
   if(e.target.form)e.target.form.dataset.dirty='1';
